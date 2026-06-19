@@ -47,8 +47,7 @@ def _run_install_script(subcommand: str) -> int:
         return 0
 
     print(
-        "install.py not found. Run from the project root:\n"
-        "  python install.py",
+        "install.py not found. Run from the project root:\n  python install.py",
         file=sys.stderr,
     )
     return 1
@@ -62,6 +61,7 @@ def main() -> int:
             return 0
         if cmd == "serve":
             from .server import main as serve_main
+
             serve_main()
             return 0
         if cmd == "install":
@@ -77,6 +77,7 @@ def main() -> int:
 
     # No args: default to serve
     from .server import main as serve_main
+
     serve_main()
     return 0
 

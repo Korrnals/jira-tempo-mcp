@@ -18,6 +18,7 @@ from jira_tempo_mcp.report import (
 
 # --- _week_range ---
 
+
 class TestWeekRange:
     """Tests for _week_range."""
 
@@ -56,6 +57,7 @@ class TestWeekRange:
 
 # --- _format_date / _format_date_short ---
 
+
 class TestFormatDate:
     def test_format_date(self) -> None:
         assert _format_date(date(2026, 6, 15)) == "15.06.2026"
@@ -69,6 +71,7 @@ class TestFormatDate:
 
 # --- _month_ru ---
 
+
 class TestMonthRu:
     def test_january(self) -> None:
         assert _month_ru(1) == "январь"
@@ -81,6 +84,7 @@ class TestMonthRu:
 
 
 # --- _parse_tempo_date ---
+
 
 class TestParseTempoDate:
     def test_date_only(self) -> None:
@@ -106,6 +110,7 @@ class TestParseTempoDate:
 
 
 # --- _extract_* ---
+
 
 class TestExtractFunctions:
     def test_extract_issue_key_top_level(self) -> None:

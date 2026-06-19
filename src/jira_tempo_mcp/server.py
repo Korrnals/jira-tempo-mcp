@@ -77,7 +77,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "issue_key": {"type": "string", "description": "Jira issue key (e.g. PROJECT-102)"},
+                "issue_key": {
+                    "type": "string",
+                    "description": "Jira issue key (e.g. PROJECT-102)",
+                },
                 "time_spent": {
                     "type": "string",
                     "description": "Human duration: '1h 30m', '2h', '45m', '1d 2h'",
@@ -112,7 +115,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "issue_key": {"type": "string", "description": "Jira issue key (e.g. PROJECT-102)"},
+                "issue_key": {
+                    "type": "string",
+                    "description": "Jira issue key (e.g. PROJECT-102)",
+                },
             },
             "required": ["issue_key"],
         },
@@ -324,9 +330,7 @@ async def _handle_generate_report(
                 f"Path traversal is not permitted."
             ) from None
         out_dir = resolved
-    path = await generate_weekly_report(
-        client, config, target_date=target, output_dir=out_dir
-    )
+    path = await generate_weekly_report(client, config, target_date=target, output_dir=out_dir)
     return f"Weekly report generated: {path}"
 
 

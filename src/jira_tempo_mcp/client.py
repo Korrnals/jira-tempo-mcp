@@ -83,9 +83,13 @@ class JiraTempoClient:
         params: dict[str, Any] | None = None,
     ) -> Any:
         try:
-            resp = await self._client.request(method, url, headers=headers, json=json, params=params)
+            resp = await self._client.request(
+                method, url, headers=headers, json=json, params=params
+            )
         except httpx.RequestError as exc:
-            raise JiraTempoError(f"Network error contacting Jira/Tempo: {exc.__class__.__name__}") from exc
+            raise JiraTempoError(
+                f"Network error contacting Jira/Tempo: {exc.__class__.__name__}"
+            ) from exc
 
         if resp.status_code >= 400:
             # m6: truncate to 200 chars to reduce log noise and potential token leakage.

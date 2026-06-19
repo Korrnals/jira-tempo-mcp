@@ -103,8 +103,14 @@ class TestLoadConfig:
         }
         with patch.dict(os.environ, env, clear=False):
             # Clear env vars not in our test set.
-            for key in ("TEMPO_API_TOKEN", "REPORT_OUTPUT_DIR", "REPORT_AUTHOR_NAME",
-                        "REPORT_SECTION_MAP", "REPORT_SECTION_MAP_FILE", "JIRA_HTTP_TIMEOUT"):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "REPORT_SECTION_MAP_FILE",
+                "JIRA_HTTP_TIMEOUT",
+            ):
                 os.environ.pop(key, None)
             c = load_config()
         assert c.jira_base_url == "https://jira.test"
@@ -126,8 +132,13 @@ class TestLoadConfig:
             "REPORT_SECTION_MAP_FILE": str(section_file),
         }
         with patch.dict(os.environ, env, clear=False):
-            for key in ("TEMPO_API_TOKEN", "REPORT_OUTPUT_DIR", "REPORT_AUTHOR_NAME",
-                        "REPORT_SECTION_MAP", "JIRA_HTTP_TIMEOUT"):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "JIRA_HTTP_TIMEOUT",
+            ):
                 os.environ.pop(key, None)
             c = load_config()
         assert c.section_map == {"PROJECT-1": "Custom Title"}
@@ -140,8 +151,13 @@ class TestLoadConfig:
             "REPORT_SECTION_MAP": '{"PROJECT-2": "Inline"}',
         }
         with patch.dict(os.environ, env, clear=False):
-            for key in ("TEMPO_API_TOKEN", "REPORT_OUTPUT_DIR", "REPORT_AUTHOR_NAME",
-                        "REPORT_SECTION_MAP_FILE", "JIRA_HTTP_TIMEOUT"):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP_FILE",
+                "JIRA_HTTP_TIMEOUT",
+            ):
                 os.environ.pop(key, None)
             c = load_config()
         assert c.section_map == {"PROJECT-2": "Inline"}
@@ -154,8 +170,13 @@ class TestLoadConfig:
             "JIRA_HTTP_TIMEOUT": "not_a_number",
         }
         with patch.dict(os.environ, env, clear=False):
-            for key in ("TEMPO_API_TOKEN", "REPORT_OUTPUT_DIR", "REPORT_AUTHOR_NAME",
-                        "REPORT_SECTION_MAP", "REPORT_SECTION_MAP_FILE"):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "REPORT_SECTION_MAP_FILE",
+            ):
                 os.environ.pop(key, None)
             c = load_config()
         assert c.http_timeout == 30.0

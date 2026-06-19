@@ -64,13 +64,13 @@ def _color(code: str, text: str, *, bold: bool = False) -> str:
 
 
 # Semantic colours
-C_OK = "32"      # green
-C_WARN = "33"    # yellow
-C_ERR = "31"     # red
-C_INFO = "36"    # cyan
-C_MUTED = "90"   # grey
+C_OK = "32"  # green
+C_WARN = "33"  # yellow
+C_ERR = "31"  # red
+C_INFO = "36"  # cyan
+C_MUTED = "90"  # grey
 C_ACCENT = "35"  # magenta
-C_HEAD = "34"    # blue
+C_HEAD = "34"  # blue
 
 
 # ---------- helpers ----------
@@ -146,7 +146,9 @@ def _ask(label: str, default: str = "", *, secret: bool = False, required: bool 
         raw = getpass.getpass(shown)
         if raw.strip():
             # Echo a masked length indicator so the user knows something was entered.
-            print(f"  {_color(C_OK, '●' * min(len(raw.strip()), 24))} {_color(C_MUTED, f'({len(raw.strip())} chars)')}")
+            print(
+                f"  {_color(C_OK, '●' * min(len(raw.strip()), 24))} {_color(C_MUTED, f'({len(raw.strip())} chars)')}"
+            )
         value = raw
     else:
         # We want to colour the user's input echo. Capture without ANSI, then re-print.
@@ -173,6 +175,7 @@ def _confirm(msg: str, default: bool = True) -> bool:
 
 
 # ---------- steps ----------
+
 
 def check_python() -> bool:
     v = sys.version_info
@@ -278,9 +281,7 @@ def write_env() -> bool:
     base_url = _ask(
         "Jira base URL", existing.get("JIRA_BASE_URL") or defaults.get("JIRA_BASE_URL", "")
     )
-    user = _ask(
-        "Jira username", existing.get("JIRA_USER") or defaults.get("JIRA_USER", "")
-    )
+    user = _ask("Jira username", existing.get("JIRA_USER") or defaults.get("JIRA_USER", ""))
     pat = _ask(
         "Jira Personal Access Token (PAT)",
         existing.get("JIRA_PAT", ""),
@@ -370,7 +371,9 @@ def register_vscode() -> bool:
 
     # Report existing servers that will be preserved
     if existing_servers:
-        _ok(f"Preserving {len(existing_servers)} existing MCP server(s): {', '.join(existing_servers)}")
+        _ok(
+            f"Preserving {len(existing_servers)} existing MCP server(s): {', '.join(existing_servers)}"
+        )
 
     # Backup before write (only if file exists and is valid)
     if VSCODE_MCP.exists():
@@ -381,7 +384,9 @@ def register_vscode() -> bool:
     # MERGE: only update our entry, preserve all others
     mcp_data["servers"][SERVER_NAME] = server_entry
     VSCODE_DIR.mkdir(parents=True, exist_ok=True)
-    VSCODE_MCP.write_text(json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    VSCODE_MCP.write_text(
+        json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     _ok(f"VS Code MCP config written: {VSCODE_MCP}")
     _info("Next step in VS Code: open the MCP panel and approve the 'jira-tempo' server.")
     _muted("The server will read JIRA_PAT from your shell environment (not from mcp.json).")
@@ -448,6 +453,7 @@ def print_next_steps() -> None:
 
 # ---------- main ----------
 
+
 def main() -> int:
     _title("jira-tempo-mcp installer")
     if not check_python() or not check_files():
@@ -476,6 +482,7 @@ def main() -> int:
 
 
 # ---------- uninstall ----------
+
 
 def _remove_vscode_entry() -> bool:
     """Remove the 'jira-tempo' entry from VS Code mcp.json (with backup)."""

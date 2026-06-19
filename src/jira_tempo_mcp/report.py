@@ -157,7 +157,9 @@ async def generate_weekly_report(
             try:
                 issue = await client.get_issue(key)
                 fields = issue.get("fields", {})
-                issue_titles[key] = str(fields.get("summary", key)) if isinstance(fields, dict) else key
+                issue_titles[key] = (
+                    str(fields.get("summary", key)) if isinstance(fields, dict) else key
+                )
             except JiraTempoError:
                 logger.warning("Could not fetch issue %s, using key as title", key)
                 issue_titles[key] = key
@@ -165,7 +167,9 @@ async def generate_weekly_report(
     # --- Compose report lines ---
     lines: list[str] = []
     author = config.report_author_header
-    lines.append(f"[{author}] Отчет работы за неделю ({_format_date(monday)} - {_format_date(friday)}):")
+    lines.append(
+        f"[{author}] Отчет работы за неделю ({_format_date(monday)} - {_format_date(friday)}):"
+    )
     lines.append("")
 
     section_num = 1
@@ -230,7 +234,17 @@ async def generate_weekly_report(
 def _month_ru(month: int) -> str:
     """Map month number to Russian lowercase month name (for folder name)."""
     names = [
-        "январь", "февраль", "март", "апрель", "май", "июнь",
-        "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+        "январь",
+        "февраль",
+        "март",
+        "апрель",
+        "май",
+        "июнь",
+        "июль",
+        "август",
+        "сентябрь",
+        "октябрь",
+        "ноябрь",
+        "декабрь",
     ]
     return names[month - 1]

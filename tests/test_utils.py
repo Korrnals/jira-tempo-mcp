@@ -8,6 +8,7 @@ from jira_tempo_mcp.utils import format_seconds_to_human, parse_duration_to_seco
 
 # --- parse_duration_to_seconds ---
 
+
 class TestParseDuration:
     """Tests for parse_duration_to_seconds."""
 
@@ -58,6 +59,7 @@ class TestParseDuration:
 
 
 # --- format_seconds_to_human ---
+
 
 class TestFormatSeconds:
     """Tests for format_seconds_to_human."""
