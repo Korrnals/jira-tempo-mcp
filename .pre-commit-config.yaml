@@ -1,0 +1,42 @@
+# Pre-commit hooks for jira-tempo-mcp
+# Install:  pip install -e ".[dev]" && pre-commit install
+# Bypass:   git commit --no-verify  (emergency only)
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  # Standard hygiene hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  # Ruff lint — fix on failure
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (lint + autofix)
+        entry: ruff check --fix
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # Ruff format — check only (no in-place rewrite on commit)
+      - id: ruff-format
+        name: ruff format (check)
+        entry: ruff format --check
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # mypy strict — run on src/ only (not install.py or tests/)
+      - id: mypy
+        name: mypy (strict, src/ only)
+        entry: mypy
+        language: system
+        types: [python]
+        files: ^src/
+        pass_filenames: false
+        args: [src/]

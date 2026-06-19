@@ -1,0 +1,68 @@
+# Prevent secrets and build artifacts from leaking into Docker images.
+# This file is critical: without it, `docker build` copies the entire
+# context including .env (real PAT), .history/, .venv/, and .git/.
+
+# Secrets — NEVER bake into image
+.env
+.env.local
+.env.*.local
+
+# VS Code Local History — may contain old .env snapshots
+.history/
+**/.history/
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments — installed inside the container
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test / coverage / cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# Tests — not needed at runtime
+tests/
+
+# Installer — not needed at runtime (uses package data if wheel)
+install.py
+
+# Code review reports
+.cr/
+
+# Pre-commit config — not needed at runtime
+.pre-commit-config.yaml

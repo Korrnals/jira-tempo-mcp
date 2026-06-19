@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jira-tempo-mcp"
+version = "0.1.0"
+description = "MCP server for self-hosted Jira + Tempo Timesheets: track time, list worklogs, generate weekly reports."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Korrnals L.S." }]
+keywords = ["mcp", "jira", "tempo", "timesheets", "worklog", "report"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.7.0",
+    "pytz>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "types-pytz>=2024.1",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.scripts]
+jira-tempo-mcp = "jira_tempo_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Ship install.py as package data so `jira-tempo-mcp install` works in wheel installs.
+[tool.setuptools.package-data]
+jira_tempo_mcp = ["install.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,51 @@
+# Environment / secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# VS Code Local History — keeps snapshots of edited files on disk.
+# If `.env` was ever edited while VS Code ran, the snapshot would land here
+# with the real PAT. Block both the extension output and the directory.
+.history/
+**/.history/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
