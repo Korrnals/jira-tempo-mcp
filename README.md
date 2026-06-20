@@ -38,26 +38,38 @@ examples.
 
 ## Quick start
 
-**One-liner (pip, once published on PyPI):**
+**Install (one command):**
 
 ```bash
-pip install jira-tempo-mcp && jira-tempo-mcp install
+curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash
 ```
 
-**One-liner (from GitHub, before PyPI or for dev):**
+This downloads and runs the interactive installer, which:
+
+- Checks Python 3.11+ and pip
+- Clones the repo and creates a venv
+- Installs the package
+- Guides you through Jira credentials setup
+- Registers the MCP server in VS Code (user + workspace)
+
+**Uninstall:**
 
 ```bash
-pip install git+https://github.com/Korrnals/jira-tempo-mcp.git && jira-tempo-mcp install
+curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash -- --uninstall
 ```
 
 **Docker:**
 
 ```bash
-docker run -i --rm -e JIRA_PAT=$JIRA_PAT ghcr.io/korrnals/jira-tempo-mcp:latest
+docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-> The interactive installer (`jira-tempo-mcp install`) guides you through
-> Jira credentials setup and VS Code MCP registration.
+> **Note:** The install script URL works once the repository is public.
+> Until then, clone manually and run `python install.py`.
+>
+> The installer never requires sudo — everything lives in user space. It is
+> idempotent: re-running updates the repo and re-runs the installer without
+> clobbering existing `.env.local` or `mcp.json` entries (the installer merges).
 
 ---
 

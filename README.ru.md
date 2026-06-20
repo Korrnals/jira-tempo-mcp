@@ -37,26 +37,39 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 
 ## Быстрый старт
 
-**Однострочник (pip, после публикации на PyPI):**
+**Установка одной командой:**
 
 ```bash
-pip install jira-tempo-mcp && jira-tempo-mcp install
+curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash
 ```
 
-**Однострочник (из GitHub, до PyPI или для разработки):**
+Скрипт скачивает и запускает интерактивный установщик, который:
+
+- Проверяет Python 3.11+ и pip
+- Клонирует репозиторий и создаёт venv
+- Устанавливает пакет
+- Проводит через настройку учётных данных Jira
+- Регистрирует MCP-сервер в VS Code (user + workspace)
+
+**Удаление:**
 
 ```bash
-pip install git+https://github.com/Korrnals/jira-tempo-mcp.git && jira-tempo-mcp install
+curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash -- --uninstall
 ```
 
 **Docker:**
 
 ```bash
-docker run -i --rm -e JIRA_PAT=$JIRA_PAT ghcr.io/korrnals/jira-tempo-mcp:latest
+docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-> Интерактивный установщик (`jira-tempo-mcp install`) проведёт вас через
-> настройку учётных данных Jira и регистрацию MCP-сервера в VS Code.
+> **Примечание:** URL установочного скрипта заработает, когда репозиторий
+> станет публичным. До этого — клонируйте вручную и запустите `python install.py`.
+>
+> Установщик не требует sudo — всё ставится в user space. Скрипт
+> идемпотентен: повторный запуск обновляет репозиторий и перезапускает
+> установщик, не затирая существующие `.env.local` или `mcp.json`
+> (установщик делает merge, а не перезапись).
 
 ---
 
