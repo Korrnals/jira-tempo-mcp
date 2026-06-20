@@ -24,6 +24,8 @@ from mcp.types import TextContent, Tool
 from .client import JiraTempoClient, JiraTempoError, WorkerKeyResolutionError
 from .config import Config, load_config
 from .report import generate_weekly_report
+from .team_report import generate_team_report
+from .templates.loader import build_registry, resolve_template
 from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
 
 logger = logging.getLogger("jira-tempo-mcp")
@@ -134,7 +136,8 @@ TOOLS: list[Tool] = [
             "Generate a weekly work report from Tempo worklogs and save it as a .txt file. "
             "Groups worklogs by issue, maps known issues to stable sections, and writes "
             "<prefix>_<DDMMYY>-<DDMMYY>.txt to the configured output directory. "
-            "Returns the path to the generated file."
+            "Returns the path to the generated file. "
+            "Since v0.2.0 a custom template can be selected via the 'template' parameter."
         ),
         inputSchema={
             "type": "object",
@@ -147,9 +150,67 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Output directory. Defaults to REPORT_OUTPUT_DIR env or ./reports.",
                 },
+                "template": {
+                    "type": "string",
+                    "description": (
+                        "Template name (e.g. 'default', 'weekly_summary'). "
+                        "Defaults to REPORT_TEMPLATE env or 'default'. "
+                        "Use list_report_templates to see available templates."
+                    ),
+                },
             },
             "required": [],
         },
+    ),
+    Tool(
+        name="generate_team_report",
+        description=(
+            "Generate a team work report from Tempo worklogs for multiple Jira users. "
+            "Fetches worklogs per user with bounded concurrency (rate-limit safe), "
+            "renders per-user sections plus an aggregate summary, and writes "
+            "team_<DDMMYY>-<DDMMYY>.txt to the configured output directory. "
+            "Returns the file path and a short summary (per-user totals, top issues)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Jira usernames to include in the team report (non-empty).",
+                },
+                "date_from": {
+                    "type": "string",
+                    "description": "Start date (ISO YYYY-MM-DD). Defaults to Monday of the current week.",
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "End date (ISO YYYY-MM-DD). Defaults to Friday of the current week.",
+                },
+                "section_map": {
+                    "type": "object",
+                    "description": "Optional override for REPORT_SECTION_MAP (issue key -> section title).",
+                },
+                "template": {
+                    "type": "string",
+                    "description": "Template name. Defaults to 'team_report'.",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Output directory. Defaults to REPORT_TEAM_OUTPUT_DIR or REPORT_OUTPUT_DIR.",
+                },
+            },
+            "required": ["users"],
+        },
+    ),
+    Tool(
+        name="list_report_templates",
+        description=(
+            "List available report templates (builtin + custom). "
+            "Returns each template's name and description. "
+            "Custom templates are discovered from REPORT_TEMPLATE_DIR."
+        ),
+        inputSchema={"type": "object", "properties": {}, "required": []},
     ),
 ]
 
@@ -204,6 +265,26 @@ def _user_friendly_error(exc: Exception) -> str:
         return f"Missing required argument: {exc}"
     # For unexpected errors, show class name only in DEBUG, generic message otherwise.
     return f"Unexpected error: {exc.__class__.__name__}"
+
+
+def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) -> Path:
+    """Validate an output_dir argument against path traversal.
+
+    team=True uses the team output root, otherwise the weekly report root.
+    """
+    resolved = Path(raw_dir).resolve()
+    root = (config.team_output_dir if team else config.report_output_dir) or str(
+        Path.cwd() / "reports"
+    )
+    allowed_root = Path(root).resolve()
+    try:
+        resolved.relative_to(allowed_root)
+    except ValueError:
+        raise ValueError(
+            f"output_dir {raw_dir!r} resolves outside the allowed root {allowed_root}. "
+            f"Path traversal is not permitted."
+        ) from None
+    return resolved
 
 
 # --- Tool handlers (m3: dispatch table) ---
@@ -317,20 +398,90 @@ async def _handle_generate_report(
         target = _validate_date(td, "target_date")
     out_dir = None
     if raw_dir := arguments.get("output_dir"):
-        # M2: validate output_dir against path traversal.
-        # Reject paths that resolve outside the allowed root directory.
-        resolved = Path(raw_dir).resolve()
-        allowed_root = Path(config.report_output_dir or str(Path.cwd() / "reports")).resolve()
-        try:
-            resolved.relative_to(allowed_root)
-        except ValueError:
+        out_dir = _validate_output_dir(raw_dir, config)
+
+    # Template resolution (v0.2.0).
+    registry = build_registry(config)
+    template_name = arguments.get("template")
+    template = None
+    if template_name:
+        template = registry.get(template_name)
+        if template is None:
             raise ValueError(
-                f"output_dir {raw_dir!r} resolves outside the allowed root {allowed_root}. "
-                f"Path traversal is not permitted."
-            ) from None
-        out_dir = resolved
-    path = await generate_weekly_report(client, config, target_date=target, output_dir=out_dir)
+                f"Unknown template {template_name!r}. "
+                f"Available: {', '.join(registry.names()) or '(none)'}."
+            )
+    else:
+        template = resolve_template(config, registry)
+
+    path = await generate_weekly_report(
+        client,
+        config,
+        target_date=target,
+        output_dir=out_dir,
+        template=template,
+        registry=registry,
+    )
     return f"Weekly report generated: {path}"
+
+
+async def _handle_generate_team_report(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    users = arguments.get("users")
+    if not isinstance(users, list) or not users:
+        raise ValueError("'users' must be a non-empty list of Jira usernames.")
+    users = [str(u) for u in users]
+
+    date_from = arguments.get("date_from")
+    date_to = arguments.get("date_to")
+    if date_from:
+        _validate_date(date_from, "date_from")
+    if date_to:
+        _validate_date(date_to, "date_to")
+
+    section_map = arguments.get("section_map")
+    if section_map is not None and not isinstance(section_map, dict):
+        raise ValueError("section_map must be an object (issue key -> section title).")
+
+    out_dir = None
+    if raw_dir := arguments.get("output_dir"):
+        out_dir = _validate_output_dir(raw_dir, config, team=True)
+
+    registry = build_registry(config)
+    template_name = arguments.get("template", "team_report")
+    template = registry.get(template_name)
+    if template is None:
+        raise ValueError(
+            f"Unknown template {template_name!r}. "
+            f"Available: {', '.join(registry.names()) or '(none)'}."
+        )
+
+    result = await generate_team_report(
+        client,
+        config,
+        users,
+        date_from=date_from,
+        date_to=date_to,
+        section_map=section_map,
+        template=template,
+        registry=registry,
+        output_dir=out_dir,
+    )
+    return result.summary
+
+
+async def _handle_list_report_templates(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    registry = build_registry(config)
+    templates = registry.all()
+    if not templates:
+        return "No report templates available."
+    lines = [f"Report templates ({len(templates)}):"]
+    for tpl in templates:
+        lines.append(f"- {tpl.name}: {tpl.description}")
+    return "\n".join(lines)
 
 
 # Dispatch table (m3).
@@ -342,6 +493,8 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "get_issue": _handle_get_issue,
     "list_favorite_issues": _handle_list_favorites,
     "generate_weekly_report": _handle_generate_report,
+    "generate_team_report": _handle_generate_team_report,
+    "list_report_templates": _handle_list_report_templates,
 }
 
 

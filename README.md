@@ -26,6 +26,12 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 | `get_issue` | Get Jira issue metadata (summary, status, project) |
 | `list_favorite_issues` | List favorite issues for the current user |
 | `generate_weekly_report` | Generate a weekly `.txt` report from Tempo worklogs |
+| `generate_team_report` | Generate a team report for multiple Jira users (rate-limit safe) |
+| `list_report_templates` | List available report templates (builtin + custom) |
+
+Since v0.2.0 the server supports **team reports** (per-user aggregation with
+rate-limiting) and **custom report templates** (Jinja2 sandbox + opt-in Python).
+See [docs/reports.md](docs/reports.md#team-reports) for details.
 
 See [docs/api.md](docs/api.md) for the full tool reference with parameters and
 examples.

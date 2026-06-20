@@ -34,6 +34,9 @@ DEFAULT_STABLE_ORDER: list[str] = []
 # Empty by default — users provide their own via REPORT_NON_ISSUE_SECTIONS env var.
 DEFAULT_NON_ISSUE_SECTIONS: list[str] = []
 
+# Default directory for custom report templates (expanded at load time).
+_DEFAULT_TEMPLATE_DIR = str(Path.home() / ".config" / "jira-tempo-mcp" / "templates")
+
 
 class Config(BaseModel):
     """Runtime configuration loaded from environment.
@@ -80,6 +83,45 @@ class Config(BaseModel):
     # HTTP timeout (m5 — configurable).
     http_timeout: float = Field(default=30.0, gt=0)
 
+    # --- Team report rate-limiting (v0.2.0) ---
+    tempo_max_concurrent_requests: int = Field(
+        default=3,
+        ge=1,
+        description="Semaphore limit for concurrent Tempo requests in team reports.",
+    )
+    tempo_request_delay_ms: int = Field(
+        default=100,
+        ge=0,
+        description="Delay (ms) between request batches in team reports.",
+    )
+    tempo_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description="Max retry attempts for HTTP 429 responses.",
+    )
+    report_team_output_dir: str = Field(
+        default="",
+        description="Output dir for team reports. Empty = use report_output_dir.",
+    )
+
+    # --- Custom report templates (v0.2.0) ---
+    report_template: str = Field(
+        default="default",
+        description="Name of the template used by generate_weekly_report.",
+    )
+    report_template_path: str = Field(
+        default="",
+        description="Explicit path to a template file (overrides report_template).",
+    )
+    report_template_dir: str = Field(
+        default="",
+        description="Directory scanned for custom templates (.py / .j2).",
+    )
+    report_template_allow_py: bool = Field(
+        default=False,
+        description="Opt-in flag to load .py templates (code execution risk).",
+    )
+
     def __repr__(self) -> str:  # pragma: no cover - safety guard
         return (
             f"Config(jira_base_url={self.jira_base_url!r}, "
@@ -111,6 +153,16 @@ class Config(BaseModel):
     def report_filename_header(self) -> str:
         """Filename prefix for weekly reports — uses report_filename_prefix or jira_user."""
         return self.report_filename_prefix or self.jira_user
+
+    @property
+    def team_output_dir(self) -> str:
+        """Output dir for team reports — falls back to report_output_dir."""
+        return self.report_team_output_dir or self.report_output_dir
+
+    @property
+    def template_dir_resolved(self) -> str:
+        """Resolved custom template directory (default: ~/.config/jira-tempo-mcp/templates)."""
+        return self.report_template_dir or _DEFAULT_TEMPLATE_DIR
 
     @field_validator("log_level")
     @classmethod
@@ -165,6 +217,25 @@ def _load_json_list(env_var: str) -> list[str]:
     return []
 
 
+def _load_int(env_var: str, default: int) -> int:
+    """Load an integer env var with a fallback."""
+    raw = os.getenv(env_var, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _load_bool(env_var: str, default: bool) -> bool:
+    """Load a boolean env var (1/0, true/false, yes/no)."""
+    raw = os.getenv(env_var, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 def load_config() -> Config:
     """Load configuration from environment. Raises if required vars are missing."""
     base_url = os.getenv("JIRA_BASE_URL", "").strip()
@@ -180,6 +251,16 @@ def load_config() -> Config:
     stable_order = _load_json_list("REPORT_STABLE_ORDER")
     non_issue_sections = _load_json_list("REPORT_NON_ISSUE_SECTIONS")
     http_timeout_str = os.getenv("JIRA_HTTP_TIMEOUT", "30.0").strip()
+
+    # v0.2.0 — team report rate-limiting + templates.
+    tempo_max_concurrent = _load_int("TEMPO_MAX_CONCURRENT_REQUESTS", 3)
+    tempo_request_delay_ms = _load_int("TEMPO_REQUEST_DELAY_MS", 100)
+    tempo_max_retries = _load_int("TEMPO_MAX_RETRIES", 3)
+    report_team_output_dir = os.getenv("REPORT_TEAM_OUTPUT_DIR", "").strip()
+    report_template = os.getenv("REPORT_TEMPLATE", "default").strip() or "default"
+    report_template_path = os.getenv("REPORT_TEMPLATE_PATH", "").strip()
+    report_template_dir = os.getenv("REPORT_TEMPLATE_DIR", "").strip()
+    report_template_allow_py = _load_bool("REPORT_TEMPLATE_ALLOW_PY", False)
 
     try:
         http_timeout = float(http_timeout_str)
@@ -201,4 +282,12 @@ def load_config() -> Config:
         stable_order=stable_order,
         non_issue_sections=non_issue_sections,
         http_timeout=http_timeout,
+        tempo_max_concurrent_requests=tempo_max_concurrent,
+        tempo_request_delay_ms=tempo_request_delay_ms,
+        tempo_max_retries=tempo_max_retries,
+        report_team_output_dir=report_team_output_dir,
+        report_template=report_template,
+        report_template_path=report_template_path,
+        report_template_dir=report_template_dir,
+        report_template_allow_py=report_template_allow_py,
     )

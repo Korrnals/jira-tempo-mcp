@@ -1,6 +1,6 @@
 # API — MCP-инструменты
 
-Сервер открывает 7 инструментов через Model Context Protocol. Каждый
+Сервер открывает 9 инструментов через Model Context Protocol. Каждый
 инструмент определён в `src/jira_tempo_mcp/server.py` и диспетчеризуется
 через таблицу (`_TOOL_HANDLERS`).
 
@@ -15,6 +15,8 @@
 | [`get_issue`](#get_issue) | Получить метаданные задачи Jira |
 | [`list_favorite_issues`](#list_favorite_issues) | Список избранных задач текущего пользователя |
 | [`generate_weekly_report`](#generate_weekly_report) | Сгенерировать еженедельный отчёт `.txt` |
+| [`generate_team_report`](#generate_team_report) | Сгенерировать командный отчёт для нескольких пользователей |
+| [`list_report_templates`](#list_report_templates) | Показать доступные шаблоны отчётов |
 
 ---
 
@@ -237,6 +239,91 @@ Weekly report generated: /path/to/reports/your-username_160620-200620.txt
 
 Настройка отчёта (маппинг секций, стабильный порядок, не-задачные секции) —
 в [reports.ru.md](reports.ru.md).
+
+---
+
+## `generate_team_report`
+
+Сгенерировать командный отчёт из worklog'ов Tempo для нескольких
+пользователей Jira. Для каждого пользователя загружаются worklog'ы с
+ограничением параллельности (защита от rate-limit), рендерятся секции по
+пользователям и агрегированная сводка, файл `team_<DDMMYY>-<DDMMYY>.txt`
+записывается в настроенную директорию.
+
+**Параметры:**
+
+| Имя | Тип | Обязательный | Описание |
+| --- | --- | --- | --- |
+| `users` | array<string> | да | Имена пользователей Jira (непустой список) |
+| `date_from` | string | нет | Начальная дата (ISO `YYYY-MM-DD`). По умолчанию понедельник текущей недели. |
+| `date_to` | string | нет | Конечная дата (ISO `YYYY-MM-DD`). По умолчанию пятница текущей недели. |
+| `section_map` | object | нет | Опциональная замена для `REPORT_SECTION_MAP` (ключ задачи → заголовок секции) |
+| `template` | string | нет | Имя шаблона. По умолчанию `team_report`. |
+| `output_dir` | string | нет | Директория вывода. По умолчанию `REPORT_TEAM_OUTPUT_DIR` или `REPORT_OUTPUT_DIR`. Должна быть внутри разрешённого корня. |
+
+**Rate-limiting:** параллельные запросы к Tempo ограничены
+`TEMPO_MAX_CONCURRENT_REQUESTS` (по умолчанию 3). Между пакетами запросов
+вставляется задержка `TEMPO_REQUEST_DELAY_MS` (по умолчанию 100 мс).
+При HTTP 429 клиент повторяет запрос с экспоненциальной задержкой до
+`TEMPO_MAX_RETRIES` (по умолчанию 3) раз.
+
+**Пример вызова:**
+
+```json
+{
+  "name": "generate_team_report",
+  "arguments": {
+    "users": ["alice", "bob", "carol"],
+    "date_from": "2026-06-15",
+    "date_to": "2026-06-19"
+  }
+}
+```
+
+**Возвращает:**
+
+```text
+Team report written: /path/to/reports/team_150626-190626.txt
+Grand total: 24h across 3 users.
+Per-user totals:
+  - alice: 10h
+  - bob: 8h
+  - carol: 6h
+Top issues:
+  - PROJECT-100 (Implement login flow): 12h
+```
+
+---
+
+## `list_report_templates`
+
+Показать доступные шаблоны отчётов (встроенные + кастомные). Возвращает
+имя и описание каждого шаблона. Кастомные шаблоны обнаруживаются в
+`REPORT_TEMPLATE_DIR`.
+
+**Параметры:** нет.
+
+**Пример вызова:**
+
+```json
+{
+  "name": "list_report_templates",
+  "arguments": {}
+}
+```
+
+**Возвращает:**
+
+```text
+Report templates (4):
+- default: Weekly report grouped by issue with stable sections...
+- team_report: Team report: per-user sections with issue breakdown...
+- weekly_summary: Compact weekly summary: total hours, top 5 issues...
+- custom: My custom Jinja2 template
+```
+
+См. [reports.md#custom-templates](reports.md#custom-templates) — как
+добавлять кастомные шаблоны.
 
 ---
 

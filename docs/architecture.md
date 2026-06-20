@@ -7,21 +7,31 @@ flow in one direction.
 
 ```mermaid
 flowchart TD
-    S[server.py<br/>MCP server + 7 tools + input validation] --> C[client.py<br/>Jira + Tempo HTTP client]
+    S[server.py<br/>MCP server + 9 tools + input validation] --> C[client.py<br/>Jira + Tempo HTTP client]
     S --> R[report.py<br/>Weekly report generator]
+    S --> TR[team_report.py<br/>Team report + rate-limiting]
+    S --> T[templates/<br/>Report template system]
     S --> U[utils.py<br/>Duration parsing, formatting, tz helpers]
     S --> CFG[config.py<br/>Env loading, Config model, secrets masked]
     C --> CFG
     R --> C
     R --> CFG
     R --> U
+    R --> T
+    TR --> C
+    TR --> CFG
+    TR --> T
+    T --> CFG
+    T --> U
 ```
 
 | Layer | File | Responsibility |
 | --- | --- | --- |
 | MCP server | `server.py` | JSON-RPC over stdio, tool definitions, dispatch table, input validation, user-friendly errors |
 | HTTP client | `client.py` | Jira REST API + Tempo Timesheets 4 API, PAT auth, TLS, no redirects, error redaction |
-| Report generator | `report.py` | Weekly report template: fetch worklogs, group by issue, map to sections, write `.txt` |
+| Report generator | `report.py` | Weekly report: fetch worklogs, delegate rendering to the template system, write `.txt` |
+| Team report | `team_report.py` | Team report: per-user worklog aggregation with semaphore-bounded concurrency and 429 retry |
+| Templates | `templates/` | `ReportTemplate` protocol, `TemplateRegistry`, builtin templates, Jinja2 sandbox + Python opt-in loader |
 | Config | `config.py` | Env loading via pydantic, `Config` model, secrets masked in `__repr__` |
 | Utils | `utils.py` | Pure helpers: duration parsing, seconds→human formatting, timezone-aware `iso_now` |
 | CLI | `cli.py` | Console entrypoint dispatcher (`serve` / `install` / `uninstall` / `--version`) |

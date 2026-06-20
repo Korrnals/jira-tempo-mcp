@@ -1,6 +1,6 @@
 # API — MCP tools
 
-The server exposes 7 tools over the Model Context Protocol. Each tool is
+The server exposes 9 tools over the Model Context Protocol. Each tool is
 defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 (`_TOOL_HANDLERS`).
 
@@ -15,6 +15,8 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 | [`get_issue`](#get_issue) | Get Jira issue metadata |
 | [`list_favorite_issues`](#list_favorite_issues) | List favorite issues for the current user |
 | [`generate_weekly_report`](#generate_weekly_report) | Generate a weekly `.txt` report |
+| [`generate_team_report`](#generate_team_report) | Generate a team report for multiple users |
+| [`list_report_templates`](#list_report_templates) | List available report templates |
 
 ---
 
@@ -218,6 +220,7 @@ writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
 | --- | --- | --- | --- |
 | `target_date` | string | no | Any date within the target week (ISO `YYYY-MM-DD`). Defaults to today. |
 | `output_dir` | string | no | Output directory. Defaults to `REPORT_OUTPUT_DIR` env or `./reports`. Must be inside the allowed root. |
+| `template` | string | no | Template name (e.g. `default`, `weekly_summary`). Defaults to `REPORT_TEMPLATE` env or `default`. Use `list_report_templates` to see available templates. |
 
 **Example call:**
 
@@ -236,6 +239,91 @@ Weekly report generated: /path/to/reports/your-username_160620-200620.txt
 
 See [reports.md](reports.md) for report customization (section mapping,
 stable order, non-issue sections).
+
+---
+
+## `generate_team_report`
+
+Generate a team work report from Tempo worklogs for multiple Jira users.
+Fetches worklogs per user with bounded concurrency (rate-limit safe), renders
+per-user sections plus an aggregate summary, and writes
+`team_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `users` | array<string> | yes | Jira usernames to include (non-empty) |
+| `date_from` | string | no | Start date (ISO `YYYY-MM-DD`). Defaults to Monday of the current week. |
+| `date_to` | string | no | End date (ISO `YYYY-MM-DD`). Defaults to Friday of the current week. |
+| `section_map` | object | no | Optional override for `REPORT_SECTION_MAP` (issue key → section title) |
+| `template` | string | no | Template name. Defaults to `team_report`. |
+| `output_dir` | string | no | Output directory. Defaults to `REPORT_TEAM_OUTPUT_DIR` or `REPORT_OUTPUT_DIR`. Must be inside the allowed root. |
+
+**Rate-limiting:** concurrent Tempo requests are bounded by
+`TEMPO_MAX_CONCURRENT_REQUESTS` (default 3). A configurable delay
+(`TEMPO_REQUEST_DELAY_MS`, default 100 ms) is inserted between batches.
+On HTTP 429 the client retries with exponential backoff up to
+`TEMPO_MAX_RETRIES` (default 3) times.
+
+**Example call:**
+
+```json
+{
+  "name": "generate_team_report",
+  "arguments": {
+    "users": ["alice", "bob", "carol"],
+    "date_from": "2026-06-15",
+    "date_to": "2026-06-19"
+  }
+}
+```
+
+**Returns:**
+
+```text
+Team report written: /path/to/reports/team_150626-190626.txt
+Grand total: 24h across 3 users.
+Per-user totals:
+  - alice: 10h
+  - bob: 8h
+  - carol: 6h
+Top issues:
+  - PROJECT-100 (Implement login flow): 12h
+  - PROJECT-101 (Code review process): 5h
+```
+
+---
+
+## `list_report_templates`
+
+List available report templates (builtin + custom). Returns each template's
+name and description. Custom templates are discovered from
+`REPORT_TEMPLATE_DIR`.
+
+**Parameters:** none.
+
+**Example call:**
+
+```json
+{
+  "name": "list_report_templates",
+  "arguments": {}
+}
+```
+
+**Returns:**
+
+```text
+Report templates (4):
+- default: Weekly report grouped by issue with stable sections...
+- team_report: Team report: per-user sections with issue breakdown...
+- weekly_summary: Compact weekly summary: total hours, top 5 issues...
+- custom: My custom Jinja2 template
+```
+
+See [reports.md#custom-templates](reports.md#custom-templates) for how to
+add custom templates.
 
 ---
 

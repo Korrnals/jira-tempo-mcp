@@ -36,6 +36,28 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 
 See [reports.md](reports.md) for details on the report-related variables.
 
+### Team report rate-limiting (optional)
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `TEMPO_MAX_CONCURRENT_REQUESTS` | no | `3` | Max concurrent Tempo requests in team reports |
+| `TEMPO_REQUEST_DELAY_MS` | no | `100` | Delay (ms) between request batches |
+| `TEMPO_MAX_RETRIES` | no | `3` | Retry attempts on HTTP 429 (exponential backoff) |
+| `REPORT_TEAM_OUTPUT_DIR` | no | empty | Output dir for team reports (empty = `REPORT_OUTPUT_DIR`) |
+
+### Custom report templates (optional)
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `REPORT_TEMPLATE` | no | `default` | Template name for `generate_weekly_report` |
+| `REPORT_TEMPLATE_PATH` | no | empty | Explicit path to a template file (overrides `REPORT_TEMPLATE`) |
+| `REPORT_TEMPLATE_DIR` | no | `~/.config/jira-tempo-mcp/templates/` | Directory scanned for custom templates |
+| `REPORT_TEMPLATE_ALLOW_PY` | no | `false` | Opt-in to load `.py` templates (code execution risk) |
+
+See [reports.md#custom-templates](reports.md#custom-templates) for details on
+custom templates.
+
+
 ## `.env` for CLI usage
 
 The server loads `.env` from the project root automatically (via

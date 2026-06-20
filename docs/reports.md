@@ -101,6 +101,121 @@ Jira triage
 - (no issue key)
 ```
 
+## Team reports
+
+The `generate_team_report` tool produces a `.txt` team report from Tempo
+worklogs for multiple Jira users. Each user gets a section with their issue
+breakdown; an aggregate summary shows per-user totals, the grand total, and
+the top 5 issues across the team.
+
+### Filename format
+
+```text
+team_<DDMMYY>-<DDMMYY>.txt
+```
+
+Example: `team_150626-190626.txt`
+
+### Rate-limiting
+
+Team reports issue one Tempo request per user. To avoid hitting the Tempo
+rate limit, concurrent requests are bounded by a semaphore:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `TEMPO_MAX_CONCURRENT_REQUESTS` | `3` | Max concurrent Tempo requests |
+| `TEMPO_REQUEST_DELAY_MS` | `100` | Delay (ms) between request batches |
+| `TEMPO_MAX_RETRIES` | `3` | Retry attempts on HTTP 429 (exponential backoff: 1s, 2s, 4s) |
+| `REPORT_TEAM_OUTPUT_DIR` | empty | Output dir for team reports (empty = use `REPORT_OUTPUT_DIR`) |
+
+Users without worklogs are listed in the summary under "Without tracked time".
+
+### Example team report
+
+```text
+Командный отчёт за неделю (15.06.2026 - 19.06.2026):
+
+== alice (10h) ==
+  - PROJECT-100 (Section A):
+      + Stand support
+  - PROJECT-200 (Task B):
+      + 2h отработано
+
+== bob (8h) ==
+  - PROJECT-100 (Section A):
+      + Review PR
+
+== Сводка по команде ==
+Всего отработано: 18h
+
+По сотрудникам:
+  - alice: 10h
+  - bob: 8h
+
+Топ-5 задач команды:
+  - PROJECT-100 (Section A): 12h
+  - PROJECT-200 (Task B): 6h
+```
+
+## Custom templates
+
+Since v0.2.0 the report rendering is pluggable. Builtin templates:
+
+| Template | Description |
+| --- | --- |
+| `default` | Weekly report grouped by issue with stable sections (original layout) |
+| `weekly_summary` | Compact summary: total hours, top 5 issues, no per-issue detail |
+| `team_report` | Team report: per-user sections + aggregate summary |
+
+### Selecting a template
+
+Pass the `template` parameter to `generate_weekly_report` or
+`generate_team_report`, or set the `REPORT_TEMPLATE` env var.
+
+### Adding custom templates
+
+Place template files in `REPORT_TEMPLATE_DIR` (default:
+`~/.config/jira-tempo-mcp/templates/`). Two formats are supported:
+
+#### Jinja2 templates (`.j2`) — safe by default
+
+Loaded into a `SandboxedEnvironment`. The template context includes:
+`worklogs`, `config`, `format_seconds`, `format_date`, `users`,
+`per_user_worklogs`, `issue_titles`, `monday`, `friday`.
+
+Example `simple.j2`:
+
+```jinja
+Total worklogs: {{ worklogs | length }}
+Grand total: {{ format_seconds(worklogs | map(attribute='timeSpentSeconds') | sum) }}
+```
+
+Unsafe constructs (e.g. `{{ config.__class__ }}`) are blocked by the sandbox.
+
+#### Python templates (`.py`) — opt-in, code execution risk
+
+Loaded only when `REPORT_TEMPLATE_ALLOW_PY=1`. The module must expose a
+`TEMPLATE` attribute implementing the `ReportTemplate` protocol:
+
+```python
+class MyTemplate:
+    name = "my_template"
+    description = "My custom template"
+
+    def render(self, worklogs, config, **kwargs):
+        return f"Got {len(worklogs)} worklogs"
+
+TEMPLATE = MyTemplate()
+```
+
+> **Warning:** Python templates execute arbitrary code. Only load `.py`
+> files from a trusted source. A warning is logged on every load.
+
+### Listing available templates
+
+Use the `list_report_templates` tool to see all builtin + custom templates.
+
+## Path traversal protection
 ## Path traversal protection
 
 The `output_dir` parameter of `generate_weekly_report` is validated against

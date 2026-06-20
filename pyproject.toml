@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jira-tempo-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for self-hosted Jira + Tempo Timesheets: track time, list worklogs, generate weekly reports."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.7.0",
     "pytz>=2024.1",
+    "jinja2>=3.1",  # template engine (v0.2.0)
 ]
 
 [project.optional-dependencies]

@@ -1,16 +1,15 @@
 """Weekly report generator — maps Tempo worklogs to the report template.
 
-Implements the weekly report template logic.
-
-Section mapping, stable order, and non-issue sections are loaded from Config
-(overridable via env vars — see config.py).
+Implements the weekly report template logic. Since v0.2.0 the rendering is
+delegated to the template system (see :mod:`jira_tempo_mcp.templates`).
+The default template reproduces the original layout exactly, so callers
+without a ``template`` argument keep the same output.
 """
 
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,84 +17,41 @@ import pytz
 
 from .client import JiraTempoClient, JiraTempoError
 from .config import Config
-from .utils import format_seconds_to_human
+from .templates import ReportTemplate, TemplateRegistry
+from .templates._shared import (
+    extract_comment as _extract_comment,  # noqa: F401 — re-exported for tests
+)
+from .templates._shared import (
+    extract_issue_key as _extract_issue_key,  # noqa: F401
+)
+from .templates._shared import (
+    extract_seconds as _extract_seconds,  # noqa: F401
+)
+from .templates._shared import (
+    extract_worker as _extract_worker,  # noqa: F401
+)
+from .templates._shared import (
+    format_date as _format_date,  # noqa: F401
+)
+from .templates._shared import (
+    format_date_short as _format_date_short,  # noqa: F401
+)
+from .templates._shared import (
+    month_ru as _month_ru,  # noqa: F401
+)
+from .templates._shared import (
+    parse_tempo_date,
+    week_range,
+)
 
 logger = logging.getLogger(__name__)
 
-
-def _week_range(target: date) -> tuple[date, date]:
-    """Return (monday, friday) of the ISO week containing target."""
-    monday = target - timedelta(days=target.weekday())
-    friday = monday + timedelta(days=4)
-    return monday, friday
-
-
-def _format_date(d: date) -> str:
-    return d.strftime("%d.%m.%Y")
-
-
-def _format_date_short(d: date) -> str:
-    """DDMMYY for filename."""
-    return d.strftime("%d%m%y")
-
-
-def _parse_tempo_date(raw: str | None) -> date | None:
-    """Parse Tempo startDate (ISO 8601) to a date object."""
-    if not raw:
-        return None
-    try:
-        # Tempo returns e.g. "2026-06-19" or "2026-06-19T10:00:00.000+0300"
-        if "T" in raw:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
-        return date.fromisoformat(raw)
-    except (ValueError, TypeError):
-        return None
-
-
-def _extract_comment(worklog: dict[str, Any]) -> str:
-    """Extract the comment text from a Tempo worklog object."""
-    comment = worklog.get("comment")
-    if isinstance(comment, str):
-        return comment.strip()
-    if isinstance(comment, dict):
-        # Tempo sometimes nests comment as {content: "..."}
-        return str(comment.get("content", "")).strip()
-    return ""
-
-
-def _extract_issue_key(worklog: dict[str, Any]) -> str | None:
-    """Extract issue key from a Tempo worklog object."""
-    # Tempo 4 API uses issueKey at top level, or issue.key
-    key = worklog.get("issueKey")
-    if key:
-        return str(key)
-    issue = worklog.get("issue")
-    if isinstance(issue, dict):
-        k = issue.get("key")
-        if k:
-            return str(k)
-    return None
-
-
-def _extract_seconds(worklog: dict[str, Any]) -> int:
-    """Extract time spent in seconds from a Tempo worklog object."""
-    seconds = worklog.get("timeSpentSeconds")
-    if isinstance(seconds, int):
-        return seconds
-    return 0
-
-
-def _extract_worker(worklog: dict[str, Any]) -> str | None:
-    """Extract worker/author key from a Tempo worklog object."""
-    worker = worklog.get("authorAccountId") or worklog.get("workerKey")
-    if worker:
-        return str(worker)
-    author = worklog.get("author")
-    if isinstance(author, dict):
-        key = author.get("key") or author.get("accountId")
-        if key:
-            return str(key)
-    return None
+# Backward-compatible aliases (tests import these private names).
+_week_range = week_range
+_format_date = _format_date
+_format_date_short = _format_date_short
+_month_ru = _month_ru
+_parse_tempo_date = parse_tempo_date
 
 
 async def generate_weekly_report(
@@ -105,6 +61,8 @@ async def generate_weekly_report(
     target_date: date | None = None,
     output_dir: Path | None = None,
     author_filter: str | None = None,
+    template: ReportTemplate | None = None,
+    registry: TemplateRegistry | None = None,
 ) -> str:
     """Generate a weekly report file and return its path.
 
@@ -112,18 +70,21 @@ async def generate_weekly_report(
     output_dir: directory to write the report file. If None, uses
                 config.report_output_dir or falls back to ./reports.
     author_filter: if set, only include worklogs from this worker key.
+    template: explicit template instance. If None, the template named in
+              ``config.report_template`` is resolved via ``registry`` (or
+              the ``default`` builtin if the registry lacks it).
+    registry: optional template registry for template name resolution.
     """
     tz = pytz.timezone(config.timezone)
     today = datetime.now(tz).date()
     target = target_date or today
-    monday, friday = _week_range(target)
+    monday, friday = week_range(target)
 
     date_from = monday.isoformat()
     date_to = friday.isoformat()
 
     logger.info("Fetching worklogs %s .. %s", date_from, date_to)
 
-    # Determine worker key for filtering.
     worker_keys: list[str] | None = None
     if author_filter:
         worker_keys = [author_filter]
@@ -134,116 +95,78 @@ async def generate_weekly_report(
     worklogs = await client.search_worklogs(date_from, date_to, worker_keys=worker_keys)
     logger.info("Got %d worklogs", len(worklogs))
 
-    # Group worklogs by issue key, collect comments.
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    total_seconds = 0
+    # Filter worklogs to the target week (Tempo may return slightly out-of-range).
+    filtered: list[dict[str, Any]] = []
     for wl in worklogs:
-        key = _extract_issue_key(wl)
-        if not key:
-            continue
-        wl_date = _parse_tempo_date(wl.get("startDate"))
+        wl_date = parse_tempo_date(wl.get("startDate"))
         if wl_date is None or not (monday <= wl_date <= friday):
             continue
-        grouped[key].append(wl)
-        total_seconds += _extract_seconds(wl)
+        filtered.append(wl)
 
     # Build issue summaries cache (fetch from Jira for unknown titles).
     issue_titles: dict[str, str] = {}
-    for key in grouped:
-        if key in config.section_map:
-            issue_titles[key] = config.section_map[key]
-        else:
-            try:
-                issue = await client.get_issue(key)
-                fields = issue.get("fields", {})
-                issue_titles[key] = (
-                    str(fields.get("summary", key)) if isinstance(fields, dict) else key
-                )
-            except JiraTempoError:
-                logger.warning("Could not fetch issue %s, using key as title", key)
-                issue_titles[key] = key
+    seen_keys: set[str] = set()
+    for wl in filtered:
+        key = _extract_issue_key(wl)
+        if key and key not in seen_keys:
+            seen_keys.add(key)
+            if key in config.section_map:
+                issue_titles[key] = config.section_map[key]
+            else:
+                try:
+                    issue = await client.get_issue(key)
+                    fields = issue.get("fields", {})
+                    issue_titles[key] = (
+                        str(fields.get("summary", key)) if isinstance(fields, dict) else key
+                    )
+                except JiraTempoError:
+                    logger.warning("Could not fetch issue %s, using key as title", key)
+                    issue_titles[key] = key
 
-    # --- Compose report lines ---
-    lines: list[str] = []
-    author = config.report_author_header
-    lines.append(
-        f"[{author}] Отчет работы за неделю ({_format_date(monday)} - {_format_date(friday)}):"
+    # Select template.
+    if template is None:
+        if registry is not None:
+            template = registry.get(config.report_template)
+        if template is None:
+            from .templates.builtin.default import DefaultTemplate
+
+            template = DefaultTemplate()
+
+    report_text = template.render(
+        filtered,
+        config,
+        monday=monday,
+        friday=friday,
+        issue_titles=issue_titles,
     )
-    lines.append("")
-
-    section_num = 1
-    used_keys: set[str] = set()
-
-    # 1. Stable sections in defined order.
-    for key in config.stable_order:
-        if key not in grouped:
-            continue
-        title = issue_titles.get(key, config.section_map.get(key, key))
-        lines.append(f"{section_num}. {title} [{key}]")
-        for wl in grouped[key]:
-            comment = _extract_comment(wl)
-            if comment:
-                lines.append(f"\t+ {comment}")
-            else:
-                lines.append(f"\t+ {format_seconds_to_human(_extract_seconds(wl))} отработано")
-        lines.append("")
-        used_keys.add(key)
-        section_num += 1
-
-    # 2. Non-issue sections (planerki, Jira work) — always present.
-    for title in config.non_issue_sections:
-        lines.append(f"{section_num}. {title}")
-        lines.append("")
-        section_num += 1
-
-    # 3. Remaining project tasks (not in stable sections), sorted by total time desc.
-    remaining = [k for k in grouped if k not in used_keys]
-    # Sort by total seconds descending.
-    remaining.sort(key=lambda k: sum(_extract_seconds(w) for w in grouped[k]), reverse=True)
-
-    for key in remaining:
-        title = issue_titles.get(key, key)
-        lines.append(f'{section_num}. [{key}] {key} - "{title}"')
-        for wl in grouped[key]:
-            comment = _extract_comment(wl)
-            if comment:
-                lines.append(f"\t+ {comment}")
-            else:
-                lines.append(f"\t+ {format_seconds_to_human(_extract_seconds(wl))} отработано")
-        lines.append("")
-        section_num += 1
-
-    report_text = "\n".join(lines).rstrip() + "\n"
 
     # --- Determine output path ---
     if output_dir is None:
-        # M3: use config.report_output_dir, fall back to ./reports
         base = config.report_output_dir or str(Path.cwd() / "reports")
-        month_ru = _month_ru(monday.month)
-        output_dir = Path(base) / str(monday.year) / month_ru
+        output_dir = Path(base) / str(monday.year) / _month_ru(monday.month)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{config.report_filename_header}_{_format_date_short(monday)}-{_format_date_short(friday)}.txt"
+    filename = (
+        f"{config.report_filename_header}_"
+        f"{_format_date_short(monday)}-{_format_date_short(friday)}.txt"
+    )
     out_path = output_dir / filename
     out_path.write_text(report_text, encoding="utf-8")
+    total_seconds = sum(_extract_seconds(w) for w in filtered)
     logger.info("Report written to %s (%d seconds total)", out_path, total_seconds)
     return str(out_path)
 
 
-def _month_ru(month: int) -> str:
-    """Map month number to Russian lowercase month name (for folder name)."""
-    names = [
-        "январь",
-        "февраль",
-        "март",
-        "апрель",
-        "май",
-        "июнь",
-        "июль",
-        "август",
-        "сентябрь",
-        "октябрь",
-        "ноябрь",
-        "декабрь",
-    ]
-    return names[month - 1]
+__all__ = [
+    "generate_weekly_report",
+    # Backward-compatible private helpers re-exported for tests.
+    "_extract_comment",
+    "_extract_issue_key",
+    "_extract_seconds",
+    "_extract_worker",
+    "_format_date",
+    "_format_date_short",
+    "_month_ru",
+    "_parse_tempo_date",
+    "_week_range",
+]
