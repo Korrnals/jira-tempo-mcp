@@ -44,10 +44,6 @@ jira-tempo-mcp = "jira_tempo_mcp.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# Ship install.py as package data so `jira-tempo-mcp install` works in wheel installs.
-[tool.setuptools.package-data]
-jira_tempo_mcp = ["install.py"]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
