@@ -38,6 +38,30 @@ jobs:
           path: dist/
           retention-days: 14
 
+  # PyPI publish via Trusted Publishing (OIDC) — no API token.
+  # Setup: https://pypi.org/manage/account/publishing/ — add a GitHub publisher:
+  #   owner=Korrnals, repo=jira-tempo-mcp, workflow=release.yml, environment=pypi
+  # First release may use an API token if trusted publishing is not yet configured.
+  pypi-publish:
+    name: Publish to PyPI
+    needs: build-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # trusted publishing (OIDC)
+    environment:
+      name: pypi
+      url: https://pypi.org/project/jira-tempo-mcp/
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+
   docker:
     name: Build & push Docker image
     runs-on: ubuntu-latest
@@ -63,6 +87,9 @@ jobs:
           images: ghcr.io/korrnals/jira-tempo-mcp
           tags: |
             type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build & push

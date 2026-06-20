@@ -98,17 +98,21 @@ push cancels the previous run on the same branch.
 # 1. Bump version in pyproject.toml
 # 2. Commit + push to main (CI must be green)
 # 3. Tag and push
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-The release workflow then:
+The release workflow then runs automatically:
 
-1. Builds the wheel and sdist (`python -m build`).
-2. Builds the Docker image and pushes it to
-   `ghcr.io/korrnals/jira-tempo-mcp:v0.2.0` (and `:latest` for non-pre-release
-   tags).
-3. Creates a GitHub Release with auto-generated release notes and the wheel
+1. **Build wheel** — `python -m build` produces wheel + sdist, uploaded as a
+   workflow artifact.
+2. **Publish to PyPI** — the wheel is published to
+   [pypi.org/project/jira-tempo-mcp](https://pypi.org/project/jira-tempo-mcp/)
+   via Trusted Publishing (OIDC). No API token is stored in the repo.
+3. **Build & push Docker image** — multi-stage build pushed to
+   `ghcr.io/korrnals/jira-tempo-mcp` with semver tags (see
+   [Docker image tags](#docker-image-tags)).
+4. **Create GitHub Release** — auto-generated release notes with the wheel
    attached as a download asset.
 
 ### Release pipeline detail
@@ -116,12 +120,13 @@ The release workflow then:
 ```mermaid
 flowchart LR
     A[tag v* pushed] --> B[build-wheel job]
-    A --> C[docker job]
     B --> D[python -m build]
     D --> E[upload artifact]
+    E --> J[pypi-publish job<br/>Trusted Publishing OIDC]
+    A --> C[docker job]
     C --> F[docker/buildx-action]
     F --> G[login to ghcr.io]
-    G --> H[build + push image]
+    G --> H[build + push image<br/>semver tags]
     E --> I[create GitHub Release]
     H --> I
 ```
@@ -132,6 +137,51 @@ Permissions required by `release.yml`:
 | --- | --- |
 | `contents: write` | create GitHub Release + upload wheel asset |
 | `packages: write` | push image to ghcr.io |
+| `id-token: write` | PyPI Trusted Publishing (OIDC) — scoped to the `pypi-publish` job only |
+
+### PyPI Trusted Publishing setup
+
+The `pypi-publish` job uses **Trusted Publishing (OIDC)** — no long-lived API
+token is stored in GitHub secrets. This is the recommended PyPI publishing
+model.
+
+To enable it for the first release:
+
+1. Go to <https://pypi.org/manage/account/publishing/> (requires a PyPI
+   account with 2FA enabled).
+2. **Add a publisher** with:
+   - Publisher: **GitHub**
+   - Owner: `Korrnals`
+   - Repository: `jira-tempo-mcp`
+   - Workflow: `release.yml`
+   - Environment: `pypi`
+3. Save. The first `v*` tag push will publish to PyPI automatically.
+
+> **First-release fallback:** if Trusted Publishing is not yet configured,
+> you can temporarily use an API token. Add `PYPI_API_TOKEN` as a repository
+> secret and switch the `pypi-publish` job to
+> `password: ${{ secrets.PYPI_API_TOKEN }}`. Switch back to OIDC once the
+> publisher is configured — tokens are a larger blast radius than OIDC.
+
+### Docker image tags
+
+The `docker/metadata-action` produces the following tags from a git tag:
+
+| Git tag | Docker tags produced |
+| --- | --- |
+| `v0.1.0` | `0.1.0`, `0.1`, `0`, `latest` |
+| `v0.2.3` | `0.2.3`, `0.2`, `0`, `latest` |
+| `v0.1.0-rc.1` | `0.1.0-rc.1` (no `latest`, no semver short tags) |
+| `v1.0.0` | `1.0.0`, `1.0`, `1`, `latest` |
+
+Rules:
+
+- `type=ref,event=tag` — the raw git tag (e.g. `v0.1.0`).
+- `type=semver,pattern={{version}}` — full version (`0.1.0`).
+- `type=semver,pattern={{major}}.{{minor}}` — minor track (`0.1`).
+- `type=semver,pattern={{major}}` — major track (`0`).
+- `type=raw,value=latest` — only when the tag has **no** `-` (pre-release
+  tags like `v0.1.0-rc.1` do **not** get `latest`).
 
 ## Pre-commit hooks
 

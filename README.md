@@ -32,6 +32,31 @@ examples.
 
 ## Quick start
 
+**One-liner (pip, once published on PyPI):**
+
+```bash
+pip install jira-tempo-mcp && jira-tempo-mcp install
+```
+
+**One-liner (from GitHub, before PyPI or for dev):**
+
+```bash
+pip install git+https://github.com/Korrnals/jira-tempo-mcp.git && jira-tempo-mcp install
+```
+
+**Docker:**
+
+```bash
+docker run -i --rm -e JIRA_PAT=$JIRA_PAT ghcr.io/korrnals/jira-tempo-mcp:latest
+```
+
+> The interactive installer (`jira-tempo-mcp install`) guides you through
+> Jira credentials setup and VS Code MCP registration.
+
+---
+
+### From source (development)
+
 The interactive installer creates a venv, writes `.env`, registers the MCP
 server in VS Code, and optionally verifies Jira connectivity:
 

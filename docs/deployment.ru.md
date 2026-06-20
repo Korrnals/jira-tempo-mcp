@@ -98,30 +98,35 @@ push отменяет предыдущий прогон на той же вет�
 # 1. Поднять версию в pyproject.toml
 # 2. Коммит + push в main (CI должен быть зелёным)
 # 3. Тег и push
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-Далее release-workflow:
+Далее release-workflow запускается автоматически:
 
-1. Собирает wheel и sdist (`python -m build`).
-2. Собирает Docker-образ и пушит его в
-   `ghcr.io/korrnals/jira-tempo-mcp:v0.2.0` (и `:latest` для не-pre-release
-   тегов).
-3. Создаёт GitHub Release с автогенерированными заметками и wheel как
-   вложение.
+1. **Сборка wheel** — `python -m build` создаёт wheel + sdist, загружается
+   как артефакт workflow.
+2. **Публикация в PyPI** — wheel публикуется в
+   [pypi.org/project/jira-tempo-mcp](https://pypi.org/project/jira-tempo-mcp/)
+   через Trusted Publishing (OIDC). API-токен не хранится в репозитории.
+3. **Сборка и push Docker-образа** — многостадийная сборка пушится в
+   `ghcr.io/korrnals/jira-tempo-mcp` с semver-тегами (см.
+   [Теги Docker-образа](#теги-docker-образа)).
+4. **Создание GitHub Release** — автогенерированные заметки с wheel как
+   вложением.
 
 ### Детали release-пайплайна
 
 ```mermaid
 flowchart LR
     A[тег v* запушен] --> B[job build-wheel]
-    A --> C[job docker]
     B --> D[python -m build]
     D --> E[upload artifact]
+    E --> J[job pypi-publish<br/>Trusted Publishing OIDC]
+    A --> C[job docker]
     C --> F[docker/buildx-action]
     F --> G[login в ghcr.io]
-    G --> H[build + push образа]
+    G --> H[build + push образа<br/>semver-теги]
     E --> I[создать GitHub Release]
     H --> I
 ```
@@ -132,6 +137,51 @@ flowchart LR
 | --- | --- |
 | `contents: write` | создание GitHub Release + загрузка wheel |
 | `packages: write` | push образа в ghcr.io |
+| `id-token: write` | PyPI Trusted Publishing (OIDC) — ограничено job `pypi-publish` |
+
+### Настройка PyPI Trusted Publishing
+
+Job `pypi-publish` использует **Trusted Publishing (OIDC)** — долгоживущий
+API-токен не хранится в секретах GitHub. Это рекомендуемая модель публикации
+в PyPI.
+
+Для включения перед первым релизом:
+
+1. Зайдите на <https://pypi.org/manage/account/publishing/> (нужен аккаунт
+   PyPI с включённой 2FA).
+2. **Add a publisher** с параметрами:
+   - Publisher: **GitHub**
+   - Owner: `Korrnals`
+   - Repository: `jira-tempo-mcp`
+   - Workflow: `release.yml`
+   - Environment: `pypi`
+3. Сохраните. Первый push тега `v*` опубликует пакет в PyPI автоматически.
+
+> **Fallback для первого релиза:** если Trusted Publishing ещё не настроен,
+> можно временно использовать API-токен. Добавьте `PYPI_API_TOKEN` как
+> секрет репозитория и переключите job `pypi-publish` на
+> `password: ${{ secrets.PYPI_API_TOKEN }}`. После настройки publisher
+> вернитесь к OIDC — токен имеет больший blast radius, чем OIDC.
+
+### Теги Docker-образа
+
+`docker/metadata-action` создаёт следующие теги из git-тега:
+
+| Git-тег | Docker-теги |
+| --- | --- |
+| `v0.1.0` | `0.1.0`, `0.1`, `0`, `latest` |
+| `v0.2.3` | `0.2.3`, `0.2`, `0`, `latest` |
+| `v0.1.0-rc.1` | `0.1.0-rc.1` (без `latest`, без коротких semver-тегов) |
+| `v1.0.0` | `1.0.0`, `1.0`, `1`, `latest` |
+
+Правила:
+
+- `type=ref,event=tag` — raw git-тег (например `v0.1.0`).
+- `type=semver,pattern={{version}}` — полная версия (`0.1.0`).
+- `type=semver,pattern={{major}}.{{minor}}` — минорный трек (`0.1`).
+- `type=semver,pattern={{major}}` — мажорный трек (`0`).
+- `type=raw,value=latest` — только если в теге **нет** `-` (pre-release-теги
+  вида `v0.1.0-rc.1` **не** получают `latest`).
 
 ## Pre-commit хуки
 

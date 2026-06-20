@@ -31,6 +31,31 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 
 ## Быстрый старт
 
+**Однострочник (pip, после публикации на PyPI):**
+
+```bash
+pip install jira-tempo-mcp && jira-tempo-mcp install
+```
+
+**Однострочник (из GitHub, до PyPI или для разработки):**
+
+```bash
+pip install git+https://github.com/Korrnals/jira-tempo-mcp.git && jira-tempo-mcp install
+```
+
+**Docker:**
+
+```bash
+docker run -i --rm -e JIRA_PAT=$JIRA_PAT ghcr.io/korrnals/jira-tempo-mcp:latest
+```
+
+> Интерактивный установщик (`jira-tempo-mcp install`) проведёт вас через
+> настройку учётных данных Jira и регистрацию MCP-сервера в VS Code.
+
+---
+
+### Из исходников (разработка)
+
 Интерактивный установщик создаёт venv, записывает `.env`, регистрирует
 MCP-сервер в VS Code и опционально проверяет связь с Jira:
 
