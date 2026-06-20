@@ -69,6 +69,7 @@ jobs:
   docker:
     name: Build & push Docker image
     runs-on: self-hosted
+    continue-on-error: true  # Docker may not be available on self-hosted runner
     needs: build-wheel
 
     steps:
