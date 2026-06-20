@@ -18,7 +18,7 @@ from jira_tempo_mcp.report import generate_weekly_report
 
 # Target week: Monday 2026-06-15 — Friday 2026-06-19.
 TARGET_DATE = date(2026, 6, 17)  # Wednesday
-EXPECTED_FILENAME = "your-username_150626-190626.txt"
+EXPECTED_FILENAME = "testuser_150626-190626.txt"
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -32,14 +32,14 @@ def _make_config(**overrides: Any) -> Config:
         "jira_pat": "fake-pat-for-testing",
         "author_display_name": "Тестовый Пользователь",
         "section_map": {
-            "PROJECT-102": "Section A",
-            "PROJECT-100": "Проработка технических решений",
+            "PROJECT-100": "Section A",
+            "PROJECT-102": "Section C",
             "PROJECT-101": "Section B",
         },
-        "stable_order": ["PROJECT-102", "PROJECT-100", "PROJECT-101"],
+        "stable_order": ["PROJECT-100", "PROJECT-102", "PROJECT-101"],
         "non_issue_sections": [
-            "Участие в планерках и митингах команды.",
-            "Работа с задачами в Jira.",
+            "Team meetings and syncs.",
+            "Jira triage and admin.",
         ],
     }
     defaults.update(overrides)
@@ -93,7 +93,7 @@ class TestGenerateWeeklyReportBasic:
 
     async def test_generate_report_basic(self, tmp_path: Path) -> None:
         worklogs = [
-            _make_worklog("PROJECT-102", 3600, 15, "Stand support"),
+            _make_worklog("PROJECT-100", 3600, 15, "Stand support"),
         ]
         config = _make_config()
         mock_client = _make_mock_client(worklogs)
@@ -122,8 +122,8 @@ class TestGenerateWeeklyReportContent:
 
     async def test_generate_report_content(self, tmp_path: Path) -> None:
         worklogs = [
-            _make_worklog("PROJECT-102", 3600, 15, "Stand support"),
-            _make_worklog("PROJECT-100", 7200, 16, ""),
+            _make_worklog("PROJECT-100", 3600, 15, "Stand support"),
+            _make_worklog("PROJECT-102", 7200, 16, ""),
         ]
         config = _make_config()
         mock_client = _make_mock_client(worklogs)
@@ -144,8 +144,8 @@ class TestGenerateWeeklyReportContent:
         # Stable section titles present.
         assert "Section A" in content
         # Non-issue sections present.
-        assert "Участие в планерках" in content
-        assert "Работа с задачами в Jira" in content
+        assert "Team meetings and syncs." in content
+        assert "Jira triage and admin." in content
         # Comment from worklog appears.
         assert "Stand support" in content
         # Worklog without comment shows formatted time.
@@ -159,8 +159,8 @@ class TestGenerateWeeklyReportStableSections:
         # Provide worklogs for 3 stable keys (intentionally out of order).
         worklogs = [
             _make_worklog("PROJECT-101", 3600, 17, "Review PR"),
-            _make_worklog("PROJECT-102", 7200, 15, "Stand support"),
-            _make_worklog("PROJECT-100", 3600, 16, "Design doc"),
+            _make_worklog("PROJECT-100", 7200, 15, "Stand support"),
+            _make_worklog("PROJECT-102", 3600, 16, "Design doc"),
         ]
         config = _make_config()
         mock_client = _make_mock_client(worklogs)
@@ -173,12 +173,12 @@ class TestGenerateWeeklyReportStableSections:
         )
         content = Path(result).read_text(encoding="utf-8")
 
-        # Stable order from config: 10500, 10496, 10499, 10497, 10498.
-        # Only 10500, 10496, 10499 have worklogs → appear in that order.
-        pos_10500 = content.index("PROJECT-102")
-        pos_10496 = content.index("PROJECT-100")
-        pos_10499 = content.index("PROJECT-101")
-        assert pos_10500 < pos_10496 < pos_10499
+        # Stable order from config: 100, 102, 101.
+        # Only 100, 102, 101 have worklogs → appear in that order.
+        pos_100 = content.index("PROJECT-100")
+        pos_102 = content.index("PROJECT-102")
+        pos_101 = content.index("PROJECT-101")
+        assert pos_100 < pos_102 < pos_101
 
         # Stable keys are in section_map → get_issue never called.
         mock_client.get_issue.assert_not_called()
@@ -189,14 +189,14 @@ class TestGenerateWeeklyReportUnknownIssues:
 
     async def test_generate_report_unknown_issues(self, tmp_path: Path) -> None:
         worklogs = [
-            _make_worklog("PROJECT-103", 3600, 15, ""),  # 1h
-            _make_worklog("PROJECT-104", 7200, 16, ""),  # 2h
-            _make_worklog("PROJECT-105", 1800, 17, ""),  # 30m
+            _make_worklog("PROJECT-200", 3600, 15, ""),  # 1h
+            _make_worklog("PROJECT-201", 7200, 16, ""),  # 2h
+            _make_worklog("PROJECT-202", 1800, 17, ""),  # 30m
         ]
         summaries = {
-            "PROJECT-103": "Task A",
-            "PROJECT-104": "Task B",
-            "PROJECT-105": "Task C",
+            "PROJECT-200": "Task A",
+            "PROJECT-201": "Task B",
+            "PROJECT-202": "Task C",
         }
         config = _make_config()
         mock_client = _make_mock_client(worklogs, issue_summaries=summaries)
@@ -209,15 +209,15 @@ class TestGenerateWeeklyReportUnknownIssues:
         )
         content = Path(result).read_text(encoding="utf-8")
 
-        # Unknown issues sorted by total time desc: 10601 (2h), 10600 (1h), 10602 (30m).
-        pos_10601 = content.index("PROJECT-104")
-        pos_10600 = content.index("PROJECT-103")
-        pos_10602 = content.index("PROJECT-105")
-        assert pos_10601 < pos_10600 < pos_10602
+        # Unknown issues sorted by total time desc: 201 (2h), 200 (1h), 202 (30m).
+        pos_201 = content.index("PROJECT-201")
+        pos_200 = content.index("PROJECT-200")
+        pos_202 = content.index("PROJECT-202")
+        assert pos_201 < pos_200 < pos_202
 
         # Unknown issues come after non-issue sections.
-        pos_planerki = content.index("Участие в планерках")
-        assert pos_planerki < pos_10601
+        pos_planerki = content.index("Team meetings and syncs.")
+        assert pos_planerki < pos_201
 
         # Summaries fetched from Jira appear in the report.
         assert "Task B" in content
@@ -232,7 +232,7 @@ class TestGenerateWeeklyReportCustomOutputDir:
     """output_dir parameter overrides config.report_output_dir."""
 
     async def test_generate_report_custom_output_dir(self, tmp_path: Path) -> None:
-        worklogs = [_make_worklog("PROJECT-102", 3600, 15, "Stand")]
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand")]
         # Set a config output dir that should NOT be used.
         config = _make_config(report_output_dir=str(tmp_path / "config_dir"))
         mock_client = _make_mock_client(worklogs)
@@ -277,8 +277,8 @@ class TestGenerateWeeklyReportEmptyWeek:
         assert "19.06.2026" in content
 
         # Non-issue sections present.
-        assert "Участие в планерках" in content
-        assert "Работа с задачами в Jira" in content
+        assert "Team meetings and syncs." in content
+        assert "Jira triage and admin." in content
 
         # No issue keys in the report.
         assert "PROJECT-" not in content

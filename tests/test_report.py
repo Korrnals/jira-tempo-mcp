@@ -114,11 +114,11 @@ class TestParseTempoDate:
 
 class TestExtractFunctions:
     def test_extract_issue_key_top_level(self) -> None:
-        assert _extract_issue_key({"issueKey": "PROJECT-102"}) == "PROJECT-102"
+        assert _extract_issue_key({"issueKey": "PROJECT-100"}) == "PROJECT-100"
 
     def test_extract_issue_key_nested(self) -> None:
-        wl = {"issue": {"key": "PROJECT-102"}}
-        assert _extract_issue_key(wl) == "PROJECT-102"
+        wl = {"issue": {"key": "PROJECT-100"}}
+        assert _extract_issue_key(wl) == "PROJECT-100"
 
     def test_extract_issue_key_missing(self) -> None:
         assert _extract_issue_key({"foo": "bar"}) is None

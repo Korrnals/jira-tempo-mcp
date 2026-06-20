@@ -14,6 +14,7 @@ Steps:
 from __future__ import annotations
 
 import contextlib
+import datetime
 import json
 import os
 import shutil
@@ -48,6 +49,34 @@ def _vscode_user_dir() -> Path:
 
 VSCODE_DIR = _vscode_user_dir()
 VSCODE_MCP = VSCODE_DIR / "mcp.json"
+ENV_LOCAL = VSCODE_DIR / ".env.local"
+WORKSPACE_MCP = PROJECT_ROOT / ".vscode" / "mcp.json"
+
+
+def _backup_mcp_json(path: Path) -> Path:
+    """Create a timestamped backup of *path*.
+
+    Produces ``<path>.bak.YYYYMMDD-HHMMSS``. If a backup for the same
+    second already exists, appends ``-1``, ``-2``, … to avoid collisions.
+
+    A legacy ``<path>.bak`` (without timestamp, from older script versions)
+    is renamed once to ``<path>.bak.legacy`` so it is not silently overwritten.
+    """
+    legacy = path.with_suffix(".json.bak")
+    if legacy.exists():
+        renamed = path.with_suffix(".json.bak.legacy")
+        if not renamed.exists():
+            shutil.move(str(legacy), str(renamed))
+            _muted(f"Renamed legacy backup {legacy.name} → {renamed.name}")
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = path.with_suffix(f".json.bak.{stamp}")
+    counter = 1
+    while backup.exists():
+        backup = path.with_suffix(f".json.bak.{stamp}-{counter}")
+        counter += 1
+    shutil.copy2(path, backup)
+    return backup
 
 
 # ---------- color & TTY support ----------
@@ -266,92 +295,143 @@ def _parse_existing_env() -> dict[str, str]:
     return out
 
 
-def write_env() -> bool:
-    if ENV_FILE.exists():
-        _ok(f".env already exists at {ENV_FILE}")
-        if not _confirm("Overwrite", default=False):
-            return True
+def _parse_env_local() -> dict[str, str]:
+    """Parse existing ~/.config/Code/User/.env.local if present."""
+    if not ENV_LOCAL.exists():
+        return {}
+    out: dict[str, str] = {}
+    for raw in ENV_LOCAL.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        out[key.strip()] = value.strip()
+    return out
 
+
+def _write_env_local(updates: dict[str, str]) -> bool:
+    """Merge *updates* into ~/.config/Code/User/.env.local.
+
+    Preserves existing keys that are not in *updates* (secrets from other
+    MCP servers like github, tavily, context7). Creates the file with
+    chmod 0600 if it does not exist.
+    """
+    existing = _parse_env_local()
+    existing.update(updates)
+
+    # Rebuild file: header + sorted sections (jira-tempo first, then others)
+    jira_keys = {"JIRA_BASE_URL", "JIRA_USER", "JIRA_PAT", "JIRA_TIMEZONE", "LOG_LEVEL"}
+    lines: list[str] = [
+        "# ~/.config/Code/User/.env.local",
+        "# MCP server secrets — chmod 600, NOT in VCS",
+        "# Managed by jira-tempo-mcp installer (jira-tempo section)",
+        "",
+        "# jira-tempo-mcp",
+    ]
+    for key in ["JIRA_BASE_URL", "JIRA_USER", "JIRA_PAT", "JIRA_TIMEZONE", "LOG_LEVEL"]:
+        if key in existing:
+            lines.append(f"{key}={existing[key]}")
+    lines.append("")
+
+    # Other keys (github, tavily, context7, etc.) — preserve as-is
+    other_keys = sorted(k for k in existing if k not in jira_keys)
+    if other_keys:
+        lines.append("# other MCP servers")
+        for key in other_keys:
+            lines.append(f"{key}={existing[key]}")
+        lines.append("")
+
+    ENV_LOCAL.parent.mkdir(parents=True, exist_ok=True)
+    ENV_LOCAL.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(ENV_LOCAL, 0o600)
+        _ok(f".env.local written (permissions: 600) — {ENV_LOCAL}")
+    else:
+        _ok(f".env.local written — {ENV_LOCAL} (restrict access manually on Windows)")
+    return True
+
+
+def write_env() -> bool:
+    """Write Jira credentials to ~/.config/Code/User/.env.local (merged).
+
+    If .env.local already exists, JIRA_* keys are merged in — other servers'
+    secrets (github, tavily, context7) are preserved untouched.
+    """
     defaults = _read_env_example()
-    existing = _parse_existing_env()
+    existing_local = _parse_env_local()
+    existing_project = _parse_existing_env()
+
+    # Prefer values from project .env (if user ran installer before),
+    # then from .env.local, then from .env.example defaults.
+    def _resolve(key: str, fallback_default: str = "") -> str:
+        return (
+            existing_project.get(key)
+            or existing_local.get(key)
+            or defaults.get(key, fallback_default)
+        )
+
+    has_existing_jira = any(k in existing_local for k in ("JIRA_BASE_URL", "JIRA_PAT"))
+    if has_existing_jira:
+        _ok(f".env.local already exists at {ENV_LOCAL}")
+        _info("Existing JIRA_* values will be shown as defaults — press Enter to keep.")
+        if not _confirm("Update JIRA credentials in .env.local", default=False):
+            return True
 
     _muted("Enter configuration values — press Enter to accept the default.")
     print()
 
-    base_url = _ask(
-        "Jira base URL", existing.get("JIRA_BASE_URL") or defaults.get("JIRA_BASE_URL", "")
-    )
-    user = _ask("Jira username", existing.get("JIRA_USER") or defaults.get("JIRA_USER", ""))
+    base_url = _ask("Jira base URL", _resolve("JIRA_BASE_URL", "https://jira.example.com"))
+    user = _ask("Jira username", _resolve("JIRA_USER", "your-username"))
     pat = _ask(
         "Jira Personal Access Token (PAT)",
-        existing.get("JIRA_PAT", ""),
+        existing_project.get("JIRA_PAT", existing_local.get("JIRA_PAT", "")),
         secret=True,
     )
-    tz = _ask(
-        "Timezone (IANA)",
-        existing.get("JIRA_TIMEZONE") or defaults.get("JIRA_TIMEZONE", "Europe/Moscow"),
-    )
+    tz = _ask("Timezone (IANA)", _resolve("JIRA_TIMEZONE", "Europe/Moscow"))
     log_level = _ask(
         "Log level (DEBUG/INFO/WARNING/ERROR)",
-        existing.get("LOG_LEVEL") or defaults.get("LOG_LEVEL", "INFO"),
+        _resolve("LOG_LEVEL", "INFO"),
     )
 
-    content = (
-        "# Generated by jira-tempo-mcp installer\n"
-        f"JIRA_BASE_URL={base_url}\n"
-        f"JIRA_USER={user}\n"
-        f"JIRA_PAT={pat}\n"
-        f"JIRA_TIMEZONE={tz}\n"
-        f"LOG_LEVEL={log_level}\n"
-    )
-
-    ENV_FILE.write_text(content, encoding="utf-8")
-    # M7: chmod 0600 only works on POSIX; on Windows it's a no-op.
-    if os.name == "posix":
-        with contextlib.suppress(OSError):
-            os.chmod(ENV_FILE, 0o600)
-        _ok(f".env written (permissions: 600) — {ENV_FILE}")
-    else:
-        _ok(f".env written — {ENV_FILE} (restrict access manually on Windows)")
-    return True
+    updates = {
+        "JIRA_BASE_URL": base_url,
+        "JIRA_USER": user,
+        "JIRA_PAT": pat,
+        "JIRA_TIMEZONE": tz,
+        "LOG_LEVEL": log_level,
+    }
+    return _write_env_local(updates)
 
 
 def register_vscode() -> bool:
     _info("Register MCP server in VS Code so the agent can use it.")
-    _muted("This adds the 'jira-tempo' entry to ~/.config/Code/User/mcp.json.")
+    _muted(f"This adds the 'jira-tempo' entry to {VSCODE_MCP}.")
     print()
     if not _confirm("Register in VS Code", default=True):
         return True
 
-    # Load current .env to fill template
-    env = _parse_existing_env()
-    base_url = env.get("JIRA_BASE_URL", "https://jira.example.com")
-    user = env.get("JIRA_USER", "your-username")
-    tz = env.get("JIRA_TIMEZONE", "Europe/Moscow")
-    log_level = env.get("LOG_LEVEL", "INFO")
-
-    # Build jira-tempo-mcp entry
+    # Build jira-tempo-mcp entry — secrets via envFile, not inline
     venv_python = str(PROJECT_ROOT / ".venv" / "bin" / "python")
     # PYTHONPATH points at the src/ layout so the package is importable even
     # when the spawned process bypasses the venv's site-packages (e.g. a
     # PYTHONHOME override in the VS Code/distrobox environment that skips the
     # editable-install .pth). Harmless when the .pth is processed normally.
     src_dir = str(PROJECT_ROOT / "src")
+    # Note: envFile uses absolute path, not `~/...`, because in sandboxed
+    # environments (distrobox, containers, snap) VS Code MCP-host resolves `~/`
+    # against its own root namespace, not the user's actual $HOME. An absolute
+    # path is portable across host/container boundaries.
     server_entry = {
         "command": venv_python,
         "args": ["-m", "jira_tempo_mcp.server"],
+        "envFile": str(ENV_LOCAL),
         "env": {
-            "JIRA_BASE_URL": base_url,
-            "JIRA_USER": user,
-            # Inherit PAT from user shell env (not stored in mcp.json).
-            "JIRA_PAT": "${env:JIRA_PAT}",
-            "JIRA_TIMEZONE": tz,
-            "LOG_LEVEL": log_level,
             "PYTHONPATH": src_dir,
         },
     }
 
-    # Read or create mcp.json — MERGE, never overwrite existing servers
+    # Read or create mcp.json — MERGE on valid JSON; refuse to touch corrupt file
     mcp_data: dict[str, Any] = {"servers": {}}
     existing_servers: list[str] = []
     if VSCODE_MCP.exists():
@@ -361,11 +441,13 @@ def register_vscode() -> bool:
                 existing_servers = [k for k in mcp_data["servers"] if k != SERVER_NAME]
         except json.JSONDecodeError:
             _warn(f"{VSCODE_MCP} exists but is not valid JSON.")
-            _warn("Creating backup and starting fresh (existing content saved to .bak).")
-            backup = VSCODE_MCP.with_suffix(".json.bak")
-            shutil.copy2(VSCODE_MCP, backup)
-            _ok(f"Backup of invalid mcp.json: {backup}")
-            mcp_data = {"servers": {}}
+            corrupt = VSCODE_MCP.with_suffix(
+                f".json.corrupt.{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            )
+            shutil.copy2(VSCODE_MCP, corrupt)
+            _ok(f"Saved corrupt file as: {corrupt}")
+            _err("Refusing to modify a corrupt mcp.json — fix it manually or restore from backup.")
+            return False
     if "servers" not in mcp_data or not isinstance(mcp_data["servers"], dict):
         mcp_data["servers"] = {}
 
@@ -377,19 +459,93 @@ def register_vscode() -> bool:
 
     # Backup before write (only if file exists and is valid)
     if VSCODE_MCP.exists():
-        backup = VSCODE_MCP.with_suffix(".json.bak")
-        shutil.copy2(VSCODE_MCP, backup)
+        backup = _backup_mcp_json(VSCODE_MCP)
         _ok(f"Backup of mcp.json: {backup}")
 
     # MERGE: only update our entry, preserve all others
     mcp_data["servers"][SERVER_NAME] = server_entry
     VSCODE_DIR.mkdir(parents=True, exist_ok=True)
     VSCODE_MCP.write_text(
-        json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
     _ok(f"VS Code MCP config written: {VSCODE_MCP}")
     _info("Next step in VS Code: open the MCP panel and approve the 'jira-tempo' server.")
-    _muted("The server will read JIRA_PAT from your shell environment (not from mcp.json).")
+    _muted(f"The server will read JIRA_PAT from {ENV_LOCAL} (not from mcp.json).")
+    return True
+
+
+def register_workspace_vscode() -> bool:
+    """Register the MCP server in the workspace-level .vscode/mcp.json.
+
+    Uses VS Code ``${workspaceFolder}`` variables so the config is portable
+    across machines (the venv python and src/ path resolve at project-open
+    time). ``envFile`` stays an absolute path because VS Code MCP-host in
+    sandboxed environments (distrobox, containers, snap) resolves ``~/``
+    against its own root namespace, not the user's actual $HOME.
+
+    Merges into the existing workspace mcp.json — other servers are preserved.
+    """
+    _info("Register MCP server in workspace .vscode/mcp.json (portable config).")
+    _muted(f"This adds/updates the 'jira-tempo' entry in {WORKSPACE_MCP}.")
+    _muted(
+        "Uses ${workspaceFolder} variables — resolves automatically when VS Code opens the project."
+    )
+    print()
+    if not _confirm("Register in workspace .vscode/mcp.json", default=True):
+        return True
+
+    # Build jira-tempo-mcp entry — ${workspaceFolder} variables for portability
+    server_entry = {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": ["-m", "jira_tempo_mcp.server"],
+        "envFile": str(ENV_LOCAL),
+        "env": {
+            "PYTHONPATH": "${workspaceFolder}/src",
+        },
+    }
+
+    # Read or create workspace mcp.json — MERGE on valid JSON
+    mcp_data: dict[str, Any] = {"servers": {}}
+    existing_servers: list[str] = []
+    if WORKSPACE_MCP.exists():
+        try:
+            mcp_data = json.loads(WORKSPACE_MCP.read_text(encoding="utf-8"))
+            if "servers" in mcp_data and isinstance(mcp_data["servers"], dict):
+                existing_servers = [k for k in mcp_data["servers"] if k != SERVER_NAME]
+        except json.JSONDecodeError:
+            _warn(f"{WORKSPACE_MCP} exists but is not valid JSON.")
+            corrupt = WORKSPACE_MCP.with_suffix(
+                f".json.corrupt.{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            )
+            shutil.copy2(WORKSPACE_MCP, corrupt)
+            _ok(f"Saved corrupt file as: {corrupt}")
+            _err(
+                "Refusing to modify a corrupt workspace mcp.json — fix it manually or restore from backup."
+            )
+            return False
+    if "servers" not in mcp_data or not isinstance(mcp_data["servers"], dict):
+        mcp_data["servers"] = {}
+
+    if existing_servers:
+        _ok(
+            f"Preserving {len(existing_servers)} existing workspace MCP server(s): "
+            f"{', '.join(existing_servers)}"
+        )
+
+    if WORKSPACE_MCP.exists():
+        backup = _backup_mcp_json(WORKSPACE_MCP)
+        _ok(f"Backup of workspace mcp.json: {backup}")
+
+    mcp_data["servers"][SERVER_NAME] = server_entry
+    WORKSPACE_MCP.parent.mkdir(parents=True, exist_ok=True)
+    WORKSPACE_MCP.write_text(
+        json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    _ok(f"Workspace MCP config written: {WORKSPACE_MCP}")
+    _info("When you open this project in VS Code, the server uses the project venv automatically.")
+    _muted(f"The server will read JIRA_PAT from {ENV_LOCAL} (absolute path, envFile).")
     return True
 
 
@@ -398,7 +554,7 @@ def verify_jira() -> bool:
     if not _confirm("Verify now", default=False):
         return True
 
-    env = _parse_existing_env()
+    env = _parse_env_local()
     base_url = env.get("JIRA_BASE_URL", "").rstrip("/")
     pat = env.get("JIRA_PAT", "")
     if not base_url or not pat:
@@ -435,9 +591,14 @@ def print_next_steps() -> None:
     print()
     print(f"  {_color(C_HEAD, 'Next steps', bold=True)}")
     print()
-    _info("Make sure JIRA_PAT is exported in your shell:")
-    _muted("    export JIRA_PAT='<your-token>'")
-    _muted("    (or add to your ~/.bashrc / ~/.zshrc)")
+    _info(f"JIRA_PAT is stored in {ENV_LOCAL} (chmod 600).")
+    _muted("    Edit that file to update the token if it expires.")
+    print()
+    _info("Two MCP configs were written:")
+    _muted(f"    • User-level:    {VSCODE_MCP}")
+    _muted(f"    • Workspace:     {WORKSPACE_MCP}")
+    _info("The workspace config uses ${workspaceFolder} variables — when you open")
+    _info("this project in VS Code, the server uses the project .venv python automatically.")
     print()
     _info("Restart VS Code and approve the 'jira-tempo' MCP server in the MCP panel.")
     print()
@@ -469,8 +630,10 @@ def main() -> int:
     if not write_env():
         return 1
 
-    _step(3, total, "Register MCP server in VS Code")
+    _step(3, total, "Register MCP server in VS Code (user + workspace)")
     if not register_vscode():
+        return 1
+    if not register_workspace_vscode():
         return 1
 
     _step(4, total, "Verify Jira connectivity (optional)")
@@ -494,8 +657,13 @@ def _remove_vscode_entry() -> bool:
         mcp_data = json.loads(VSCODE_MCP.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         _warn(f"{VSCODE_MCP} is not valid JSON — leaving it untouched.")
-        _muted("Inspect the file manually or restore from a .json.bak.")
-        return True
+        corrupt = VSCODE_MCP.with_suffix(
+            f".json.corrupt.{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        )
+        shutil.copy2(VSCODE_MCP, corrupt)
+        _ok(f"Saved corrupt file as: {corrupt}")
+        _err("Refusing to modify a corrupt mcp.json — fix it manually or restore from backup.")
+        return False
 
     servers = mcp_data.get("servers")
     if not isinstance(servers, dict) or SERVER_NAME not in servers:
@@ -503,8 +671,7 @@ def _remove_vscode_entry() -> bool:
         return True
 
     # Backup before write (same pattern as register_vscode()).
-    backup = VSCODE_MCP.with_suffix(".json.bak")
-    shutil.copy2(VSCODE_MCP, backup)
+    backup = _backup_mcp_json(VSCODE_MCP)
     _ok(f"Backup of mcp.json: {backup}")
 
     del servers[SERVER_NAME]
@@ -513,6 +680,43 @@ def _remove_vscode_entry() -> bool:
         encoding="utf-8",
     )
     _ok(f"Removed '{SERVER_NAME}' from {VSCODE_MCP}")
+    return True
+
+
+def _remove_workspace_vscode_entry() -> bool:
+    """Remove the 'jira-tempo' entry from workspace .vscode/mcp.json (with backup)."""
+    if not WORKSPACE_MCP.exists():
+        _info(f"No {WORKSPACE_MCP} found — nothing to remove.")
+        return True
+
+    try:
+        mcp_data = json.loads(WORKSPACE_MCP.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        _warn(f"{WORKSPACE_MCP} is not valid JSON — leaving it untouched.")
+        corrupt = WORKSPACE_MCP.with_suffix(
+            f".json.corrupt.{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        )
+        shutil.copy2(WORKSPACE_MCP, corrupt)
+        _ok(f"Saved corrupt file as: {corrupt}")
+        _err(
+            "Refusing to modify a corrupt workspace mcp.json — fix it manually or restore from backup."
+        )
+        return False
+
+    servers = mcp_data.get("servers")
+    if not isinstance(servers, dict) or SERVER_NAME not in servers:
+        _info(f"No '{SERVER_NAME}' entry in {WORKSPACE_MCP} — already clean.")
+        return True
+
+    backup = _backup_mcp_json(WORKSPACE_MCP)
+    _ok(f"Backup of workspace mcp.json: {backup}")
+
+    del servers[SERVER_NAME]
+    WORKSPACE_MCP.write_text(
+        json.dumps(mcp_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    _ok(f"Removed '{SERVER_NAME}' from {WORKSPACE_MCP}")
     return True
 
 
@@ -571,9 +775,11 @@ def uninstall() -> int:
 
     total = 4
 
-    _step(1, total, "Remove 'jira-tempo' from VS Code mcp.json")
+    _step(1, total, "Remove 'jira-tempo' from VS Code mcp.json (user + workspace)")
     if not _remove_vscode_entry():
-        _warn("VS Code entry removal failed — continuing with remaining steps.")
+        _warn("User mcp.json entry removal failed — continuing with remaining steps.")
+    if not _remove_workspace_vscode_entry():
+        _warn("Workspace mcp.json entry removal failed — continuing with remaining steps.")
 
     _step(2, total, "Delete .env (optional, destructive)")
     _delete_env()

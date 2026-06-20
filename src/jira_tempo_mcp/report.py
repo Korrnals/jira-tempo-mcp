@@ -1,7 +1,6 @@
 """Weekly report generator — maps Tempo worklogs to the report template.
 
-Implements the logic described in
-./work/example-org/reports/2026/README.md
+Implements the weekly report template logic.
 
 Section mapping, stable order, and non-issue sections are loaded from Config
 (overridable via env vars — see config.py).
@@ -224,7 +223,7 @@ async def generate_weekly_report(
         output_dir = Path(base) / str(monday.year) / month_ru
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"your-username_{_format_date_short(monday)}-{_format_date_short(friday)}.txt"
+    filename = f"{config.report_filename_header}_{_format_date_short(monday)}-{_format_date_short(friday)}.txt"
     out_path = output_dir / filename
     out_path.write_text(report_text, encoding="utf-8")
     logger.info("Report written to %s (%d seconds total)", out_path, total_seconds)

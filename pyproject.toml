@@ -9,7 +9,7 @@ description = "MCP server for self-hosted Jira + Tempo Timesheets: track time, l
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Korrnals L.S." }]
+authors = [{ name = "Korrnals" }]
 keywords = ["mcp", "jira", "tempo", "timesheets", "worklog", "report"]
 classifiers = [
     "Programming Language :: Python :: 3",

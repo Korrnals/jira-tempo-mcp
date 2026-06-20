@@ -79,7 +79,7 @@ TOOLS: list[Tool] = [
             "properties": {
                 "issue_key": {
                     "type": "string",
-                    "description": "Jira issue key (e.g. PROJECT-102)",
+                    "description": "Jira issue key (e.g. PROJECT-100)",
                 },
                 "time_spent": {
                     "type": "string",
@@ -117,7 +117,7 @@ TOOLS: list[Tool] = [
             "properties": {
                 "issue_key": {
                     "type": "string",
-                    "description": "Jira issue key (e.g. PROJECT-102)",
+                    "description": "Jira issue key (e.g. PROJECT-100)",
                 },
             },
             "required": ["issue_key"],
@@ -132,9 +132,8 @@ TOOLS: list[Tool] = [
         name="generate_weekly_report",
         description=(
             "Generate a weekly work report from Tempo worklogs and save it as a .txt file. "
-            "Follows the template in reports/2026/README.md: groups worklogs by "
-            "issue, maps known issues to stable sections, writes to "
-            "reports/<year>/<month>/your-username_<DDMMYY>-<DDMMYY>.txt. "
+            "Groups worklogs by issue, maps known issues to stable sections, and writes "
+            "<prefix>_<DDMMYY>-<DDMMYY>.txt to the configured output directory. "
             "Returns the path to the generated file."
         ),
         inputSchema={
@@ -178,7 +177,7 @@ def _validate_issue_key(key: str) -> str:
     """Validate Jira issue key format. Raises ValueError if invalid."""
     if not _ISSUE_KEY_RE.match(key):
         raise ValueError(
-            f"Invalid issue key {key!r}. Expected format: PROJECT-NUMBER (e.g. PROJECT-102)."
+            f"Invalid issue key {key!r}. Expected format: PROJECT-NUMBER (e.g. PROJECT-100)."
         )
     return key
 
@@ -351,11 +350,11 @@ async def serve(config: Config) -> None:
     server = Server("jira-tempo-mcp")
 
     # mypy: MCP SDK decorators are untyped — suppress until upstream adds hints.
-    @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
+    @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]  # MCP SDK decorators are untyped upstream
     async def _list_tools() -> list[Tool]:
         return TOOLS
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
+    @server.call_tool()  # type: ignore[untyped-decorator]  # MCP SDK decorators are untyped upstream
     async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         handler = _TOOL_HANDLERS.get(name)
         if handler is None:

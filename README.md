@@ -143,6 +143,9 @@ Environment variables (see `.env.example` for a template):
 | `REPORT_AUTHOR_NAME` | no | `JIRA_USER` | Author display name in the report header |
 | `REPORT_SECTION_MAP` | no | empty | JSON dict mapping issue keys to section titles |
 | `REPORT_SECTION_MAP_FILE` | no | empty | Path to a JSON file with the section mapping |
+| `REPORT_FILENAME_PREFIX` | no | `JIRA_USER` | Prefix for weekly report filenames |
+| `REPORT_STABLE_ORDER` | no | empty | JSON list of issue keys that always appear in this order |
+| `REPORT_NON_ISSUE_SECTIONS` | no | empty | JSON list of section titles without issue keys |
 
 See [Weekly report](#weekly-report) for details on the report-related
 variables.
@@ -275,15 +278,14 @@ against accidental leakage.
 
 ## Weekly report
 
-The `generate_weekly_report` tool implements the template from
-`reports/2026/README.md`:
+The `generate_weekly_report` tool implements a weekly report template:
 
 1. Fetches all Tempo worklogs for the target week (Mon–Fri).
 2. Groups worklogs by issue key.
 3. Maps known issues to stable report sections (see `config.py` defaults or
    override via `REPORT_SECTION_MAP` env var).
 4. Fetches Jira issue summaries for unknown issues.
-5. Writes `<username>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
+5. Writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
 
 ### Customizing section mapping
 
@@ -291,14 +293,25 @@ Override the default section mapping via environment variables:
 
 ```bash
 # Option 1: inline JSON
-export REPORT_SECTION_MAP='{"PROJECT-102":"Section A","PROJECT-101":"Section B"}'
+export REPORT_SECTION_MAP='{"PROJECT-100":"Section A","PROJECT-101":"Section B"}'
 
 # Option 2: JSON file
 export REPORT_SECTION_MAP_FILE=/path/to/sections.json
 ```
 
-Or set `REPORT_OUTPUT_DIR` to change where reports are written, and
-`REPORT_AUTHOR_NAME` to change the author name in the report header.
+Or set `REPORT_OUTPUT_DIR` to change where reports are written,
+`REPORT_AUTHOR_NAME` to change the author name in the report header, and
+`REPORT_FILENAME_PREFIX` to change the filename prefix (defaults to `JIRA_USER`).
+
+Control section ordering and non-issue sections via JSON lists:
+
+```bash
+# Stable sections — issue keys that always appear in this order
+export REPORT_STABLE_ORDER='["PROJECT-100", "PROJECT-101"]'
+
+# Non-issue sections — titles without issue keys (e.g. meetings, admin)
+export REPORT_NON_ISSUE_SECTIONS='["Team meetings", "Jira triage"]'
+```
 
 ## CI/CD
 
@@ -382,6 +395,9 @@ The container reads the same env vars as the local install. Pass them via
 | `REPORT_AUTHOR_NAME` | no | Author name in report header (default `JIRA_USER`) |
 | `REPORT_SECTION_MAP` | no | JSON dict: issue key → section title |
 | `REPORT_SECTION_MAP_FILE` | no | Path to a JSON file with the section mapping |
+| `REPORT_FILENAME_PREFIX` | no | Prefix for report filenames (default `JIRA_USER`) |
+| `REPORT_STABLE_ORDER` | no | JSON list: issue keys in stable order |
+| `REPORT_NON_ISSUE_SECTIONS` | no | JSON list: non-issue section titles |
 
 > **Never** bake `JIRA_PAT` into the image. The `.dockerignore` excludes
 > `.env`, `.venv/`, `.history/`, and build artifacts from the build context.

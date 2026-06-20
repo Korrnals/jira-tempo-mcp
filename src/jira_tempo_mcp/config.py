@@ -60,6 +60,10 @@ class Config(BaseModel):
         default="",
         description="Display name in report header. Empty = use jira_user.",
     )
+    report_filename_prefix: str = Field(
+        default="",
+        description="Prefix for weekly report filenames. Empty = use jira_user.",
+    )
     section_map: dict[str, str] = Field(
         default_factory=lambda: dict(DEFAULT_SECTION_MAP),
         description="Maps issue keys to report section titles.",
@@ -103,6 +107,11 @@ class Config(BaseModel):
         """Author name for report header — uses author_display_name or jira_user."""
         return self.author_display_name or self.jira_user
 
+    @property
+    def report_filename_header(self) -> str:
+        """Filename prefix for weekly reports — uses report_filename_prefix or jira_user."""
+        return self.report_filename_prefix or self.jira_user
+
     @field_validator("log_level")
     @classmethod
     def _validate_log_level(cls, v: str) -> str:
@@ -138,6 +147,24 @@ def _load_section_map() -> dict[str, str]:
     return dict(DEFAULT_SECTION_MAP)
 
 
+def _load_json_list(env_var: str) -> list[str]:
+    """Load a JSON list of strings from an env var.
+
+    Returns an empty list if the var is unset, empty, or holds invalid JSON.
+    Non-string items are coerced to str.
+    """
+    raw = os.getenv(env_var, "").strip()
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [str(item) for item in data]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return []
+
+
 def load_config() -> Config:
     """Load configuration from environment. Raises if required vars are missing."""
     base_url = os.getenv("JIRA_BASE_URL", "").strip()
@@ -149,6 +176,9 @@ def load_config() -> Config:
 
     report_output_dir = os.getenv("REPORT_OUTPUT_DIR", "").strip()
     author_display_name = os.getenv("REPORT_AUTHOR_NAME", "").strip()
+    report_filename_prefix = os.getenv("REPORT_FILENAME_PREFIX", "").strip()
+    stable_order = _load_json_list("REPORT_STABLE_ORDER")
+    non_issue_sections = _load_json_list("REPORT_NON_ISSUE_SECTIONS")
     http_timeout_str = os.getenv("JIRA_HTTP_TIMEOUT", "30.0").strip()
 
     try:
@@ -166,6 +196,9 @@ def load_config() -> Config:
         log_level=log_level,
         report_output_dir=report_output_dir,
         author_display_name=author_display_name,
+        report_filename_prefix=report_filename_prefix,
         section_map=_load_section_map(),
+        stable_order=stable_order,
+        non_issue_sections=non_issue_sections,
         http_timeout=http_timeout,
     )

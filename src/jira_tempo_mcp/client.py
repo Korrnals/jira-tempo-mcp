@@ -157,7 +157,7 @@ class JiraTempoClient:
     ) -> dict[str, Any]:
         """Create a Tempo worklog.
 
-        issue_key: Jira issue key (e.g. PROJECT-102).
+        issue_key: Jira issue key (e.g. PROJECT-100).
         time_spent_seconds: duration in seconds.
         date_started: ISO 8601 datetime string with timezone offset.
         comment: optional worklog comment.

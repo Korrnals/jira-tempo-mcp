@@ -68,17 +68,17 @@ class TestConfigValidation:
         assert "tempo_secret" not in repr(c)
 
     def test_report_author_header_default(self) -> None:
-        c = Config(jira_base_url="https://x", jira_user="your-username", jira_pat="p")
-        assert c.report_author_header == "your-username"
+        c = Config(jira_base_url="https://x", jira_user="testuser", jira_pat="p")
+        assert c.report_author_header == "testuser"
 
     def test_report_author_header_override(self) -> None:
         c = Config(
             jira_base_url="https://x",
-            jira_user="your-username",
+            jira_user="testuser",
             jira_pat="p",
-            author_display_name="Korrnals Л.С.",
+            author_display_name="Test User",
         )
-        assert c.report_author_header == "Korrnals Л.С."
+        assert c.report_author_header == "Test User"
 
     def test_default_section_map(self) -> None:
         c = Config(jira_base_url="https://x", jira_user="u", jira_pat="p")
