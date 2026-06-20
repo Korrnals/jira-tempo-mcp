@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build-wheel:
     name: Build wheel
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout
@@ -55,7 +55,7 @@ jobs:
   pypi-publish:
     name: Publish to PyPI
     needs: build-wheel
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: false  # Enable when PyPI trusted publishing is configured
     permissions:
       id-token: write  # trusted publishing (OIDC)
@@ -75,7 +75,7 @@ jobs:
 
   docker:
     name: Build & push Docker image
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-wheel
 
     steps:
@@ -118,7 +118,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs: build-wheel
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:

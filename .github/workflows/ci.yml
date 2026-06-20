@@ -16,7 +16,7 @@ concurrency:
 jobs:
   lint-type-test:
     name: Lint + Type check + Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout
