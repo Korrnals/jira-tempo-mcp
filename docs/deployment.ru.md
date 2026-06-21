@@ -1,10 +1,12 @@
-# Развёртывание
+# 🐳 Развёртывание
 
 Сборка Docker, CI/CD-пайплайны и процесс релиза.
 
-## Docker
+---
 
-### Локальная сборка образа
+## 🐳 Docker
+
+### 🔧 Локальная сборка образа
 
 ```bash
 docker build -t jira-tempo-mcp .
@@ -17,13 +19,12 @@ docker build -t jira-tempo-mcp .
 | `builder` | `python:3.12-slim` | Сборка wheel, установка в чистый venv (без dev-зависимостей) |
 | `runtime` | `python:3.12-slim` | Копируется только venv, запуск от non-root `appuser` (UID 1001) |
 
-Окружение runtime: `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`.
+> 💡 **Совет:** Окружение runtime: `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`.
+> `HEALTHCHECK` проверяет импортируемость пакета
+> (`python -c "import jira_tempo_mcp"`). HTTP-порта нет — сервер работает
+> через stdio.
 
-`HEALTHCHECK` проверяет импортируемость пакета
-(`python -c "import jira_tempo_mcp"`). HTTP-порта нет — сервер работает
-через stdio.
-
-### Запуск контейнера
+### 🚀 Запуск контейнера
 
 ```bash
 # режим stdio — прокидывайте JSON-RPC в/из
@@ -37,7 +38,7 @@ docker run -i --rm \
   ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-### Обязательные переменные окружения
+### 🔑 Обязательные переменные окружения
 
 Передавайте через `--env-file` (gitignored `.env`) или Kubernetes Secret:
 
@@ -58,12 +59,14 @@ docker run -i --rm \
 | `REPORT_STABLE_ORDER` | нет | JSON-список ключей в стабильном порядке |
 | `REPORT_NON_ISSUE_SECTIONS` | нет | JSON-список не-задачных секций |
 
-> **Никогда** не вшивайте `JIRA_PAT` в образ. `.dockerignore` исключает
-> `.env`, `.venv/`, `.history/` и артефакты сборки из контекста.
+> ⚠️ **Внимание:** **Никогда** не вшивайте `JIRA_PAT` в образ. `.dockerignore`
+> исключает `.env`, `.venv/`, `.history/` и артефакты сборки из контекста.
 
 Полный справочник переменных — в [configuration.ru.md](configuration.ru.md).
 
-## CI/CD
+---
+
+## 🔄 CI/CD
 
 В репозитории два workflow GitHub Actions:
 
@@ -72,11 +75,11 @@ docker run -i --rm \
 | [`ci.yml`](../.github/workflows/ci.yml) | push / PR в `main` | `ruff check` + `ruff format --check` + `mypy src/` + `pytest tests/ -v` на Python 3.12 |
 | [`release.yml`](../.github/workflows/release.yml) | git-тег `v*` | Сборка wheel, сборка и push Docker-образа в `ghcr.io/korrnals/jira-tempo-mcp:<tag>`, создание GitHub Release |
 
-CI использует конфигурацию ruff / mypy / pytest из `pyproject.toml` — без
-дублирования. Зависимости pip кэшируются через `actions/setup-python` по
-ключу `pyproject.toml`.
+> 💡 **Совет:** CI использует конфигурацию ruff / mypy / pytest из `pyproject.toml`
+> — без дублирования. Зависимости pip кэшируются через `actions/setup-python` по
+> ключу `pyproject.toml`.
 
-### Детали CI-пайплайна
+### 📊 Детали CI-пайплайна
 
 ```mermaid
 flowchart LR
@@ -89,10 +92,12 @@ flowchart LR
     D --> H[pytest tests/ -v]
 ```
 
-Конкурентность: `ci-${{ github.ref }}` с `cancel-in-progress: true` — новый
-push отменяет предыдущий прогон на той же ветке.
+> 💡 **Совет:** Конкурентность: `ci-${{ github.ref }}` с `cancel-in-progress: true`
+> — новый push отменяет предыдущий прогон на той же ветке.
 
-## Процесс релиза
+---
+
+## 🏷️ Процесс релиза
 
 ```bash
 # 1. Поднять версию в pyproject.toml
@@ -104,18 +109,18 @@ git push origin v0.1.0
 
 Далее release-workflow запускается автоматически:
 
-1. **Сборка wheel** — `python -m build` создаёт wheel + sdist, загружается
+1. 📦 **Сборка wheel** — `python -m build` создаёт wheel + sdist, загружается
    как артефакт workflow.
-2. **Публикация в PyPI** — wheel публикуется в
+2. 📤 **Публикация в PyPI** — wheel публикуется в
    [pypi.org/project/jira-tempo-mcp](https://pypi.org/project/jira-tempo-mcp/)
    через Trusted Publishing (OIDC). API-токен не хранится в репозитории.
-3. **Сборка и push Docker-образа** — многостадийная сборка пушится в
+3. 🐳 **Сборка и push Docker-образа** — многостадийная сборка пушится в
    `ghcr.io/korrnals/jira-tempo-mcp` с semver-тегами (см.
    [Теги Docker-образа](#теги-docker-образа)).
-4. **Создание GitHub Release** — автогенерированные заметки с wheel как
+4. 📝 **Создание GitHub Release** — автогенерированные заметки с wheel как
    вложением.
 
-### Детали release-пайплайна
+### 📊 Детали release-пайплайна
 
 ```mermaid
 flowchart LR
@@ -131,7 +136,7 @@ flowchart LR
     H --> I
 ```
 
-Права, требуемые `release.yml`:
+### 🔐 Права, требуемые `release.yml`
 
 | Право | Зачем |
 | --- | --- |
@@ -139,7 +144,9 @@ flowchart LR
 | `packages: write` | push образа в ghcr.io |
 | `id-token: write` | PyPI Trusted Publishing (OIDC) — ограничено job `pypi-publish` |
 
-### Настройка PyPI Trusted Publishing
+---
+
+### 🔑 Настройка PyPI Trusted Publishing
 
 Job `pypi-publish` использует **Trusted Publishing (OIDC)** — долгоживущий
 API-токен не хранится в секретах GitHub. Это рекомендуемая модель публикации
@@ -157,13 +164,15 @@ API-токен не хранится в секретах GitHub. Это реко
    - Environment: `pypi`
 3. Сохраните. Первый push тега `v*` опубликует пакет в PyPI автоматически.
 
-> **Fallback для первого релиза:** если Trusted Publishing ещё не настроен,
-> можно временно использовать API-токен. Добавьте `PYPI_API_TOKEN` как
+> ⚠️ **Внимание — fallback для первого релиза:** если Trusted Publishing ещё не
+> настроен, можно временно использовать API-токен. Добавьте `PYPI_API_TOKEN` как
 > секрет репозитория и переключите job `pypi-publish` на
 > `password: ${{ secrets.PYPI_API_TOKEN }}`. После настройки publisher
 > вернитесь к OIDC — токен имеет больший blast radius, чем OIDC.
 
-### Теги Docker-образа
+---
+
+### 🏷️ Теги Docker-образа
 
 `docker/metadata-action` создаёт следующие теги из git-тега:
 
@@ -183,7 +192,9 @@ API-токен не хранится в секретах GitHub. Это реко
 - `type=raw,value=latest` — только если в теге **нет** `-` (pre-release-теги
   вида `v0.1.0-rc.1` **не** получают `latest`).
 
-## Pre-commit хуки
+---
+
+## 🪝 Pre-commit хуки
 
 В проекте есть `.pre-commit-config.yaml`, запускающий линтер и
 типизацию перед каждым коммитом:
@@ -200,10 +211,12 @@ pre-commit install
 | `mypy src/` | Строгая проверка типов по `src/` |
 | `trailing-whitespace` / `end-of-file-fixer` / `check-yaml` / `check-added-large-files` | Стандартная гигиена |
 
-Обход в экстренной ситуации: `git commit --no-verify` (используйте редко).
+> ⚠️ **Внимание:** Обход в экстренной ситуации: `git commit --no-verify` (используйте редко).
 
-## Дальнейшие шаги
+---
 
-- [installation.ru.md](installation.ru.md) — способы локальной установки
-- [architecture.ru.md](architecture.ru.md#безопасность-сборки-docker) — модель безопасности Docker
-- [configuration.ru.md](configuration.ru.md) — переменные окружения для контейнера
+## ➡️ Дальнейшие шаги
+
+- 📦 [installation.ru.md](installation.ru.md) — способы локальной установки
+- 🏗️ [architecture.ru.md](architecture.ru.md#безопасность-сборки-docker) — модель безопасности Docker
+- ⚙️ [configuration.ru.md](configuration.ru.md) — переменные окружения для контейнера

@@ -1,9 +1,11 @@
-# MCP integration
+# 🔌 MCP integration
 
 How `jira-tempo-mcp` plugs into VS Code Copilot Chat via the Model Context
 Protocol.
 
-## How it works
+---
+
+## 🏗️ How it works
 
 ```mermaid
 flowchart LR
@@ -17,7 +19,9 @@ The MCP server runs as a child process of VS Code. It speaks JSON-RPC over
 stdio (stdin/stdout); logs go to stderr. VS Code discovers it through an
 entry in `mcp.json`.
 
-## User-level config — `~/.config/Code/User/mcp.json`
+---
+
+## 👤 User-level config — `~/.config/Code/User/mcp.json`
 
 The installer (`python install.py`) registers the server here automatically.
 Manual equivalent on Linux:
@@ -41,10 +45,12 @@ Manual equivalent on Linux:
 }
 ```
 
-On macOS the path is `~/Library/Application Support/Code/User/mcp.json`; on
-Windows `%APPDATA%\Code\User\mcp.json`.
+> 💡 **Tip:** On macOS the path is `~/Library/Application Support/Code/User/mcp.json`;
+> on Windows `%APPDATA%\Code\User\mcp.json`.
 
-## Workspace-level config — `.vscode/mcp.json`
+---
+
+## 📁 Workspace-level config — `.vscode/mcp.json`
 
 The installer also writes a workspace-level `.vscode/mcp.json` that uses
 `${workspaceFolder}` variables so the config is portable across machines:
@@ -68,7 +74,9 @@ The installer also writes a workspace-level `.vscode/mcp.json` that uses
 env vars (`JIRA_BASE_URL`, `JIRA_USER`, …) are injected from the user-level
 config or `.env.local`.
 
-## `envFile` — single `.env.local` for secrets
+---
+
+## 🔑 `envFile` — single `.env.local` for secrets
 
 The recommended pattern: keep all MCP-server secrets in one
 `~/.config/Code/User/.env.local` and reference it via `envFile`:
@@ -83,7 +91,7 @@ VS Code MCP-host loads this file and injects the variables into the server
 process environment. This keeps secrets out of `mcp.json` (which may be
 committed) and out of shell history.
 
-### Absolute paths for `envFile` (distrobox / containers)
+### ⚠️ Absolute paths for `envFile` (distrobox / containers)
 
 **Always use absolute paths for `envFile`.** The `~` shortcut does not work
 in sandboxed environments (distrobox, snap, flatpak, containers) because
@@ -96,10 +104,12 @@ user's `$HOME`.
 | distrobox | `~/.config/Code/User/.env.local` | `/var/home/your-username/.distrobox/box/home/.config/Code/User/.env.local` |
 | macOS | `~/.config/…` | `/Users/your-username/.config/…` |
 
-Symptom of the bug: `Failed to read envFile '~/...'` in the MCP panel, and
-the server does not start.
+> 🐛 **Symptom of the bug:** `Failed to read envFile '~/...'` in the MCP panel,
+> and the server does not start.
 
-## `${input:...}` for HTTP-type servers
+---
+
+## 🌐 `${input:...}` for HTTP-type servers
 
 Some MCP servers (e.g. the GitHub MCP server) use the `http` type and
 require secrets in HTTP headers. The `${env:VAR}` substitution does **not**
@@ -131,11 +141,13 @@ value in the VS Code secret storage:
 }
 ```
 
-`jira-tempo-mcp` is a **stdio** server, so it uses `envFile` + `env`, not
-`${input:...}`. The `${input:...}` pattern is documented here for users
-who run multiple MCP servers side by side.
+> 💡 **Tip:** `jira-tempo-mcp` is a **stdio** server, so it uses `envFile` + `env`,
+> not `${input:...}`. The `${input:...}` pattern is documented here for users
+> who run multiple MCP servers side by side.
 
-## `${workspaceFolder}` variables
+---
+
+## 📁 `${workspaceFolder}` variables
 
 | Variable | Resolves to |
 | --- | --- |
@@ -146,7 +158,9 @@ Use these in workspace-level `.vscode/mcp.json` so the config is portable.
 Avoid them in user-level `mcp.json` — there is no workspace context at
 that scope.
 
-## Troubleshooting MCP startup
+---
+
+## 🐛 Troubleshooting MCP startup
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -159,8 +173,10 @@ that scope.
 
 See [troubleshooting.md](troubleshooting.md) for the full list.
 
-## Next steps
+---
 
-- [api.md](api.md) — MCP tools reference
-- [configuration.md](configuration.md) — all environment variables
-- [troubleshooting.md](troubleshooting.md) — common errors
+## ➡️ Next steps
+
+- 🌐 [api.md](api.md) — MCP tools reference
+- ⚙️ [configuration.md](configuration.md) — all environment variables
+- 🐛 [troubleshooting.md](troubleshooting.md) — common errors

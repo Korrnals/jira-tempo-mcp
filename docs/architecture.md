@@ -1,9 +1,11 @@
-# Architecture
+# 🏗️ Architecture
 
 Layered design: each module has a single responsibility and dependencies
 flow in one direction.
 
-## Layers
+---
+
+## 🏗️ Layers
 
 ```mermaid
 flowchart TD
@@ -37,7 +39,9 @@ flowchart TD
 | CLI | `cli.py` | Console entrypoint dispatcher (`serve` / `install` / `uninstall` / `--version`) |
 | Installer | `install.py` | Interactive setup: venv, `.env`, VS Code `mcp.json` registration, connectivity check |
 
-## Data flow
+---
+
+## 🔄 Data flow
 
 ```mermaid
 sequenceDiagram
@@ -62,7 +66,9 @@ sequenceDiagram
 6. On error, `JiraTempoError` is raised with a redacted message.
 7. The handler formats the result as a string and returns `TextContent`.
 
-## Tool dispatch
+---
+
+## ⚙️ Tool dispatch
 
 Tools are registered in the `TOOLS` list and dispatched through a table:
 
@@ -82,9 +88,11 @@ Each handler is an `async` function that receives `(arguments, config, client)`
 and returns a string. Errors are caught in `_call_tool` and mapped to
 user-friendly messages via `_user_friendly_error`.
 
-## Security
+---
 
-### Token handling
+## 🔒 Security
+
+### 🔑 Token handling
 
 - **Tokens never leave the local process.** `JIRA_PAT` is read from
   environment and sent only to the Jira instance over HTTPS.
@@ -95,21 +103,21 @@ user-friendly messages via `_user_friendly_error`.
   URLs before logging. API error bodies are truncated to 200 characters.
 - The AI agent receives only the **result** of API calls, never the token.
 
-### Transport hardening
+### 🛡️ Transport hardening
 
 - **TLS verification is always on** (`httpx.AsyncClient(verify=True)`).
 - **HTTP redirects are disabled** (`follow_redirects=False`) — prevents
   PAT leakage via a redirect to an attacker-controlled host.
 - **Configurable HTTP timeout** (`JIRA_HTTP_TIMEOUT`, default 30 s).
 
-### Input validation
+### ✅ Input validation
 
 - **Jira issue keys** validated against `^[A-Z][A-Z0-9]+-\d+$`.
 - **Dates** validated as ISO `YYYY-MM-DD`.
 - **Report `output_dir`** checked against path traversal — the resolved
   path must be inside the allowed root (`REPORT_OUTPUT_DIR` or `./reports`).
 
-### Docker build safety
+### 🐳 Docker build safety
 
 - `.dockerignore` excludes `.env`, `.env.*.local`, `.history/`, `.venv/`,
   `__pycache__/`, `.git/`, `tests/`.
@@ -118,9 +126,11 @@ user-friendly messages via `_user_friendly_error`.
 - Secrets never baked into the image — passed at runtime via `--env-file`
   or a Kubernetes Secret.
 
-See [deployment.md](deployment.md) for Docker details.
+> 💡 **Tip:** See [deployment.md](deployment.md) for Docker details.
 
-## Testing
+---
+
+## 🧪 Testing
 
 Tests live in `tests/` and run under `pytest` with `asyncio_mode = "auto"`:
 
@@ -134,8 +144,10 @@ Tests live in `tests/` and run under `pytest` with `asyncio_mode = "auto"`:
 CI runs `ruff check` + `ruff format --check` + `mypy src/` + `pytest tests/ -v`
 on Python 3.12. See [deployment.md](deployment.md#cicd) for the pipeline.
 
-## Next steps
+---
 
-- [api.md](api.md) — the 7 MCP tools
-- [deployment.md](deployment.md) — Docker, CI/CD, release
-- [configuration.md](configuration.md) — env vars and secret handling
+## ➡️ Next steps
+
+- 🌐 [api.md](api.md) — the 7 MCP tools
+- 🐳 [deployment.md](deployment.md) — Docker, CI/CD, release
+- ⚙️ [configuration.md](configuration.md) — env vars and secret handling

@@ -1,11 +1,13 @@
-# Configuration
+# ⚙️ Configuration
 
 All configuration is via environment variables. The server reads them at
 startup through `config.py` (pydantic-validated, secrets masked in repr).
 
-## Environment variables
+---
 
-### Jira connection (required)
+## ⚙️ Environment variables
+
+### 🔌 Jira connection (required)
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -13,7 +15,7 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 | `JIRA_USER` | yes | — | Jira username (login) — used for worklog author filtering |
 | `JIRA_PAT` | yes | — | Personal Access Token — **never commit this** |
 
-### Jira connection (optional)
+### 🔌 Jira connection (optional)
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -22,7 +24,7 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 | `LOG_LEVEL` | no | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
 | `JIRA_HTTP_TIMEOUT` | no | `30.0` | HTTP timeout for Jira/Tempo calls (seconds) |
 
-### Weekly report (optional)
+### 📝 Weekly report (optional)
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -36,7 +38,7 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 
 See [reports.md](reports.md) for details on the report-related variables.
 
-### Team report rate-limiting (optional)
+### 👥 Team report rate-limiting (optional)
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -45,7 +47,7 @@ See [reports.md](reports.md) for details on the report-related variables.
 | `TEMPO_MAX_RETRIES` | no | `3` | Retry attempts on HTTP 429 (exponential backoff) |
 | `REPORT_TEAM_OUTPUT_DIR` | no | empty | Output dir for team reports (empty = `REPORT_OUTPUT_DIR`) |
 
-### Custom report templates (optional)
+### 🎨 Custom report templates (optional)
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -57,8 +59,9 @@ See [reports.md](reports.md) for details on the report-related variables.
 See [reports.md#custom-templates](reports.md#custom-templates) for details on
 custom templates.
 
+---
 
-## `.env` for CLI usage
+## 🔑 `.env` for CLI usage
 
 The server loads `.env` from the project root automatically (via
 `python-dotenv`). Copy the template and fill in your PAT:
@@ -79,9 +82,11 @@ JIRA_TIMEZONE=Europe/Moscow
 LOG_LEVEL=INFO
 ```
 
-`.env` is gitignored. The installer creates it with permissions `0600`.
+> 🔒 `.env` is gitignored. The installer creates it with permissions `0600`.
 
-## `.env.local` for VS Code MCP
+---
+
+## 🔑 `.env.local` for VS Code MCP
 
 VS Code MCP-host reads secrets from a single `envFile` referenced in
 `mcp.json`. The recommended pattern is one `.env.local` per user that holds
@@ -116,7 +121,9 @@ sandboxed environments):
 
 `JIRA_PAT` is injected from `.env.local`; the non-secret vars live in `env`.
 
-## Configuration examples
+---
+
+## 📋 Configuration examples
 
 ### Minimal (Jira PAT doubles as Tempo token)
 
@@ -144,7 +151,9 @@ REPORT_NON_ISSUE_SECTIONS='["Team meetings", "Jira triage"]'
 REPORT_FILENAME_PREFIX=your-username
 ```
 
-## Secret handling
+---
+
+## 🔒 Secret handling
 
 - `JIRA_PAT` and `TEMPO_API_TOKEN` are masked as `***` in `Config.__repr__`
   — accidental `print(config)` does not leak credentials.
@@ -154,8 +163,10 @@ REPORT_FILENAME_PREFIX=your-username
 
 See [architecture.md](architecture.md#security) for the full security model.
 
-## Next steps
+---
 
-- [mcp-integration.md](mcp-integration.md) — wire the server into VS Code
-- [reports.md](reports.md) — weekly report customization
-- [troubleshooting.md](troubleshooting.md) — config-related errors
+## ➡️ Next steps
+
+- 🔌 [mcp-integration.md](mcp-integration.md) — wire the server into VS Code
+- 📝 [reports.md](reports.md) — weekly report customization
+- 🐛 [troubleshooting.md](troubleshooting.md) — config-related errors

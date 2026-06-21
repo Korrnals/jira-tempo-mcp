@@ -1,10 +1,12 @@
-# API — MCP tools
+# 🌐 API — MCP tools
 
 The server exposes 9 tools over the Model Context Protocol. Each tool is
 defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 (`_TOOL_HANDLERS`).
 
-## Tool index
+---
+
+## 🌐 Tool index
 
 | Tool | Purpose |
 | --- | --- |
@@ -20,7 +22,7 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 
 ---
 
-## `list_worklogs`
+## 📝 `list_worklogs`
 
 List Tempo worklogs for a date range (or a single day). Only actually
 tracked time is returned — planned time is excluded.
@@ -54,7 +56,7 @@ Worklogs 2026-06-16 .. 2026-06-20 (5 entries):
 
 ---
 
-## `get_worklog`
+## 🔍 `get_worklog`
 
 Get a single Tempo worklog by its Tempo internal ID.
 
@@ -86,7 +88,7 @@ Worklog 12345:
 
 ---
 
-## `create_worklog`
+## ⏱️ `create_worklog`
 
 Track (log) time on a Jira issue via Tempo. The worklog is attributed to
 the token owner unless `author_account_id` is given.
@@ -101,7 +103,7 @@ the token owner unless `author_account_id` is given.
 | `date_started` | string | no | ISO 8601 datetime with tz. Defaults to now. |
 | `author_account_id` | string | no | Optional Tempo worker key. Defaults to token owner. |
 
-**Duration units:** `w` (week = 5d), `d` (day = 8h), `h` (hour), `m` (minute).
+> 💡 **Tip:** Duration units: `w` (week = 5d), `d` (day = 8h), `h` (hour), `m` (minute).
 
 **Example call:**
 
@@ -125,7 +127,7 @@ Tracked 1h 30m on PROJECT-100 at 2026-06-19T10:00:00+03:00. Worklog ID: 12345. C
 
 ---
 
-## `delete_worklog`
+## 🗑️ `delete_worklog`
 
 Delete a Tempo worklog by its ID. Use for undo/correction of mis-tracked
 time.
@@ -153,7 +155,7 @@ Deleted worklog 12345.
 
 ---
 
-## `get_issue`
+## 📋 `get_issue`
 
 Get Jira issue metadata: summary, status, project.
 
@@ -182,7 +184,7 @@ Project: Web Platform
 
 ---
 
-## `list_favorite_issues`
+## ⭐ `list_favorite_issues`
 
 List favorite issues for the current Jira user. Returns keys and summaries.
 
@@ -208,7 +210,7 @@ Favorite issues (3):
 
 ---
 
-## `generate_weekly_report`
+## 📝 `generate_weekly_report`
 
 Generate a weekly work report from Tempo worklogs and save it as a `.txt`
 file. Groups worklogs by issue, maps known issues to stable sections, and
@@ -237,12 +239,12 @@ writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
 Weekly report generated: /path/to/reports/your-username_160620-200620.txt
 ```
 
-See [reports.md](reports.md) for report customization (section mapping,
-stable order, non-issue sections).
+> 💡 **Tip:** See [reports.md](reports.md) for report customization (section mapping,
+> stable order, non-issue sections).
 
 ---
 
-## `generate_team_report`
+## 👥 `generate_team_report`
 
 Generate a team work report from Tempo worklogs for multiple Jira users.
 Fetches worklogs per user with bounded concurrency (rate-limit safe), renders
@@ -260,11 +262,11 @@ per-user sections plus an aggregate summary, and writes
 | `template` | string | no | Template name. Defaults to `team_report`. |
 | `output_dir` | string | no | Output directory. Defaults to `REPORT_TEAM_OUTPUT_DIR` or `REPORT_OUTPUT_DIR`. Must be inside the allowed root. |
 
-**Rate-limiting:** concurrent Tempo requests are bounded by
-`TEMPO_MAX_CONCURRENT_REQUESTS` (default 3). A configurable delay
-(`TEMPO_REQUEST_DELAY_MS`, default 100 ms) is inserted between batches.
-On HTTP 429 the client retries with exponential backoff up to
-`TEMPO_MAX_RETRIES` (default 3) times.
+> 🛡️ **Rate-limiting:** concurrent Tempo requests are bounded by
+> `TEMPO_MAX_CONCURRENT_REQUESTS` (default 3). A configurable delay
+> (`TEMPO_REQUEST_DELAY_MS`, default 100 ms) is inserted between batches.
+> On HTTP 429 the client retries with exponential backoff up to
+> `TEMPO_MAX_RETRIES` (default 3) times.
 
 **Example call:**
 
@@ -295,7 +297,7 @@ Top issues:
 
 ---
 
-## `list_report_templates`
+## 🎨 `list_report_templates`
 
 List available report templates (builtin + custom). Returns each template's
 name and description. Custom templates are discovered from
@@ -322,12 +324,12 @@ Report templates (4):
 - custom: My custom Jinja2 template
 ```
 
-See [reports.md#custom-templates](reports.md#custom-templates) for how to
-add custom templates.
+> 💡 **Tip:** See [reports.md#custom-templates](reports.md#custom-templates) for how to
+> add custom templates.
 
 ---
 
-## Error handling
+## ❌ Error handling
 
 All tools return a user-friendly error string on failure (never a raw
 exception trace). Common error patterns:
@@ -341,8 +343,10 @@ exception trace). Common error patterns:
 | `output_dir '...' resolves outside the allowed root` | path traversal attempt |
 | `Could not identify your Tempo worker key` | `JIRA_USER` mismatch or Tempo connectivity |
 
-## Next steps
+---
 
-- [reports.md](reports.md) — weekly report customization
-- [configuration.md](configuration.md) — env vars that affect tool behavior
-- [architecture.md](architecture.md) — how tools are dispatched
+## ➡️ Next steps
+
+- 📝 [reports.md](reports.md) — weekly report customization
+- ⚙️ [configuration.md](configuration.md) — env vars that affect tool behavior
+- 🏗️ [architecture.md](architecture.md) — how tools are dispatched

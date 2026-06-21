@@ -12,10 +12,12 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 Учитывайте время, просматривайте worklog'и и создавайте еженедельные отчёты —
 всё из вашего AI-агента (Copilot, Claude и др.) через Model Context Protocol.
 
-> **English version:** [README.md](README.md)
-> **Полная документация:** [docs/README.ru.md](docs/README.ru.md)
+> 📖 **English version:** [README.md](README.md)
+> 📚 **Полная документация:** [docs/README.ru.md](docs/README.ru.md)
 
-## Возможности
+---
+
+## 📋 Возможности
 
 | Инструмент | Что делает |
 | --- | --- |
@@ -35,7 +37,11 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 
 Полный справочник инструментов с параметрами и примерами — в [docs/api.ru.md](docs/api.ru.md).
 
-## Быстрый старт
+---
+
+## 🚀 Быстрый старт
+
+Запуск меньше чем за минуту:
 
 **Установка одной командой:**
 
@@ -45,11 +51,14 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 
 Скрипт скачивает и запускает интерактивный установщик, который:
 
-- Проверяет Python 3.11+ и pip
-- Клонирует репозиторий и создаёт venv
-- Устанавливает пакет
-- Проводит через настройку учётных данных Jira
-- Регистрирует MCP-сервер в VS Code (user + workspace)
+- ✅ Проверяет Python 3.11+ и pip
+- ✅ Клонирует репозиторий и создаёт venv
+- ✅ Устанавливает пакет
+- ✅ Проводит через настройку учётных данных Jira
+- ✅ Регистрирует MCP-сервер в VS Code (user + workspace)
+
+> 💡 **Совет:** Установщик не требует `sudo` — всё ставится в user space.
+> Скрипт идемпотентен: повторный запуск обновляет без затирания существующего конфига.
 
 **Удаление:**
 
@@ -63,17 +72,12 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-> **Примечание:** URL установочного скрипта заработает, когда репозиторий
+> ⚠️ **Внимание:** URL установочного скрипта заработает, когда репозиторий
 > станет публичным. До этого — клонируйте вручную и запустите `python install.py`.
->
-> Установщик не требует sudo — всё ставится в user space. Скрипт
-> идемпотентен: повторный запуск обновляет репозиторий и перезапускает
-> установщик, не затирая существующие `.env.local` или `mcp.json`
-> (установщик делает merge, а не перезапись).
 
 ---
 
-### Из исходников (разработка)
+### 🔧 Из исходников (разработка)
 
 Интерактивный установщик создаёт venv, записывает `.env`, регистрирует
 MCP-сервер в VS Code и опционально проверяет связь с Jira:
@@ -104,7 +108,9 @@ docker run -i --rm \
 
 Все способы установки: [docs/installation.ru.md](docs/installation.ru.md).
 
-## Настройка
+---
+
+## ⚙️ Настройка
 
 Вся конфигурация — через переменные окружения. Обязательные:
 
@@ -119,7 +125,9 @@ docker run -i --rm \
 
 Полный справочник: [docs/configuration.ru.md](docs/configuration.ru.md).
 
-## MCP-интеграция
+---
+
+## 🔌 MCP-интеграция
 
 Сервер работает через **stdio** и регистрируется в VS Code `mcp.json`:
 
@@ -140,12 +148,14 @@ docker run -i --rm \
 }
 ```
 
-> **Совет:** всегда используйте **абсолютные пути** для `envFile` — `~` не
+> 💡 **Совет:** Всегда используйте **абсолютные пути** для `envFile` — `~` не
 > работает в sandbox-окружениях (distrobox, snap, контейнеры).
 
 Полное руководство: [docs/mcp-integration.ru.md](docs/mcp-integration.ru.md).
 
-## CLI
+---
+
+## 🖥️ CLI
 
 ```text
 jira-tempo-mcp                  # запустить MCP-сервер (по умолчанию)
@@ -157,34 +167,40 @@ jira-tempo-mcp --version        # показать версию
 
 Полный справочник: [docs/cli.ru.md](docs/cli.ru.md).
 
-## Безопасность
+---
 
-- **Токены не покидают локальный процесс** — `JIRA_PAT` отправляется только
+## 🔒 Безопасность
+
+- **🔑 Токены не покидают локальный процесс** — `JIRA_PAT` отправляется только
   на инстанс Jira через HTTPS.
-- **TLS-верификация всегда включена**, **HTTP-редиректы отключены**
+- **🛡️ TLS-верификация всегда включена**, **HTTP-редиректы отключены**
   (`follow_redirects=False`) — предотвращает утечку PAT через редирект.
-- **Токены замаскированы в логах** — `Config.__repr__` заменяет `JIRA_PAT` на `***`.
-- **Валидация ввода** — ключи задач, даты и `output_dir` (защита от path
+- **👁️ Токены замаскированы в логах** — `Config.__repr__` заменяет `JIRA_PAT` на `***`.
+- **✅ Валидация ввода** — ключи задач, даты и `output_dir` (защита от path
   traversal) проверяются перед любым вызовом API.
-- **Docker** — многостадийная сборка, non-root пользователь, секреты никогда
+- **🐳 Docker** — многостадийная сборка, non-root пользователь, секреты никогда
   не вшиваются в образ.
 
 Полная модель: [docs/architecture.ru.md#безопасность](docs/architecture.ru.md#безопасность).
 
-## Документация
+---
+
+## 📖 Документация
 
 | Тема | Документ |
 | --- | --- |
-| Установка | [docs/installation.ru.md](docs/installation.ru.md) |
-| Настройка | [docs/configuration.ru.md](docs/configuration.ru.md) |
-| MCP-интеграция | [docs/mcp-integration.ru.md](docs/mcp-integration.ru.md) |
-| CLI | [docs/cli.ru.md](docs/cli.ru.md) |
-| API (MCP-инструменты) | [docs/api.ru.md](docs/api.ru.md) |
-| Архитектура | [docs/architecture.ru.md](docs/architecture.ru.md) |
-| Отчёты | [docs/reports.ru.md](docs/reports.ru.md) |
-| Развёртывание | [docs/deployment.ru.md](docs/deployment.ru.md) |
-| Решение проблем | [docs/troubleshooting.ru.md](docs/troubleshooting.ru.md) |
+| 📦 Установка | [docs/installation.ru.md](docs/installation.ru.md) |
+| ⚙️ Настройка | [docs/configuration.ru.md](docs/configuration.ru.md) |
+| 🔌 MCP-интеграция | [docs/mcp-integration.ru.md](docs/mcp-integration.ru.md) |
+| 🖥️ CLI | [docs/cli.ru.md](docs/cli.ru.md) |
+| 🌐 API (MCP-инструменты) | [docs/api.ru.md](docs/api.ru.md) |
+| 🏗️ Архитектура | [docs/architecture.ru.md](docs/architecture.ru.md) |
+| 📝 Отчёты | [docs/reports.ru.md](docs/reports.ru.md) |
+| 🐳 Развёртывание | [docs/deployment.ru.md](docs/deployment.ru.md) |
+| 🐛 Решение проблем | [docs/troubleshooting.ru.md](docs/troubleshooting.ru.md) |
 
-## Лицензия
+---
+
+## 📄 Лицензия
 
 MIT

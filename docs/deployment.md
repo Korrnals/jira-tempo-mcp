@@ -1,10 +1,12 @@
-# Deployment
+# 🐳 Deployment
 
 Docker build, CI/CD pipelines, and the release workflow.
 
-## Docker
+---
 
-### Build the image locally
+## 🐳 Docker
+
+### 🔧 Build the image locally
 
 ```bash
 docker build -t jira-tempo-mcp .
@@ -17,13 +19,12 @@ The `Dockerfile` is a **multi-stage build**:
 | `builder` | `python:3.12-slim` | Build a wheel, install it into a clean venv (no dev deps) |
 | `runtime` | `python:3.12-slim` | Copy only the venv, run as non-root `appuser` (UID 1001) |
 
-Runtime env: `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`.
+> 💡 **Tip:** Runtime env: `PYTHONDONTWRITEBYTECODE=1`, `PYTHONUNBUFFERED=1`.
+> A `HEALTHCHECK` verifies the package is importable
+> (`python -c "import jira_tempo_mcp"`). There is no HTTP port to probe — the
+> server speaks stdio.
 
-A `HEALTHCHECK` verifies the package is importable
-(`python -c "import jira_tempo_mcp"`). There is no HTTP port to probe — the
-server speaks stdio.
-
-### Run the container
+### 🚀 Run the container
 
 ```bash
 # stdio mode — pipe JSON-RPC in/out
@@ -37,7 +38,7 @@ docker run -i --rm \
   ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-### Required environment variables
+### 🔑 Required environment variables
 
 Pass them via `--env-file` (a gitignored `.env`) or a Kubernetes Secret:
 
@@ -58,12 +59,15 @@ Pass them via `--env-file` (a gitignored `.env`) or a Kubernetes Secret:
 | `REPORT_STABLE_ORDER` | no | JSON list: issue keys in stable order |
 | `REPORT_NON_ISSUE_SECTIONS` | no | JSON list: non-issue section titles |
 
-> **Never** bake `JIRA_PAT` into the image. The `.dockerignore` excludes
-> `.env`, `.venv/`, `.history/`, and build artifacts from the build context.
+> ⚠️ **Warning:** **Never** bake `JIRA_PAT` into the image. The `.dockerignore`
+> excludes `.env`, `.venv/`, `.history/`, and build artifacts from the build
+> context.
 
 See [configuration.md](configuration.md) for the full variable reference.
 
-## CI/CD
+---
+
+## 🔄 CI/CD
 
 The repo has two GitHub Actions workflows:
 
@@ -72,11 +76,11 @@ The repo has two GitHub Actions workflows:
 | [`ci.yml`](../.github/workflows/ci.yml) | push / PR to `main` | `ruff check` + `ruff format --check` + `mypy src/` + `pytest tests/ -v` on Python 3.12 |
 | [`release.yml`](../.github/workflows/release.yml) | git tag `v*` | Build wheel, build & push Docker image to `ghcr.io/korrnals/jira-tempo-mcp:<tag>`, create GitHub Release |
 
-CI uses the ruff / mypy / pytest configuration from `pyproject.toml` — no
-duplicated config. Pip dependencies are cached via `actions/setup-python`
-keyed on `pyproject.toml`.
+> 💡 **Tip:** CI uses the ruff / mypy / pytest configuration from `pyproject.toml`
+> — no duplicated config. Pip dependencies are cached via `actions/setup-python`
+> keyed on `pyproject.toml`.
 
-### CI pipeline detail
+### 📊 CI pipeline detail
 
 ```mermaid
 flowchart LR
@@ -89,10 +93,12 @@ flowchart LR
     D --> H[pytest tests/ -v]
 ```
 
-Concurrency: `ci-${{ github.ref }}` with `cancel-in-progress: true` — a new
-push cancels the previous run on the same branch.
+> 💡 **Tip:** Concurrency: `ci-${{ github.ref }}` with `cancel-in-progress: true`
+> — a new push cancels the previous run on the same branch.
 
-## Release process
+---
+
+## 🏷️ Release process
 
 ```bash
 # 1. Bump version in pyproject.toml
@@ -104,18 +110,18 @@ git push origin v0.1.0
 
 The release workflow then runs automatically:
 
-1. **Build wheel** — `python -m build` produces wheel + sdist, uploaded as a
+1. 📦 **Build wheel** — `python -m build` produces wheel + sdist, uploaded as a
    workflow artifact.
-2. **Publish to PyPI** — the wheel is published to
+2. 📤 **Publish to PyPI** — the wheel is published to
    [pypi.org/project/jira-tempo-mcp](https://pypi.org/project/jira-tempo-mcp/)
    via Trusted Publishing (OIDC). No API token is stored in the repo.
-3. **Build & push Docker image** — multi-stage build pushed to
+3. 🐳 **Build & push Docker image** — multi-stage build pushed to
    `ghcr.io/korrnals/jira-tempo-mcp` with semver tags (see
    [Docker image tags](#docker-image-tags)).
-4. **Create GitHub Release** — auto-generated release notes with the wheel
+4. 📝 **Create GitHub Release** — auto-generated release notes with the wheel
    attached as a download asset.
 
-### Release pipeline detail
+### 📊 Release pipeline detail
 
 ```mermaid
 flowchart LR
@@ -131,7 +137,7 @@ flowchart LR
     H --> I
 ```
 
-Permissions required by `release.yml`:
+### 🔐 Permissions required by `release.yml`
 
 | Permission | Why |
 | --- | --- |
@@ -139,7 +145,9 @@ Permissions required by `release.yml`:
 | `packages: write` | push image to ghcr.io |
 | `id-token: write` | PyPI Trusted Publishing (OIDC) — scoped to the `pypi-publish` job only |
 
-### PyPI Trusted Publishing setup
+---
+
+### 🔑 PyPI Trusted Publishing setup
 
 The `pypi-publish` job uses **Trusted Publishing (OIDC)** — no long-lived API
 token is stored in GitHub secrets. This is the recommended PyPI publishing
@@ -157,13 +165,15 @@ To enable it for the first release:
    - Environment: `pypi`
 3. Save. The first `v*` tag push will publish to PyPI automatically.
 
-> **First-release fallback:** if Trusted Publishing is not yet configured,
-> you can temporarily use an API token. Add `PYPI_API_TOKEN` as a repository
-> secret and switch the `pypi-publish` job to
+> ⚠️ **Warning — first-release fallback:** if Trusted Publishing is not yet
+> configured, you can temporarily use an API token. Add `PYPI_API_TOKEN` as a
+> repository secret and switch the `pypi-publish` job to
 > `password: ${{ secrets.PYPI_API_TOKEN }}`. Switch back to OIDC once the
 > publisher is configured — tokens are a larger blast radius than OIDC.
 
-### Docker image tags
+---
+
+### 🏷️ Docker image tags
 
 The `docker/metadata-action` produces the following tags from a git tag:
 
@@ -183,7 +193,9 @@ Rules:
 - `type=raw,value=latest` — only when the tag has **no** `-` (pre-release
   tags like `v0.1.0-rc.1` do **not** get `latest`).
 
-## Pre-commit hooks
+---
+
+## 🪝 Pre-commit hooks
 
 The project ships a `.pre-commit-config.yaml` that runs lint and type
 checks before every commit:
@@ -200,10 +212,12 @@ pre-commit install
 | `mypy src/` | Strict type check on `src/` |
 | `trailing-whitespace` / `end-of-file-fixer` / `check-yaml` / `check-added-large-files` | Standard hygiene |
 
-Bypass in an emergency: `git commit --no-verify` (use sparingly).
+> ⚠️ **Warning:** Bypass in an emergency: `git commit --no-verify` (use sparingly).
 
-## Next steps
+---
 
-- [installation.md](installation.md) — local install paths
-- [architecture.md](architecture.md#docker-build-safety) — Docker security model
-- [configuration.md](configuration.md) — env vars for the container
+## ➡️ Next steps
+
+- 📦 [installation.md](installation.md) — local install paths
+- 🏗️ [architecture.md](architecture.md#docker-build-safety) — Docker security model
+- ⚙️ [configuration.md](configuration.md) — env vars for the container

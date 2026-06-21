@@ -12,10 +12,12 @@ MCP server for **self-hosted Jira (Server / Data Center) + Tempo Timesheets 4**.
 Track time, list worklogs, and generate weekly reports — all from your AI agent
 (Copilot, Claude, etc.) via the Model Context Protocol.
 
-> **Русская версия:** [README.ru.md](README.ru.md)
-> **Full documentation:** [docs/README.md](docs/README.md)
+> 📖 **Русская версия:** [README.ru.md](README.ru.md)
+> 📚 **Full documentation:** [docs/README.md](docs/README.md)
 
-## Features
+---
+
+## 📋 Features
 
 | Tool | What it does |
 | --- | --- |
@@ -36,7 +38,11 @@ See [docs/reports.md](docs/reports.md#team-reports) for details.
 See [docs/api.md](docs/api.md) for the full tool reference with parameters and
 examples.
 
-## Quick start
+---
+
+## 🚀 Quick start
+
+Get up and running in under a minute:
 
 **Install (one command):**
 
@@ -46,11 +52,14 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 
 This downloads and runs the interactive installer, which:
 
-- Checks Python 3.11+ and pip
-- Clones the repo and creates a venv
-- Installs the package
-- Guides you through Jira credentials setup
-- Registers the MCP server in VS Code (user + workspace)
+- ✅ Checks Python 3.11+ and pip
+- ✅ Clones the repo and creates a venv
+- ✅ Installs the package
+- ✅ Guides you through Jira credentials setup
+- ✅ Registers the MCP server in VS Code (user + workspace)
+
+> 💡 **Tip:** The installer never requires `sudo` — everything lives in user space.
+> It's idempotent: re-running updates without clobbering existing config.
 
 **Uninstall:**
 
@@ -64,16 +73,12 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:latest
 ```
 
-> **Note:** The install script URL works once the repository is public.
+> ⚠️ **Warning:** The install script URL works once the repository is public.
 > Until then, clone manually and run `python install.py`.
->
-> The installer never requires sudo — everything lives in user space. It is
-> idempotent: re-running updates the repo and re-runs the installer without
-> clobbering existing `.env.local` or `mcp.json` entries (the installer merges).
 
 ---
 
-### From source (development)
+### 🔧 From source (development)
 
 The interactive installer creates a venv, writes `.env`, registers the MCP
 server in VS Code, and optionally verifies Jira connectivity:
@@ -104,7 +109,9 @@ docker run -i --rm \
 
 Full installation paths: [docs/installation.md](docs/installation.md).
 
-## Configuration
+---
+
+## ⚙️ Configuration
 
 All configuration is via environment variables. Required:
 
@@ -112,14 +119,16 @@ All configuration is via environment variables. Required:
 | --- | --- |
 | `JIRA_BASE_URL` | Jira base URL (no trailing slash) |
 | `JIRA_USER` | Jira username (login) |
-| `JIRA_PAT` | Personal Access Token — **never commit this** |
+| `JIRA_PAT` | Personal Access Token — 🔑 **never commit this** |
 
 Optional: `JIRA_TIMEZONE`, `TEMPO_API_TOKEN`, `LOG_LEVEL`, `JIRA_HTTP_TIMEOUT`,
 and report-related vars (`REPORT_*`).
 
 Full reference: [docs/configuration.md](docs/configuration.md).
 
-## MCP integration
+---
+
+## 🔌 MCP integration
 
 The server runs over **stdio** and is registered in VS Code `mcp.json`:
 
@@ -140,12 +149,14 @@ The server runs over **stdio** and is registered in VS Code `mcp.json`:
 }
 ```
 
-> **Tip:** always use **absolute paths** for `envFile` — `~` does not work in
+> 💡 **Tip:** Always use **absolute paths** for `envFile` — `~` does not work in
 > sandboxed environments (distrobox, snap, containers).
 
 Full guide: [docs/mcp-integration.md](docs/mcp-integration.md).
 
-## CLI
+---
+
+## 🖥️ CLI
 
 ```text
 jira-tempo-mcp                  # start the MCP server (default)
@@ -157,33 +168,39 @@ jira-tempo-mcp --version        # show version
 
 Full reference: [docs/cli.md](docs/cli.md).
 
-## Security
+---
 
-- **Tokens never leave the local process** — `JIRA_PAT` is sent only to your
+## 🔒 Security
+
+- **🔑 Tokens never leave the local process** — `JIRA_PAT` is sent only to your
   Jira instance over HTTPS.
-- **TLS verification always on**, **HTTP redirects disabled**
+- **🛡️ TLS verification always on**, **HTTP redirects disabled**
   (`follow_redirects=False`) — prevents PAT leakage via redirect.
-- **Tokens masked in logs** — `Config.__repr__` replaces `JIRA_PAT` with `***`.
-- **Input validation** — issue keys, dates, and `output_dir` (path traversal
+- **👁️ Tokens masked in logs** — `Config.__repr__` replaces `JIRA_PAT` with `***`.
+- **✅ Input validation** — issue keys, dates, and `output_dir` (path traversal
   guard) are validated before any API call.
-- **Docker** — multi-stage build, non-root user, secrets never baked in.
+- **🐳 Docker** — multi-stage build, non-root user, secrets never baked in.
 
 Full model: [docs/architecture.md#security](docs/architecture.md#security).
 
-## Documentation
+---
+
+## 📖 Documentation
 
 | Topic | Document |
 | --- | --- |
-| Installation | [docs/installation.md](docs/installation.md) |
-| Configuration | [docs/configuration.md](docs/configuration.md) |
-| MCP integration | [docs/mcp-integration.md](docs/mcp-integration.md) |
-| CLI | [docs/cli.md](docs/cli.md) |
-| API (MCP tools) | [docs/api.md](docs/api.md) |
-| Architecture | [docs/architecture.md](docs/architecture.md) |
-| Reports | [docs/reports.md](docs/reports.md) |
-| Deployment | [docs/deployment.md](docs/deployment.md) |
-| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| 📦 Installation | [docs/installation.md](docs/installation.md) |
+| ⚙️ Configuration | [docs/configuration.md](docs/configuration.md) |
+| 🔌 MCP integration | [docs/mcp-integration.md](docs/mcp-integration.md) |
+| 🖥️ CLI | [docs/cli.md](docs/cli.md) |
+| 🌐 API (MCP tools) | [docs/api.md](docs/api.md) |
+| 🏗️ Architecture | [docs/architecture.md](docs/architecture.md) |
+| 📝 Reports | [docs/reports.md](docs/reports.md) |
+| 🐳 Deployment | [docs/deployment.md](docs/deployment.md) |
+| 🐛 Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
-## License
+---
+
+## 📄 License
 
 MIT

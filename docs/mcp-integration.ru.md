@@ -1,9 +1,11 @@
-# MCP-интеграция
+# 🔌 MCP-интеграция
 
 Как `jira-tempo-mcp` подключается к VS Code Copilot Chat через Model Context
 Protocol.
 
-## Как это работает
+---
+
+## 🏗️ Как это работает
 
 ```mermaid
 flowchart LR
@@ -17,7 +19,9 @@ MCP-сервер запускается как дочерний процесс V
 через stdio (stdin/stdout); логи идут в stderr. VS Code находит его через
 запись в `mcp.json`.
 
-## Конфиг уровня пользователя — `~/.config/Code/User/mcp.json`
+---
+
+## 👤 Конфиг уровня пользователя — `~/.config/Code/User/mcp.json`
 
 Установщик (`python install.py`) регистрирует сервер здесь автоматически.
 Ручной аналог на Linux:
@@ -41,10 +45,12 @@ MCP-сервер запускается как дочерний процесс V
 }
 ```
 
-На macOS путь `~/Library/Application Support/Code/User/mcp.json`; на Windows
-`%APPDATA%\Code\User\mcp.json`.
+> 💡 **Совет:** На macOS путь `~/Library/Application Support/Code/User/mcp.json`;
+> на Windows `%APPDATA%\Code\User\mcp.json`.
 
-## Конфиг уровня workspace — `.vscode/mcp.json`
+---
+
+## 📁 Конфиг уровня workspace — `.vscode/mcp.json`
 
 Установщик также записывает workspace-уровневый `.vscode/mcp.json` с
 переменными `${workspaceFolder}`, чтобы конфиг был переносимым между
@@ -69,7 +75,9 @@ MCP-сервер запускается как дочерний процесс V
 Не-секретные переменные (`JIRA_BASE_URL`, `JIRA_USER`, …) подставляются из
 конфига уровня пользователя или `.env.local`.
 
-## `envFile` — единый `.env.local` для секретов
+---
+
+## 🔑 `envFile` — единый `.env.local` для секретов
 
 Рекомендуемый паттерн: хранить секреты всех MCP-серверов в одном
 `~/.config/Code/User/.env.local` и ссылаться на него через `envFile`:
@@ -84,7 +92,7 @@ VS Code MCP-host загружает этот файл и подставляет 
 процесса сервера. Так секреты не попадают в `mcp.json` (который может
 коммититься) и в историю shell.
 
-### Абсолютные пути для `envFile` (distrobox / контейнеры)
+### ⚠️ Абсолютные пути для `envFile` (distrobox / контейнеры)
 
 **Всегда используйте абсолютные пути для `envFile`.** Сокращение `~` не
 работает в sandbox-окружениях (distrobox, snap, flatpak, контейнеры), так
@@ -97,10 +105,12 @@ VS Code MCP-host загружает этот файл и подставляет 
 | distrobox | `~/.config/Code/User/.env.local` | `/var/home/your-username/.distrobox/box/home/.config/Code/User/.env.local` |
 | macOS | `~/.config/…` | `/Users/your-username/.config/…` |
 
-Симптом бага: `Failed to read envFile '~/...'` в MCP-панели, сервер не
-стартует.
+> 🐛 **Симптом бага:** `Failed to read envFile '~/...'` в MCP-панели, сервер не
+> стартует.
 
-## `${input:...}` для HTTP-серверов
+---
+
+## 🌐 `${input:...}` для HTTP-серверов
 
 Некоторые MCP-серверы (например, GitHub MCP) используют тип `http` и
 требуют секреты в HTTP-заголовках. Подстановка `${env:VAR}` **не работает**
@@ -132,11 +142,13 @@ VS Code MCP-host загружает этот файл и подставляет 
 }
 ```
 
-`jira-tempo-mcp` — **stdio**-сервер, поэтому использует `envFile` + `env`, а
-не `${input:...}`. Паттерн `${input:...}` описан здесь для пользователей,
-которые запускают несколько MCP-серверов рядом.
+> 💡 **Совет:** `jira-tempo-mcp` — **stdio**-сервер, поэтому использует
+> `envFile` + `env`, а не `${input:...}`. Паттерн `${input:...}` описан здесь
+> для пользователей, которые запускают несколько MCP-серверов рядом.
 
-## Переменные `${workspaceFolder}`
+---
+
+## 📁 Переменные `${workspaceFolder}`
 
 | Переменная | Разворачивается в |
 | --- | --- |
@@ -146,7 +158,9 @@ VS Code MCP-host загружает этот файл и подставляет 
 Используйте их в workspace-уровневом `.vscode/mcp.json` для переносимости.
 Избегайте их в user-level `mcp.json` — там нет контекста workspace.
 
-## Решение проблем запуска MCP
+---
+
+## 🐛 Решение проблем запуска MCP
 
 | Симптом | Причина | Решение |
 | --- | --- | --- |
@@ -159,8 +173,10 @@ VS Code MCP-host загружает этот файл и подставляет 
 
 Полный список — в [troubleshooting.ru.md](troubleshooting.ru.md).
 
-## Дальнейшие шаги
+---
 
-- [api.ru.md](api.ru.md) — справочник MCP-инструментов
-- [configuration.ru.md](configuration.ru.md) — все переменные окружения
-- [troubleshooting.ru.md](troubleshooting.ru.md) — частые ошибки
+## ➡️ Дальнейшие шаги
+
+- 🌐 [api.ru.md](api.ru.md) — справочник MCP-инструментов
+- ⚙️ [configuration.ru.md](configuration.ru.md) — все переменные окружения
+- 🐛 [troubleshooting.ru.md](troubleshooting.ru.md) — частые ошибки

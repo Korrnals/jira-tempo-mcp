@@ -1,9 +1,11 @@
-# Установка
+# 📦 Установка
 
 Способы установки `jira-tempo-mcp` — четыре пути: интерактивный установщик,
 pip, из исходников, Docker.
 
-## Требования
+---
+
+## 📦 Требования
 
 | Требование | Версия | Примечания |
 | --- | --- | --- |
@@ -12,7 +14,9 @@ pip, из исходников, Docker.
 | Jira | Server / Data Center | установлен Tempo Timesheets 4.x |
 | Jira PAT | — | Personal Access Token (Профиль → Personal Access Tokens) |
 
-## Путь 1 — Интерактивный установщик (рекомендуется)
+---
+
+## 🚀 Путь 1 — Интерактивный установщик (рекомендуется)
 
 Установщик создаёт venv, записывает `.env`, регистрирует MCP-сервер в VS Code
 и опционально проверяет связь с Jira:
@@ -24,19 +28,22 @@ python install.py
 
 Выполняемые шаги:
 
-1. Проверка Python ≥ 3.11
-2. Создание `.venv` и установка пакета (editable, с dev-зависимостями)
-3. Запись `.env` — запросы Jira URL, имени пользователя, PAT (ввод скрыт через
+1. ✅ Проверка Python ≥ 3.11
+2. ✅ Создание `.venv` и установка пакета (editable, с dev-зависимостями)
+3. ✅ Запись `.env` — запросы Jira URL, имени пользователя, PAT (ввод скрыт через
    `getpass`, права файла `0600`)
-4. Регистрация MCP-сервера в VS Code `mcp.json` — **добавляет** запись в
+4. ✅ Регистрация MCP-сервера в VS Code `mcp.json` — **добавляет** запись в
    существующий файл, не перезаписывает другие серверы. Сначала создаётся
    резервная копия `mcp.json.bak`.
-5. Опциональная проверка связи с Jira (`/rest/api/2/myself`)
+5. ✅ Опциональная проверка связи с Jira (`/rest/api/2/myself`)
 
-Запускайте `python install.py` в любой момент, чтобы перегенерировать `.env`
-или перерегистрировать конфигурацию VS Code.
+> 💡 **Совет:** Запускайте `python install.py` в любой момент, чтобы
+> перегенерировать `.env` или перерегистрировать конфигурацию VS Code.
+> Установщик идемпотентен.
 
-## Путь 2 — pip (опубликованный пакет)
+---
+
+## 📥 Путь 2 — pip (опубликованный пакет)
 
 ```bash
 pip install jira-tempo-mcp
@@ -46,7 +53,9 @@ jira-tempo-mcp serve
 Конфигурация читается из переменных окружения или файла `.env` в рабочей
 директории. См. [configuration.ru.md](configuration.ru.md).
 
-## Путь 3 — из исходников
+---
+
+## 🔧 Путь 3 — из исходников
 
 ```bash
 git clone https://github.com/Korrnals/jira-tempo-mcp.git
@@ -57,10 +66,12 @@ pip install -e ".[dev]"
 jira-tempo-mcp serve
 ```
 
-В Windows PowerShell замените `source .venv/bin/activate` на
-`.venv\Scripts\Activate.ps1`.
+> 💡 **Совет:** В Windows PowerShell замените `source .venv/bin/activate` на
+> `.venv\Scripts\Activate.ps1`.
 
-## Путь 4 — Docker
+---
+
+## 🐳 Путь 4 — Docker
 
 Образ публикуется в GitHub Container Registry при каждом теге `v*`:
 
@@ -74,7 +85,9 @@ docker run -i --rm \
 не вшиваются в образ — передавайте их при запуске через `--env-file` или
 Kubernetes Secret. См. [deployment.ru.md](deployment.ru.md).
 
-## Создание venv вручную
+---
+
+## 🛠️ Создание venv вручную
 
 ```bash
 python -m venv .venv
@@ -85,7 +98,9 @@ pip install -e ".[dev]"
 Экстра `[dev]` устанавливает `ruff`, `mypy`, `pytest`, `pytest-asyncio`,
 `types-pytz` и `pre-commit`.
 
-## Проверка установки
+---
+
+## 🔍 Проверка установки
 
 ```bash
 # Версия
@@ -99,8 +114,10 @@ jira-tempo-mcp serve
 <your-jira-url>`, установка корректна. Сервер работает через stdio — читает
 JSON-RPC из stdin и пишет в stdout.
 
-## Дальнейшие шаги
+---
 
-- [configuration.ru.md](configuration.ru.md) — все переменные окружения
-- [mcp-integration.ru.md](mcp-integration.ru.md) — подключение сервера к VS Code
-- [cli.ru.md](cli.ru.md) — справочник CLI-команд
+## ➡️ Дальнейшие шаги
+
+- ⚙️ [configuration.ru.md](configuration.ru.md) — все переменные окружения
+- 🔌 [mcp-integration.ru.md](mcp-integration.ru.md) — подключение сервера к VS Code
+- 🖥️ [cli.ru.md](cli.ru.md) — справочник CLI-команд

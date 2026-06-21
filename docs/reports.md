@@ -1,9 +1,11 @@
-# Weekly reports
+# 📝 Weekly reports
 
 The `generate_weekly_report` tool produces a `.txt` weekly work report from
 Tempo worklogs.
 
-## How it works
+---
+
+## 📝 How it works
 
 1. Fetches all Tempo worklogs for the target week (Mon–Fri).
 2. Groups worklogs by issue key.
@@ -11,7 +13,9 @@ Tempo worklogs.
 4. Fetches Jira issue summaries for unknown issues.
 5. Writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
 
-## Filename format
+---
+
+## 📄 Filename format
 
 ```text
 <prefix>_<DDMMYY>-<DDMMYY>.txt
@@ -20,9 +24,11 @@ Tempo worklogs.
 - `<prefix>` — `REPORT_FILENAME_PREFIX` (default: `JIRA_USER`)
 - `<DDMMYY>-<DDMMYY>` — Monday–Friday dates of the target week
 
-Example: `your-username_160620-200620.txt`
+> 💡 **Tip:** Example: `your-username_160620-200620.txt`
 
-## Section mapping
+---
+
+## 🗺️ Section mapping
 
 Map issue keys to report section titles via env vars:
 
@@ -44,9 +50,11 @@ export REPORT_SECTION_MAP_FILE=/path/to/sections.json
 }
 ```
 
-Issues not in the map are grouped under their Jira summary.
+> 💡 **Tip:** Issues not in the map are grouped under their Jira summary.
 
-## Stable order
+---
+
+## 📊 Stable order
 
 Force specific issue keys to always appear in a fixed order (if they have
 worklogs):
@@ -58,7 +66,9 @@ export REPORT_STABLE_ORDER='["PROJECT-100", "PROJECT-101", "PROJECT-102"]'
 Issues in `REPORT_STABLE_ORDER` appear first, in the given order. Remaining
 issues follow in insertion order.
 
-## Non-issue sections
+---
+
+## 📋 Non-issue sections
 
 Add section titles that have no issue key (e.g. meetings, admin work):
 
@@ -70,7 +80,9 @@ These sections appear in the report with their title only — no issue key
 prefix. They are placeholders for work that is not tied to a specific
 Jira issue.
 
-## Other report variables
+---
+
+## ⚙️ Other report variables
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -78,7 +90,9 @@ Jira issue.
 | `REPORT_AUTHOR_NAME` | `JIRA_USER` | Author display name in the report header |
 | `REPORT_FILENAME_PREFIX` | `JIRA_USER` | Prefix for report filenames |
 
-## Example report
+---
+
+## 📝 Example report
 
 ```text
 Weekly report: 16.06.2026 – 20.06.2026
@@ -101,22 +115,24 @@ Jira triage
 - (no issue key)
 ```
 
-## Team reports
+---
+
+## 👥 Team reports
 
 The `generate_team_report` tool produces a `.txt` team report from Tempo
 worklogs for multiple Jira users. Each user gets a section with their issue
 breakdown; an aggregate summary shows per-user totals, the grand total, and
 the top 5 issues across the team.
 
-### Filename format
+### 📄 Filename format
 
 ```text
 team_<DDMMYY>-<DDMMYY>.txt
 ```
 
-Example: `team_150626-190626.txt`
+> 💡 **Tip:** Example: `team_150626-190626.txt`
 
-### Rate-limiting
+### 🛡️ Rate-limiting
 
 Team reports issue one Tempo request per user. To avoid hitting the Tempo
 rate limit, concurrent requests are bounded by a semaphore:
@@ -128,9 +144,9 @@ rate limit, concurrent requests are bounded by a semaphore:
 | `TEMPO_MAX_RETRIES` | `3` | Retry attempts on HTTP 429 (exponential backoff: 1s, 2s, 4s) |
 | `REPORT_TEAM_OUTPUT_DIR` | empty | Output dir for team reports (empty = use `REPORT_OUTPUT_DIR`) |
 
-Users without worklogs are listed in the summary under "Without tracked time".
+> 💡 **Tip:** Users without worklogs are listed in the summary under "Without tracked time".
 
-### Example team report
+### 📝 Example team report
 
 ```text
 Командный отчёт за неделю (15.06.2026 - 19.06.2026):
@@ -157,7 +173,9 @@ Users without worklogs are listed in the summary under "Without tracked time".
   - PROJECT-200 (Task B): 6h
 ```
 
-## Custom templates
+---
+
+## 🎨 Custom templates
 
 Since v0.2.0 the report rendering is pluggable. Builtin templates:
 
@@ -167,17 +185,17 @@ Since v0.2.0 the report rendering is pluggable. Builtin templates:
 | `weekly_summary` | Compact summary: total hours, top 5 issues, no per-issue detail |
 | `team_report` | Team report: per-user sections + aggregate summary |
 
-### Selecting a template
+### 📌 Selecting a template
 
 Pass the `template` parameter to `generate_weekly_report` or
 `generate_team_report`, or set the `REPORT_TEMPLATE` env var.
 
-### Adding custom templates
+### ➕ Adding custom templates
 
 Place template files in `REPORT_TEMPLATE_DIR` (default:
 `~/.config/jira-tempo-mcp/templates/`). Two formats are supported:
 
-#### Jinja2 templates (`.j2`) — safe by default
+#### 📜 Jinja2 templates (`.j2`) — safe by default
 
 Loaded into a `SandboxedEnvironment`. The template context includes:
 `worklogs`, `config`, `format_seconds`, `format_date`, `users`,
@@ -190,9 +208,9 @@ Total worklogs: {{ worklogs | length }}
 Grand total: {{ format_seconds(worklogs | map(attribute='timeSpentSeconds') | sum) }}
 ```
 
-Unsafe constructs (e.g. `{{ config.__class__ }}`) are blocked by the sandbox.
+> ✅ Unsafe constructs (e.g. `{{ config.__class__ }}`) are blocked by the sandbox.
 
-#### Python templates (`.py`) — opt-in, code execution risk
+#### 🐍 Python templates (`.py`) — opt-in, code execution risk
 
 Loaded only when `REPORT_TEMPLATE_ALLOW_PY=1`. The module must expose a
 `TEMPLATE` attribute implementing the `ReportTemplate` protocol:
@@ -208,23 +226,26 @@ class MyTemplate:
 TEMPLATE = MyTemplate()
 ```
 
-> **Warning:** Python templates execute arbitrary code. Only load `.py`
+> ⚠️ **Warning:** Python templates execute arbitrary code. Only load `.py`
 > files from a trusted source. A warning is logged on every load.
 
-### Listing available templates
+### 📋 Listing available templates
 
 Use the `list_report_templates` tool to see all builtin + custom templates.
 
-## Path traversal protection
-## Path traversal protection
+---
+
+## 🛡️ Path traversal protection
 
 The `output_dir` parameter of `generate_weekly_report` is validated against
 path traversal. The resolved path must be inside the allowed root
 (`REPORT_OUTPUT_DIR` or `./reports`). Paths like `../../etc` are rejected
 with an explicit error.
 
-## Next steps
+---
 
-- [api.md#generate_weekly_report](api.md#generate_weekly_report) — tool parameters
-- [configuration.md](configuration.md#weekly-report-optional) — all report env vars
-- [troubleshooting.md](troubleshooting.md) — report-related errors
+## ➡️ Next steps
+
+- 🌐 [api.md#generate_weekly_report](api.md#generate_weekly_report) — tool parameters
+- ⚙️ [configuration.md](configuration.md#weekly-report-optional) — all report env vars
+- 🐛 [troubleshooting.md](troubleshooting.md) — report-related errors
