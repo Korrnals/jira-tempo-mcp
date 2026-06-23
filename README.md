@@ -13,7 +13,20 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 (Copilot, Claude, etc.) via the Model Context Protocol.
 
 > 📖 **Русская версия:** [README.ru.md](README.ru.md)
-> 📚 **Full documentation:** [docs/README.md](docs/README.md)
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|---------|
+| [API Reference](docs/api.md) | Full MCP tool reference with parameters and examples |
+| [Installation](docs/installation.md) | Setup and installation guide |
+| [Configuration](docs/configuration.md) | Environment variables reference |
+| [Reports](docs/reports.md) | Report formats (txt, md, json) and templates |
+| [Architecture](docs/architecture.md) | Project architecture and design decisions |
+| [CLI](docs/cli.md) | Command-line interface reference |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
+| [MCP Integration](docs/mcp-integration.md) | Integration with MCP clients (VS Code, etc.) |
+| [Deployment](docs/deployment.md) | Docker and deployment options |
 
 ---
 
@@ -27,13 +40,18 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 | `delete_worklog` | Delete a worklog (undo mis-tracked time) |
 | `get_issue` | Get Jira issue metadata (summary, status, project) |
 | `list_favorite_issues` | List favorite issues for the current user |
-| `generate_weekly_report` | Generate a weekly `.txt` report from Tempo worklogs |
-| `generate_team_report` | Generate a team report for multiple Jira users (rate-limit safe) |
+| `search_users` | Search Jira users by name, surname, or username |
+| `list_user_tasks` | Get tasks assigned to a Jira user with status, priority, comments |
+| `generate_weekly_report` | Generate a weekly report (txt/md/json) from Tempo worklogs |
+| `generate_team_report` | Generate a team report (txt/md/json) for multiple Jira users |
+| `generate_tasks_report` | Generate a tasks report (md/txt/json) grouped by status |
 | `list_report_templates` | List available report templates (builtin + custom) |
 
 Since v0.2.0 the server supports **team reports** (per-user aggregation with
 rate-limiting) and **custom report templates** (Jinja2 sandbox + opt-in Python).
-See [docs/reports.md](docs/reports.md#team-reports) for details.
+Since v0.3.0 all report generators support **three output formats**: `txt`
+(plain text), `md` (Markdown with tables and emojis), and `json` (structured
+JSON). See [docs/reports.md](docs/reports.md) for details.
 
 See [docs/api.md](docs/api.md) for the full tool reference with parameters and
 examples.
@@ -185,22 +203,6 @@ Full model: [docs/architecture.md#security](docs/architecture.md#security).
 
 ---
 
-## 📖 Documentation
-
-| Topic | Document |
-| --- | --- |
-| 📦 Installation | [docs/installation.md](docs/installation.md) |
-| ⚙️ Configuration | [docs/configuration.md](docs/configuration.md) |
-| 🔌 MCP integration | [docs/mcp-integration.md](docs/mcp-integration.md) |
-| 🖥️ CLI | [docs/cli.md](docs/cli.md) |
-| 🌐 API (MCP tools) | [docs/api.md](docs/api.md) |
-| 🏗️ Architecture | [docs/architecture.md](docs/architecture.md) |
-| 📝 Reports | [docs/reports.md](docs/reports.md) |
-| 🐳 Deployment | [docs/deployment.md](docs/deployment.md) |
-| 🐛 Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
-
----
-
-## 📄 License
+##  License
 
 MIT

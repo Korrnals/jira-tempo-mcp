@@ -37,6 +37,11 @@ DEFAULT_NON_ISSUE_SECTIONS: list[str] = []
 # Default directory for custom report templates (expanded at load time).
 _DEFAULT_TEMPLATE_DIR = str(Path.home() / ".config" / "jira-tempo-mcp" / "templates")
 
+# Default base directory for report output when REPORT_OUTPUT_DIR env is not set.
+# Uses ~/.mcp/jira-tempo-mcp/reports so reports land in a stable, predictable
+# location regardless of the MCP server process CWD.
+_DEFAULT_REPORT_DIR = str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
+
 
 class Config(BaseModel):
     """Runtime configuration loaded from environment.
@@ -104,6 +109,11 @@ class Config(BaseModel):
         description="Output dir for team reports. Empty = use report_output_dir.",
     )
 
+    report_team_users: list[str] = Field(
+        default_factory=list,
+        description="Default list of Jira usernames for team/tasks reports.",
+    )
+
     # --- Custom report templates (v0.2.0) ---
     report_template: str = Field(
         default="default",
@@ -158,6 +168,15 @@ class Config(BaseModel):
     def team_output_dir(self) -> str:
         """Output dir for team reports — falls back to report_output_dir."""
         return self.report_team_output_dir or self.report_output_dir
+
+    @property
+    def team_users_resolved(self) -> list[str]:
+        """Default users for team/tasks reports.
+
+        Returns report_team_users if non-empty, else falls back to [jira_user]
+        so a team report with no users and no env still works for the current user.
+        """
+        return list(self.report_team_users) if self.report_team_users else [self.jira_user]
 
     @property
     def template_dir_resolved(self) -> str:
@@ -245,7 +264,7 @@ def load_config() -> Config:
     tempo_token = os.getenv("TEMPO_API_TOKEN", "").strip() or None
     log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 
-    report_output_dir = os.getenv("REPORT_OUTPUT_DIR", "").strip()
+    report_output_dir = os.getenv("REPORT_OUTPUT_DIR", "").strip() or _DEFAULT_REPORT_DIR
     author_display_name = os.getenv("REPORT_AUTHOR_NAME", "").strip()
     report_filename_prefix = os.getenv("REPORT_FILENAME_PREFIX", "").strip()
     stable_order = _load_json_list("REPORT_STABLE_ORDER")
@@ -257,6 +276,7 @@ def load_config() -> Config:
     tempo_request_delay_ms = _load_int("TEMPO_REQUEST_DELAY_MS", 100)
     tempo_max_retries = _load_int("TEMPO_MAX_RETRIES", 3)
     report_team_output_dir = os.getenv("REPORT_TEAM_OUTPUT_DIR", "").strip()
+    report_team_users = _load_json_list("REPORT_TEAM_USERS")
     report_template = os.getenv("REPORT_TEMPLATE", "default").strip() or "default"
     report_template_path = os.getenv("REPORT_TEMPLATE_PATH", "").strip()
     report_template_dir = os.getenv("REPORT_TEMPLATE_DIR", "").strip()
@@ -286,6 +306,7 @@ def load_config() -> Config:
         tempo_request_delay_ms=tempo_request_delay_ms,
         tempo_max_retries=tempo_max_retries,
         report_team_output_dir=report_team_output_dir,
+        report_team_users=report_team_users,
         report_template=report_template,
         report_template_path=report_template_path,
         report_template_dir=report_template_dir,

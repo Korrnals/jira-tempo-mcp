@@ -9,6 +9,7 @@ or via the console script:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 import sys
@@ -21,9 +22,15 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from .client import JiraTempoClient, JiraTempoError, WorkerKeyResolutionError
+from .client import (
+    FavoritesEndpointUnavailableError,
+    JiraTempoClient,
+    JiraTempoError,
+    WorkerKeyResolutionError,
+)
 from .config import Config, load_config
 from .report import generate_weekly_report
+from .tasks_report import generate_tasks_report
 from .team_report import generate_team_report
 from .templates.loader import build_registry, resolve_template
 from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
@@ -74,7 +81,10 @@ TOOLS: list[Tool] = [
         description=(
             "Track (log) time on a Jira issue via Tempo. "
             "Provide issue key, duration (e.g. '1h 30m', '2h', '45m'), and optional comment. "
-            "The worklog is attributed to the token owner unless author_account_id is given."
+            "The worklog is attributed to the token owner unless author_account_id is given. "
+            "On some Tempo installations, `attributes` with `_Специализация_` is **required**. "
+            "If you get a VALIDATION_FAILED error, provide "
+            '`attributes: {"_Специализация_": "<value>", "_Форматработы_": "<value>"}`.'
         ),
         inputSchema={
             "type": "object",
@@ -90,11 +100,16 @@ TOOLS: list[Tool] = [
                 "comment": {"type": "string", "description": "Optional worklog comment"},
                 "date_started": {
                     "type": "string",
-                    "description": "ISO 8601 datetime with tz (e.g. 2026-06-19T10:00:00+03:00). Defaults to now.",
+                    "description": "Date in YYYY-MM-DD format (e.g. 2026-06-19). Defaults to today.",
                 },
                 "author_account_id": {
                     "type": "string",
                     "description": "Optional Tempo worker key. Defaults to token owner.",
+                },
+                "attributes": {
+                    "type": "object",
+                    "description": 'Optional Tempo work attributes (e.g. {"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}). Required on some installations.',
+                    "additionalProperties": {"type": "string"},
                 },
             },
             "required": ["issue_key", "time_spent"],
@@ -113,7 +128,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="get_issue",
-        description="Get Jira issue metadata: summary, status, project, issue type.",
+        description="Get Jira issue metadata: summary, status, project, priority, assignee, duedate, issuetype, components.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -133,11 +148,12 @@ TOOLS: list[Tool] = [
     Tool(
         name="generate_weekly_report",
         description=(
-            "Generate a weekly work report from Tempo worklogs and save it as a .txt file. "
+            "Generate a weekly work report from Tempo worklogs and save it as a file. "
             "Groups worklogs by issue, maps known issues to stable sections, and writes "
-            "<prefix>_<DDMMYY>-<DDMMYY>.txt to the configured output directory. "
+            "<prefix>_<DDMMYY>-<DDMMYY>.<ext> to the configured output directory. "
             "Returns the path to the generated file. "
-            "Since v0.2.0 a custom template can be selected via the 'template' parameter."
+            "Since v0.2.0 a custom template can be selected via the 'template' parameter (txt only). "
+            "Since v0.3.0 the 'format' parameter selects output: txt (default), md (Markdown), json."
         ),
         inputSchema={
             "type": "object",
@@ -155,7 +171,24 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Template name (e.g. 'default', 'weekly_summary'). "
                         "Defaults to REPORT_TEMPLATE env or 'default'. "
-                        "Use list_report_templates to see available templates."
+                        "Use list_report_templates to see available templates. "
+                        "Only used when format='txt'."
+                    ),
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["txt", "md", "json"],
+                    "description": (
+                        "Output format: 'txt' (plain text, default), 'md' (Markdown), 'json' (structured JSON). "
+                        "File extension matches the format."
+                    ),
+                    "default": "txt",
+                },
+                "username": {
+                    "type": "string",
+                    "description": (
+                        "Optional Jira username to generate the report for (instead of the "
+                        "configured JIRA_USER). If provided, worklogs are filtered to this user."
                     ),
                 },
             },
@@ -168,8 +201,9 @@ TOOLS: list[Tool] = [
             "Generate a team work report from Tempo worklogs for multiple Jira users. "
             "Fetches worklogs per user with bounded concurrency (rate-limit safe), "
             "renders per-user sections plus an aggregate summary, and writes "
-            "team_<DDMMYY>-<DDMMYY>.txt to the configured output directory. "
-            "Returns the file path and a short summary (per-user totals, top issues)."
+            "team_<DDMMYY>-<DDMMYY>.<ext> to the configured output directory. "
+            "Returns the file path and a short summary (per-user totals, top issues). "
+            "Since v0.3.0 the 'format' parameter selects output: txt (default), md (Markdown), json."
         ),
         inputSchema={
             "type": "object",
@@ -177,7 +211,10 @@ TOOLS: list[Tool] = [
                 "users": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Jira usernames to include in the team report (non-empty).",
+                    "description": (
+                        "Jira usernames to include in the team report. "
+                        "If not provided, uses REPORT_TEAM_USERS env var or the current user."
+                    ),
                 },
                 "date_from": {
                     "type": "string",
@@ -193,14 +230,23 @@ TOOLS: list[Tool] = [
                 },
                 "template": {
                     "type": "string",
-                    "description": "Template name. Defaults to 'team_report'.",
+                    "description": "Template name. Defaults to 'team_report'. Only used when format='txt'.",
                 },
                 "output_dir": {
                     "type": "string",
                     "description": "Output directory. Defaults to REPORT_TEAM_OUTPUT_DIR or REPORT_OUTPUT_DIR.",
                 },
+                "format": {
+                    "type": "string",
+                    "enum": ["txt", "md", "json"],
+                    "description": (
+                        "Output format: 'txt' (plain text, default), 'md' (Markdown), 'json' (structured JSON). "
+                        "File extension matches the format."
+                    ),
+                    "default": "txt",
+                },
             },
-            "required": ["users"],
+            "required": [],
         },
     ),
     Tool(
@@ -211,6 +257,138 @@ TOOLS: list[Tool] = [
             "Custom templates are discovered from REPORT_TEMPLATE_DIR."
         ),
         inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="search_users",
+        description=(
+            "Search Jira users by name, surname, username, or email fragment. "
+            "Returns a list of matching users with name, key, displayName, "
+            "emailAddress, and active status."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query — name, surname, or username fragment.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max number of users to return. Defaults to 10.",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="list_user_tasks",
+        description=(
+            "Get tasks assigned to a Jira user with status, due date, summary, "
+            "priority, issue type, project, and recent comments (last 3). "
+            "Returns up to 100 tasks ordered by last updated."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "description": "Jira username (e.g. 'golikhin').",
+                },
+                "status_filter": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of status names to filter by.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max number of tasks to return. Defaults to 100.",
+                    "default": 100,
+                },
+            },
+            "required": ["username"],
+        },
+    ),
+    Tool(
+        name="list_issues_by_jql",
+        description=(
+            "Search Jira issues by JQL query (read-only). "
+            "Returns a formatted list of issues with key, summary, status, priority, "
+            "duedate, assignee, issuetype, and project. Max 100 results."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "jql": {
+                    "type": "string",
+                    "description": "JQL query string (e.g. 'project = DEVOPS AND assignee = golikhin ORDER BY updated DESC').",
+                },
+                "fields": {
+                    "type": "string",
+                    "description": (
+                        "Comma-separated field names to return. "
+                        "Defaults to 'summary,status,priority,duedate,assignee,issuetype,project,created,updated'."
+                    ),
+                    "default": "summary,status,priority,duedate,assignee,issuetype,project,created,updated",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max results. Defaults to 50. Capped at 100.",
+                    "default": 50,
+                },
+            },
+            "required": ["jql"],
+        },
+    ),
+    Tool(
+        name="get_current_user",
+        description=(
+            "Get info about the authenticated user (PAT owner). "
+            "Returns username, display name, email, key, and active status."
+        ),
+        inputSchema={"type": "object", "properties": {}, "required": []},
+    ),
+    Tool(
+        name="generate_tasks_report",
+        description=(
+            "Generate a report of user tasks grouped by status and save it as a file. "
+            "For a single user: all tasks with full details (summary, due date, priority, comments). "
+            "For multiple users: only active tasks (status category 'In Progress'), grouped by user then status. "
+            "Returns the path to the generated file. "
+            "Since v0.3.0 the 'format' parameter selects output: md (Markdown, default), txt (plain text), json."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Jira usernames to include in the report. "
+                        "If not provided, uses REPORT_TEAM_USERS env var or the current user."
+                    ),
+                },
+                "active_only": {
+                    "type": "boolean",
+                    "description": "Only include active tasks. Forced True for multiple users.",
+                    "default": False,
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Output directory. Defaults to REPORT_OUTPUT_DIR env or ./reports.",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["md", "txt", "json"],
+                    "description": (
+                        "Output format: 'md' (Markdown, default), 'txt' (plain text), 'json' (structured JSON). "
+                        "File extension matches the format."
+                    ),
+                    "default": "md",
+                },
+            },
+            "required": [],
+        },
     ),
 ]
 
@@ -274,7 +452,7 @@ def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) ->
     """
     resolved = Path(raw_dir).resolve()
     root = (config.team_output_dir if team else config.report_output_dir) or str(
-        Path.cwd() / "reports"
+        Path.home() / ".mcp" / "jira-tempo-mcp" / "reports"
     )
     allowed_root = Path(root).resolve()
     try:
@@ -287,6 +465,74 @@ def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) ->
     return resolved
 
 
+# --- Worklog formatting helper (UX-4, UX-10) ---
+
+
+def _format_worklog_details(wl: dict[str, Any], indent: str = "  ") -> str:
+    """Format a Tempo worklog dict as readable key/value lines (UX-4)."""
+    wl_id = wl.get("tempoWorklogId") or wl.get("id") or wl.get("worklogId") or "?"
+    seconds = wl.get("timeSpentSeconds", 0)
+    issue = wl.get("issue")
+    issue_key = "?"
+    issue_summary = ""
+    if isinstance(issue, dict):
+        issue_key = issue.get("key", "?")
+        issue_summary = issue.get("summary", "") or ""
+    status = ""
+    if isinstance(issue, dict):
+        status_obj = issue.get("status", {})
+        status = status_obj.get("name", "") if isinstance(status_obj, dict) else ""
+    project = ""
+    if isinstance(issue, dict):
+        project_obj = issue.get("project", {})
+        project = project_obj.get("key", "") if isinstance(project_obj, dict) else ""
+    comment = wl.get("comment", "") or ""
+    if isinstance(comment, dict):
+        comment = comment.get("content", "") or ""
+    started = wl.get("started") or wl.get("startDate") or ""
+    created = wl.get("createdAt") or wl.get("created") or ""
+    updated = wl.get("updatedAt") or wl.get("updated") or ""
+    worker = wl.get("worker") or wl.get("workerKey") or ""
+    location = ""
+    loc_obj = wl.get("location")
+    if isinstance(loc_obj, dict):
+        location = loc_obj.get("name", "") or loc_obj.get("displayName", "") or ""
+    elif isinstance(loc_obj, str):
+        location = loc_obj
+
+    lines = [f"Worklog {wl_id}:"]
+    lines.append(f"{indent}Time spent: {format_seconds_to_human(int(seconds) or 0)} ({seconds}s)")
+    issue_line = f"{indent}Issue: {issue_key}"
+    if issue_summary:
+        issue_line += f" — {issue_summary}"
+    lines.append(issue_line)
+    if status:
+        lines.append(f"{indent}Status: {status}")
+    if project:
+        lines.append(f"{indent}Project: {project}")
+    lines.append(f"{indent}Comment: {comment or '(none)'}")
+    lines.append(f"{indent}Started: {started or '—'}")
+    if created:
+        lines.append(f"{indent}Created: {created}")
+    if updated:
+        lines.append(f"{indent}Updated: {updated}")
+    if worker:
+        lines.append(f"{indent}Worker: {worker}")
+    if location:
+        lines.append(f"{indent}Location: {location}")
+    # Attributes (Tempo work attributes).
+    attrs = wl.get("attributes")
+    if isinstance(attrs, dict) and attrs:
+        lines.append(f"{indent}Attributes:")
+        for ak, av in attrs.items():
+            # Tempo attribute values are {"value": "..."} or plain strings.
+            val = av.get("value", "") or av.get("key", "") if isinstance(av, dict) else str(av)
+            # Strip leading/trailing underscores from key for display.
+            display_key = ak.strip("_")
+            lines.append(f"{indent}  {display_key}: {val}")
+    return "\n".join(lines)
+
+
 # --- Tool handlers (m3: dispatch table) ---
 
 
@@ -297,6 +543,13 @@ async def _handle_list_worklogs(
     today = datetime.now(tz).date()
     date_from = arguments.get("date_from") or today.isoformat()
     date_to = arguments.get("date_to") or date_from
+
+    # BUG-3: validate date formats before API calls.
+    parsed_from = _validate_date(date_from, "date_from")
+    parsed_to = _validate_date(date_to, "date_to") if date_to != date_from else parsed_from
+    # BUG-4: validate date_from <= date_to.
+    if parsed_from > parsed_to:
+        raise ValueError("date_from must be on or before date_to.")
 
     wk = await client.find_worker_key(config.jira_user)
     worker_keys = [wk]
@@ -313,7 +566,7 @@ async def _handle_list_worklogs(
         comment = wl.get("comment", "") or ""
         if isinstance(comment, dict):
             comment = comment.get("content", "")
-        started = wl.get("startDate", "")
+        started = wl.get("started") or wl.get("startDate") or ""
         # m2: explicit fallback to "?" if all lookups return falsy.
         wl_id = wl.get("tempoWorklogId") or wl.get("id") or wl.get("worklogId") or "?"
         rows.append(
@@ -329,11 +582,8 @@ async def _handle_get_worklog(
 ) -> str:
     wl_id = arguments["worklog_id"]
     wl = await client.get_worklog(wl_id)
-    # m9: format as key/value lines, not raw repr.
-    lines = [f"Worklog {wl_id}:"]
-    for k, v in wl.items():
-        lines.append(f"  {k}: {_json_safe(v)}")
-    return "\n".join(lines)
+    # UX-4: format as structured key/value, not raw dict repr.
+    return _format_worklog_details(wl)
 
 
 async def _handle_create_worklog(
@@ -343,19 +593,81 @@ async def _handle_create_worklog(
     time_spent = arguments["time_spent"]
     seconds = parse_duration_to_seconds(time_spent)
     date_started = arguments.get("date_started") or iso_now(config.timezone)
+    # Bug 1: Tempo API expects YYYY-MM-DD, not full ISO datetime.
+    if "T" in date_started:
+        dt = datetime.fromisoformat(date_started.replace("Z", "+00:00"))
+        date_started = dt.strftime("%Y-%m-%d")
     comment = arguments.get("comment", "")
+    # Bug 2: resolve worker key when author_account_id not provided.
     author = arguments.get("author_account_id")
-    result = await client.create_worklog(
-        issue_key=issue_key,
-        time_spent_seconds=seconds,
-        date_started=date_started,
-        comment=comment,
-        author_account_id=author,
-    )
+    if not author:
+        author = await client.find_worker_key(config.jira_user)
+    # Bug 3: pass optional Tempo work attributes.
+    attributes = arguments.get("attributes")
+    try:
+        result = await client.create_worklog(
+            issue_key=issue_key,
+            time_spent_seconds=seconds,
+            date_started=date_started,
+            comment=comment,
+            author_account_id=author,
+            attributes=attributes,
+        )
+    except JiraTempoError as exc:
+        # BUG-2: catch VALIDATION_FAILED and return actionable message.
+        # Change 3: dynamically query Tempo work-attribute definitions to
+        # produce a richer hint with keys, types, and possible values.
+        status_code = getattr(exc, "status_code", None)
+        body = getattr(exc, "response_body", None)
+        if status_code == 400:
+            # Try to fetch the full attribute definitions for a richer hint.
+            attr_defs: list[dict[str, Any]] = []
+            # Endpoint unavailable — fall back to parsing the error body.
+            with contextlib.suppress(JiraTempoError):
+                attr_defs = await client.get_work_attributes()
+
+            required_attrs = [a for a in attr_defs if a.get("required")]
+            if required_attrs:
+                req_lines = []
+                for a in required_attrs:
+                    key = a["key"]
+                    name = a["name"]
+                    atype = a["type"]
+                    values = a.get("values", [])
+                    line = f"  - {key} ({name}): required, type={atype}"
+                    if values:
+                        line += f", values: [{', '.join(values)}]"
+                    req_lines.append(line)
+                return (
+                    "Worklog creation failed — Tempo requires the following work attributes:\n"
+                    + "\n".join(req_lines)
+                    + "\nProvide them via the 'attributes' parameter, e.g. "
+                    'attributes: {"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}.'
+                )
+
+            # Fallback: parse the 400 error body if attribute defs unavailable.
+            if isinstance(body, dict):
+                errors = body.get("errors") or {}
+                if isinstance(errors, dict) and errors:
+                    req_lines = [f"  - {k}: {v}" for k, v in errors.items()]
+                    return (
+                        "Worklog creation failed — Tempo requires the following work attributes:\n"
+                        + "\n".join(req_lines)
+                        + "\nProvide them via the 'attributes' parameter, e.g. "
+                        'attributes: {"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}.'
+                    )
+        raise
     wl_id = result.get("tempoWorklogId") or result.get("id", "?")
     msg = f"Tracked {format_seconds_to_human(seconds)} on {issue_key} at {date_started}. Worklog ID: {wl_id}"
     if comment:
         msg += f". Comment: {comment}"
+    # UX-10: append full worklog details.
+    try:
+        full_wl = await client.get_worklog(str(wl_id))
+        msg += "\n---\nWorklog details:\n" + _format_worklog_details(full_wl)
+    except JiraTempoError:
+        # If fetching the full worklog fails, the creation still succeeded.
+        pass
     return msg
 
 
@@ -373,16 +685,46 @@ async def _handle_get_issue(
     key = _validate_issue_key(arguments["issue_key"])
     issue = await client.get_issue(key)
     fields = issue.get("fields", {})
-    summary = fields.get("summary", "") if isinstance(fields, dict) else ""
-    status = fields.get("status", {}).get("name", "") if isinstance(fields, dict) else ""
-    project = fields.get("project", {}).get("name", "") if isinstance(fields, dict) else ""
-    return f"{key}: {summary}\nStatus: {status}\nProject: {project}"
+    if not isinstance(fields, dict):
+        fields = {}
+    summary = fields.get("summary", "")
+    status_obj = fields.get("status", {})
+    status = status_obj.get("name", "") if isinstance(status_obj, dict) else ""
+    project_obj = fields.get("project", {})
+    project = project_obj.get("name", "") if isinstance(project_obj, dict) else ""
+    priority_obj = fields.get("priority", {})
+    priority = priority_obj.get("name", "") if isinstance(priority_obj, dict) else ""
+    assignee_obj = fields.get("assignee", {})
+    assignee = assignee_obj.get("displayName", "") if isinstance(assignee_obj, dict) else ""
+    duedate = fields.get("duedate", "") or "—"
+    issuetype_obj = fields.get("issuetype", {})
+    issuetype = issuetype_obj.get("name", "") if isinstance(issuetype_obj, dict) else ""
+    components_list = fields.get("components", [])
+    if not isinstance(components_list, list):
+        components_list = []
+    components = ", ".join(
+        c.get("name", "") for c in components_list if isinstance(c, dict) and c.get("name")
+    )
+    lines = [f"{key}: {summary}"]
+    lines.append(f"Status: {status}")
+    lines.append(f"Project: {project}")
+    lines.append(f"Priority: {priority or '—'}")
+    lines.append(f"Assignee: {assignee or '—'}")
+    lines.append(f"Due date: {duedate}")
+    lines.append(f"Issue type: {issuetype or '—'}")
+    lines.append(f"Components: {components or '—'}")
+    return "\n".join(lines)
 
 
 async def _handle_list_favorites(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
-    favs = await client.list_favorite_issues()
+    try:
+        favs = await client.list_favorite_issues()
+    except FavoritesEndpointUnavailableError:
+        return (
+            "Favorite issues endpoint unavailable on this Jira installation. No favorites returned."
+        )
     if not favs:
         return "No favorite issues found."
     lines = [f"- {f['key']}: {f['summary']}" for f in favs]
@@ -414,6 +756,11 @@ async def _handle_generate_report(
     else:
         template = resolve_template(config, registry)
 
+    # UX-7: optional username override.
+    username = arguments.get("username")
+    if username is not None and (not isinstance(username, str) or not username.strip()):
+        raise ValueError("'username' must be a non-empty string.")
+
     path = await generate_weekly_report(
         client,
         config,
@@ -421,8 +768,10 @@ async def _handle_generate_report(
         output_dir=out_dir,
         template=template,
         registry=registry,
+        fmt=arguments.get("format", "txt"),
+        username=username,
     )
-    return f"Weekly report generated: {path}"
+    return f"Weekly report generated: {path}\nReports directory: {Path(path).parent}"
 
 
 async def _handle_generate_team_report(
@@ -430,7 +779,12 @@ async def _handle_generate_team_report(
 ) -> str:
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
-        raise ValueError("'users' must be a non-empty list of Jira usernames.")
+        users = config.team_users_resolved
+        if not users:
+            raise ValueError(
+                "'users' must be a non-empty list of Jira usernames, or set "
+                "REPORT_TEAM_USERS env var."
+            )
     users = [str(u) for u in users]
 
     date_from = arguments.get("date_from")
@@ -467,8 +821,9 @@ async def _handle_generate_team_report(
         template=template,
         registry=registry,
         output_dir=out_dir,
+        fmt=arguments.get("format", "txt"),
     )
-    return result.summary
+    return f"{result.summary}\nReports directory: {result.file_path.parent}"
 
 
 async def _handle_list_report_templates(
@@ -484,6 +839,151 @@ async def _handle_list_report_templates(
     return "\n".join(lines)
 
 
+async def _handle_search_users(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    query = arguments.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("'query' must be a non-empty string.")
+    max_results = arguments.get("max_results", 10)
+    if not isinstance(max_results, int) or max_results < 1:
+        raise ValueError("'max_results' must be a positive integer.")
+
+    users = await client.search_users(query, max_results=max_results)
+    if not users:
+        return f"No users found for query {query!r}."
+
+    lines = [f"Users matching {query!r} ({len(users)}):"]
+    for u in users:
+        active = "active" if u.get("active", True) else "inactive"
+        lines.append(
+            f"- {u['name']} ({u['key']}): {u['displayName']} <{u['emailAddress'] or '—'}> [{active}]"
+        )
+    return "\n".join(lines)
+
+
+async def _handle_list_user_tasks(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    username = arguments.get("username")
+    if not isinstance(username, str) or not username.strip():
+        raise ValueError("'username' must be a non-empty string.")
+
+    status_filter = arguments.get("status_filter")
+    if status_filter is not None and (
+        not isinstance(status_filter, list) or not all(isinstance(s, str) for s in status_filter)
+    ):
+        raise ValueError("'status_filter' must be a list of strings.")
+
+    max_results = arguments.get("max_results", 100)
+    if not isinstance(max_results, int) or max_results < 1:
+        raise ValueError("'max_results' must be a positive integer.")
+
+    tasks = await client.list_user_tasks(
+        username, status_filter=status_filter, max_results=max_results
+    )
+    if not tasks:
+        return f"No tasks found for user {username!r}."
+
+    lines = [f"Tasks for {username} ({len(tasks)}):"]
+    for t in tasks:
+        due = t.get("duedate", "") or "—"
+        priority = t.get("priority", "") or "—"
+        comments = t.get("comment_count", 0)
+        lines.append(
+            f"- [{t['key']}] {t['summary']} | {t['status']} | priority={priority} | due={due} | comments={comments}"
+        )
+        # UX-3: show last 1-2 comments indented under the task.
+        if comments > 0:
+            task_comments = t.get("comments", [])
+            if isinstance(task_comments, list):
+                for c in task_comments[-2:]:
+                    if not isinstance(c, dict):
+                        continue
+                    author = c.get("author", "?")
+                    body = str(c.get("body", ""))
+                    # Truncate to 150 chars.
+                    if len(body) > 150:
+                        body = body[:150] + "..."
+                    lines.append(f"    💬 {author}: {body}")
+    return "\n".join(lines)
+
+
+async def _handle_list_issues_by_jql(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    jql = arguments.get("jql")
+    if not isinstance(jql, str) or not jql.strip():
+        raise ValueError("'jql' must be a non-empty string.")
+    fields = arguments.get(
+        "fields",
+        "summary,status,priority,duedate,assignee,issuetype,project,created,updated",
+    )
+    if not isinstance(fields, str) or not fields.strip():
+        raise ValueError("'fields' must be a non-empty string.")
+    max_results = arguments.get("max_results", 50)
+    if not isinstance(max_results, int) or max_results < 1:
+        raise ValueError("'max_results' must be a positive integer.")
+
+    issues = await client.search_issues(jql, fields=fields, max_results=max_results)
+    if not issues:
+        return f"No issues found for JQL: {jql}"
+
+    lines = [f"Issues matching JQL ({len(issues)}):"]
+    for issue in issues:
+        due = issue.get("duedate", "") or "—"
+        priority = issue.get("priority", "") or "—"
+        assignee = issue.get("assignee", "") or "—"
+        lines.append(
+            f"- [{issue['key']}] {issue['summary']} | {issue['status']} | "
+            f"priority={priority} | due={due} | assignee={assignee}"
+        )
+    return "\n".join(lines)
+
+
+async def _handle_get_current_user(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    user = await client.get_myself()
+    lines = ["Current user:"]
+    lines.append(f"  Username: {user.get('name', '—')}")
+    lines.append(f"  Display name: {user.get('displayName', '—')}")
+    lines.append(f"  Email: {user.get('emailAddress', '—') or '—'}")
+    lines.append(f"  Key: {user.get('key', '—')}")
+    lines.append(f"  Active: {user.get('active', '—')}")
+    return "\n".join(lines)
+
+
+async def _handle_generate_tasks_report(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    users = arguments.get("users")
+    if not isinstance(users, list) or not users:
+        users = config.team_users_resolved
+        if not users:
+            raise ValueError(
+                "'users' must be a non-empty list of Jira usernames, or set "
+                "REPORT_TEAM_USERS env var."
+            )
+    users = [str(u) for u in users]
+
+    active_only = bool(arguments.get("active_only", False))
+
+    out_dir = None
+    if raw_dir := arguments.get("output_dir"):
+        out_dir = _validate_output_dir(raw_dir, config)
+
+    result = await generate_tasks_report(
+        client,
+        config,
+        users,
+        active_only=active_only,
+        output_dir=out_dir,
+        fmt=arguments.get("format", "md"),
+    )
+    return f"{result.summary}\nReports directory: {result.file_path.parent}"
+
+
 # Dispatch table (m3).
 _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
@@ -495,6 +995,11 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "generate_weekly_report": _handle_generate_report,
     "generate_team_report": _handle_generate_team_report,
     "list_report_templates": _handle_list_report_templates,
+    "search_users": _handle_search_users,
+    "list_user_tasks": _handle_list_user_tasks,
+    "list_issues_by_jql": _handle_list_issues_by_jql,
+    "get_current_user": _handle_get_current_user,
+    "generate_tasks_report": _handle_generate_tasks_report,
 }
 
 

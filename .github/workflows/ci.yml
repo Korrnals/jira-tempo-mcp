@@ -22,8 +22,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install package with dev deps
-        run: pip install -e ".[dev]"
+        run: pip install ".[dev]"
 
       - name: Lint (ruff)
         run: ruff check src/ install.py tests/

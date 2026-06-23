@@ -13,10 +13,10 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
-    extract_comment,
     extract_issue_key,
     extract_seconds,
     format_date,
+    group_worklogs_by_comment,
     month_ru,
     week_range,
 )
@@ -64,9 +64,12 @@ class DefaultTemplate:
             total_seconds += extract_seconds(wl)
 
         lines: list[str] = []
-        author = config.report_author_header
+        # UX-7: prefer the ``author`` override (passed when generating
+        # a report for a different user via ``username``), else fall back
+        # to config.report_author_header.
+        author_label = kwargs.get("author") or config.report_author_header
         lines.append(
-            f"[{author}] Отчет работы за неделю ({format_date(monday)} - {format_date(friday)}):"
+            f"[{author_label}] Отчет работы за неделю ({format_date(monday)} - {format_date(friday)}):"
         )
         lines.append("")
 
@@ -79,12 +82,11 @@ class DefaultTemplate:
                 continue
             title = issue_titles.get(key, config.section_map.get(key, key))
             lines.append(f"{section_num}. {title} [{key}]")
-            for wl in grouped[key]:
-                comment = extract_comment(wl)
+            for comment, secs in group_worklogs_by_comment(grouped[key]):
                 if comment:
-                    lines.append(f"\t+ {comment}")
+                    lines.append(f"\t+ {comment} — {format_seconds_to_human(secs)}")
                 else:
-                    lines.append(f"\t+ {format_seconds_to_human(extract_seconds(wl))} отработано")
+                    lines.append(f"\t+ {format_seconds_to_human(secs)} отработано")
             lines.append("")
             used_keys.add(key)
             section_num += 1
@@ -101,12 +103,11 @@ class DefaultTemplate:
         for key in remaining:
             title = issue_titles.get(key, key)
             lines.append(f'{section_num}. [{key}] {key} - "{title}"')
-            for wl in grouped[key]:
-                comment = extract_comment(wl)
+            for comment, secs in group_worklogs_by_comment(grouped[key]):
                 if comment:
-                    lines.append(f"\t+ {comment}")
+                    lines.append(f"\t+ {comment} — {format_seconds_to_human(secs)}")
                 else:
-                    lines.append(f"\t+ {format_seconds_to_human(extract_seconds(wl))} отработано")
+                    lines.append(f"\t+ {format_seconds_to_human(secs)} отработано")
             lines.append("")
             section_num += 1
 

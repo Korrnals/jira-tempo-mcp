@@ -8,6 +8,7 @@ stay pure and testable.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -49,13 +50,21 @@ def month_ru(month: int) -> str:
 
 
 def parse_tempo_date(raw: str | None) -> date | None:
-    """Parse a Tempo startDate (ISO 8601) to a date object."""
+    """Parse a Tempo date string to a date object.
+
+    Handles multiple formats:
+    - ISO 8601 with T: "2026-06-15T00:00:00.000" or "2026-06-15T00:00:00Z"
+    - Tempo with space: "2026-06-15 00:00:00.000"
+    - Pure date: "2026-06-15"
+    """
     if not raw:
         return None
     try:
-        if "T" in raw:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
-        return date.fromisoformat(raw)
+        # Tempo uses space separator instead of T — normalize to T.
+        normalized = raw.replace(" ", "T") if " " in raw and "T" not in raw else raw
+        if "T" in normalized:
+            return datetime.fromisoformat(normalized.replace("Z", "+00:00")).date()
+        return date.fromisoformat(normalized)
     except (ValueError, TypeError):
         return None
 
@@ -104,6 +113,69 @@ def extract_worker(worklog: dict[str, Any]) -> str | None:
     return None
 
 
+_WS_RE = re.compile(r"\s+")
+
+
+def normalize_comment(comment: str | None) -> str:
+    """Normalize a worklog comment for grouping.
+
+    - Strips leading/trailing whitespace.
+    - Replaces newlines with spaces.
+    - Collapses multiple whitespace characters into a single space.
+    - Returns an empty string for ``None`` or empty input.
+    """
+    if not comment:
+        return ""
+    text = str(comment).replace("\r", " ").replace("\n", " ")
+    text = _WS_RE.sub(" ", text)
+    return text.strip()
+
+
+def group_worklogs_by_comment(
+    worklogs: list[dict[str, Any]],
+) -> list[tuple[str, int]]:
+    """Group worklogs by normalized comment and sum their time.
+
+    Worklogs with identical (after normalization) comments are collapsed into
+    a single entry, with their ``timeSpentSeconds`` summed. Worklogs with empty
+    comments are grouped together under ``""``.
+
+    Returns a list of ``(comment, total_seconds)`` tuples sorted by
+    ``total_seconds`` descending (ties broken alphabetically by comment for
+    deterministic output).
+    """
+    totals: dict[str, int] = {}
+    for wl in worklogs:
+        comment = normalize_comment(extract_comment(wl))
+        totals[comment] = totals.get(comment, 0) + extract_seconds(wl)
+    return sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def truncate_text(text: str, max_len: int) -> str:
+    """Truncate text to max_len chars, appending the ellipsis if truncated.
+
+    Newlines are replaced with spaces and whitespace is collapsed before
+    truncation so table cells stay on one line.
+    """
+    if not text:
+        return ""
+    cleaned = str(text).replace("\r", " ").replace("\n", " ")
+    cleaned = _WS_RE.sub(" ", cleaned).strip()
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1].rstrip() + "\u2026"
+
+
+def md_escape_cell(text: str) -> str:
+    """Escape pipe characters for safe use in Markdown table cells.
+
+    Returns an em-dash for empty/None values so tables do not have blank cells.
+    """
+    if not text:
+        return "\u2014"
+    return str(text).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
 __all__ = [
     "extract_comment",
     "extract_issue_key",
@@ -111,7 +183,11 @@ __all__ = [
     "extract_worker",
     "format_date",
     "format_date_short",
+    "group_worklogs_by_comment",
+    "md_escape_cell",
     "month_ru",
+    "normalize_comment",
     "parse_tempo_date",
+    "truncate_text",
     "week_range",
 ]
