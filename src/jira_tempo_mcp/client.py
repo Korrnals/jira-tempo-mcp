@@ -23,6 +23,7 @@ class JiraTempoError(Exception):
 class WorkerKeyResolutionError(JiraTempoError):
     """Raised when the Tempo worker key cannot be resolved for the configured user."""
 
+
 class FavoritesEndpointUnavailableError(JiraTempoError):
     """Raised when the Jira /user/favourites endpoint is unavailable (404/etc)."""
 
@@ -219,9 +220,7 @@ class JiraTempoClient:
         )
         origin_task_id = issue_data.get("id") if isinstance(issue_data, dict) else None
         if not origin_task_id:
-            raise JiraTempoError(
-                f"Could not resolve internal issue ID for {issue_key!r}"
-            )
+            raise JiraTempoError(f"Could not resolve internal issue ID for {issue_key!r}")
 
         url = f"{self._config.tempo_api_base}/worklogs"
         payload: dict[str, Any] = {
@@ -233,14 +232,13 @@ class JiraTempoClient:
         if author_account_id:
             payload["worker"] = author_account_id
         if attributes:
-            payload["attributes"] = {
-                k: {"value": v} for k, v in attributes.items()
-            }
+            payload["attributes"] = {k: {"value": v} for k, v in attributes.items()}
         data = await self._request("POST", url, self._tempo_headers(), json=payload)
         # Tempo POST /worklogs returns a list of created worklogs (even for
         # a single entry). Extract the first one.
         if isinstance(data, list) and data:
-            return data[0]
+            result: dict[str, Any] = data[0]
+            return result
         if isinstance(data, dict):
             return data
         raise JiraTempoError("Unexpected create worklog response")
@@ -286,14 +284,18 @@ class JiraTempoClient:
             # STATIC_LIST attributes expose possible values under "values".
             possible = item.get("values")
             if isinstance(possible, list):
-                values = [str(v.get("value", v)) if isinstance(v, dict) else str(v) for v in possible]
-            result.append({
-                "key": key,
-                "name": name,
-                "type": attr_type,
-                "required": required,
-                "values": values,
-            })
+                values = [
+                    str(v.get("value", v)) if isinstance(v, dict) else str(v) for v in possible
+                ]
+            result.append(
+                {
+                    "key": key,
+                    "name": name,
+                    "type": attr_type,
+                    "required": required,
+                    "values": values,
+                }
+            )
         return result
 
     # --- Tempo worker key lookup ---
@@ -386,7 +388,9 @@ class JiraTempoClient:
         search_url = f"{self._config.jira_api_base}/user/search"
         try:
             results = await self._request(
-                "GET", search_url, self._jira_headers(),
+                "GET",
+                search_url,
+                self._jira_headers(),
                 params={"username": target},
             )
         except JiraTempoError as exc:
@@ -455,7 +459,9 @@ class JiraTempoClient:
         """
         url = f"{self._config.jira_api_base}/user/search"
         data = await self._request(
-            "GET", url, self._jira_headers(),
+            "GET",
+            url,
+            self._jira_headers(),
             params={"username": query, "maxResults": max_results},
         )
         if not isinstance(data, list):
@@ -468,7 +474,8 @@ class JiraTempoClient:
                 "emailAddress": u.get("emailAddress", ""),
                 "active": u.get("active", True),
             }
-            for u in data if isinstance(u, dict)
+            for u in data
+            if isinstance(u, dict)
         ]
 
     async def list_user_tasks(
@@ -514,15 +521,17 @@ class JiraTempoClient:
                         seen.add(c)
                         unique_cats.append(c)
                 cats = ", ".join(f'"{c}"' for c in unique_cats)
-                jql += f' AND statusCategory IN ({cats})'
+                jql += f" AND statusCategory IN ({cats})"
             else:
                 statuses = ", ".join(f'"{s}"' for s in status_filter)
-                jql += f' AND status IN ({statuses})'
-        jql += ' ORDER BY updated DESC'
+                jql += f" AND status IN ({statuses})"
+        jql += " ORDER BY updated DESC"
 
         url = f"{self._config.jira_api_base}/search"
         data = await self._request(
-            "GET", url, self._jira_headers(),
+            "GET",
+            url,
+            self._jira_headers(),
             params={
                 "jql": jql,
                 "fields": "summary,status,duedate,comment,priority,issuetype,project,created,updated",
@@ -567,32 +576,36 @@ class JiraTempoClient:
                 author = author_obj.get("displayName", "?") if isinstance(author_obj, dict) else "?"
                 body = c.get("body", "")
                 created = c.get("created", "")
-                recent_comments.append({
-                    "author": author,
-                    "body": str(body)[:200],
-                    "created": created,
-                })
+                recent_comments.append(
+                    {
+                        "author": author,
+                        "body": str(body)[:200],
+                        "created": created,
+                    }
+                )
 
             status_cat = status_obj.get("statusCategory", {})
             if not isinstance(status_cat, dict):
                 status_cat = {}
 
-            tasks.append({
-                "key": issue.get("key", ""),
-                "summary": fields.get("summary", ""),
-                "status": status_obj.get("name", ""),
-                "statusCategory": status_cat.get("name", ""),
-                "statusCategoryKey": status_cat.get("key", ""),
-                "duedate": fields.get("duedate", ""),
-                "priority": priority_obj.get("name", ""),
-                "issuetype": issuetype_obj.get("name", ""),
-                "project": project_obj.get("name", ""),
-                "projectKey": project_obj.get("key", ""),
-                "created": fields.get("created", ""),
-                "updated": fields.get("updated", ""),
-                "comments": recent_comments,
-                "comment_count": len(comment_list),
-            })
+            tasks.append(
+                {
+                    "key": issue.get("key", ""),
+                    "summary": fields.get("summary", ""),
+                    "status": status_obj.get("name", ""),
+                    "statusCategory": status_cat.get("name", ""),
+                    "statusCategoryKey": status_cat.get("key", ""),
+                    "duedate": fields.get("duedate", ""),
+                    "priority": priority_obj.get("name", ""),
+                    "issuetype": issuetype_obj.get("name", ""),
+                    "project": project_obj.get("name", ""),
+                    "projectKey": project_obj.get("key", ""),
+                    "created": fields.get("created", ""),
+                    "updated": fields.get("updated", ""),
+                    "comments": recent_comments,
+                    "comment_count": len(comment_list),
+                }
+            )
         return tasks
 
     # --- JQL search (UX-5) ---
@@ -609,7 +622,9 @@ class JiraTempoClient:
         capped_max = min(max_results, 100)
         url = f"{self._config.jira_api_base}/search"
         data = await self._request(
-            "GET", url, self._jira_headers(),
+            "GET",
+            url,
+            self._jira_headers(),
             params={"jql": jql, "fields": fields, "maxResults": capped_max},
         )
         if not isinstance(data, dict) or "issues" not in data:
@@ -636,19 +651,21 @@ class JiraTempoClient:
             assignee_obj = fields_obj.get("assignee", {})
             if not isinstance(assignee_obj, dict):
                 assignee_obj = {}
-            issues.append({
-                "key": issue.get("key", ""),
-                "summary": fields_obj.get("summary", ""),
-                "status": status_obj.get("name", ""),
-                "priority": priority_obj.get("name", ""),
-                "duedate": fields_obj.get("duedate", ""),
-                "assignee": assignee_obj.get("displayName", ""),
-                "issuetype": issuetype_obj.get("name", ""),
-                "project": project_obj.get("name", ""),
-                "projectKey": project_obj.get("key", ""),
-                "created": fields_obj.get("created", ""),
-                "updated": fields_obj.get("updated", ""),
-            })
+            issues.append(
+                {
+                    "key": issue.get("key", ""),
+                    "summary": fields_obj.get("summary", ""),
+                    "status": status_obj.get("name", ""),
+                    "priority": priority_obj.get("name", ""),
+                    "duedate": fields_obj.get("duedate", ""),
+                    "assignee": assignee_obj.get("displayName", ""),
+                    "issuetype": issuetype_obj.get("name", ""),
+                    "project": project_obj.get("name", ""),
+                    "projectKey": project_obj.get("key", ""),
+                    "created": fields_obj.get("created", ""),
+                    "updated": fields_obj.get("updated", ""),
+                }
+            )
         return issues
 
     # --- Current user (UX-6) ---

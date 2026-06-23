@@ -257,12 +257,16 @@ def _render_team_md(
     # --- Summary table (sorted by hours desc) ---
     lines.append("## \U0001f4ca \u0421\u0432\u043e\u0434\u043a\u0430")
     lines.append("")
-    lines.append("| \u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a | \u0427\u0430\u0441\u044b |")
+    lines.append(
+        "| \u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a | \u0427\u0430\u0441\u044b |"
+    )
     lines.append("|-----------|------:|")
     sorted_users = sorted(per_user_totals.items(), key=lambda kv: kv[1], reverse=True)
     for header, total in sorted_users:
         lines.append(f"| {header} | {format_seconds_to_human(total)} |")
-    lines.append(f"| **\u0418\u0442\u043e\u0433\u043e** | **{format_seconds_to_human(grand_total)}** |")
+    lines.append(
+        f"| **\u0418\u0442\u043e\u0433\u043e** | **{format_seconds_to_human(grand_total)}** |"
+    )
     lines.append("")
 
     # --- Top-5 issues table ---
@@ -270,7 +274,9 @@ def _render_team_md(
     if top_issues:
         lines.append("### \U0001f3c6 \u0422\u043e\u043f-5 \u0437\u0430\u0434\u0430\u0447")
         lines.append("")
-        lines.append("| # | \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b |")
+        lines.append(
+            "| # | \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b |"
+        )
         lines.append("|---:|------|--------|------:|")
         for rank, (key, secs) in enumerate(top_issues, start=1):
             title = issue_titles.get(key, key)
@@ -292,7 +298,9 @@ def _render_team_md(
         lines.append("")
 
         if not flat:
-            lines.append("*(\u043d\u0435\u0442 \u043e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438)*")
+            lines.append(
+                "*(\u043d\u0435\u0442 \u043e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438)*"
+            )
             lines.append("")
             lines.append("---")
             lines.append("")
@@ -308,7 +316,9 @@ def _render_team_md(
 
         sorted_worklogs = sorted(flat, key=_sort_key)
 
-        lines.append("| \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b | \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 |")
+        lines.append(
+            "| \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b | \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 |"
+        )
         lines.append("|------|--------|------:|-------------|")
         for wl in sorted_worklogs:
             key = extract_issue_key(wl) or ""
@@ -322,9 +332,7 @@ def _render_team_md(
                 f"{format_seconds_to_human(secs)} | "
                 f"{md_escape_cell(truncate_text(comment, 80))} |"
             )
-        lines.append(
-            f"| | | **{format_seconds_to_human(user_total)}** | |"
-        )
+        lines.append(f"| | | **{format_seconds_to_human(user_total)}** | |")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -374,18 +382,22 @@ def _render_team_json(
             task_total = sum(w.get("timeSpentSeconds", 0) for w in grouped[key])
             worklog_entries = []
             for comment, secs in group_worklogs_by_comment(grouped[key]):
-                worklog_entries.append({
-                    "comment": comment,
-                    "seconds": secs,
-                    "human": format_seconds_to_human(secs),
-                })
-            issues.append({
-                "key": key,
-                "title": title,
-                "total_seconds": task_total,
-                "total_human": format_seconds_to_human(task_total),
-                "worklogs": worklog_entries,
-            })
+                worklog_entries.append(
+                    {
+                        "comment": comment,
+                        "seconds": secs,
+                        "human": format_seconds_to_human(secs),
+                    }
+                )
+            issues.append(
+                {
+                    "key": key,
+                    "title": title,
+                    "total_seconds": task_total,
+                    "total_human": format_seconds_to_human(task_total),
+                    "worklogs": worklog_entries,
+                }
+            )
             used.add(key)
 
         remaining = sorted(
@@ -398,27 +410,33 @@ def _render_team_json(
             task_total = sum(w.get("timeSpentSeconds", 0) for w in grouped[key])
             worklog_entries = []
             for comment, secs in group_worklogs_by_comment(grouped[key]):
-                worklog_entries.append({
-                    "comment": comment,
-                    "seconds": secs,
-                    "human": format_seconds_to_human(secs),
-                })
-            issues.append({
-                "key": key,
-                "title": title,
-                "total_seconds": task_total,
-                "total_human": format_seconds_to_human(task_total),
-                "worklogs": worklog_entries,
-            })
+                worklog_entries.append(
+                    {
+                        "comment": comment,
+                        "seconds": secs,
+                        "human": format_seconds_to_human(secs),
+                    }
+                )
+            issues.append(
+                {
+                    "key": key,
+                    "title": title,
+                    "total_seconds": task_total,
+                    "total_human": format_seconds_to_human(task_total),
+                    "worklogs": worklog_entries,
+                }
+            )
 
         grand_total += user_total
-        per_user.append({
-            "username": username,
-            "display_name": header,
-            "total_seconds": user_total,
-            "total_human": format_seconds_to_human(user_total),
-            "issues": issues,
-        })
+        per_user.append(
+            {
+                "username": username,
+                "display_name": header,
+                "total_seconds": user_total,
+                "total_human": format_seconds_to_human(user_total),
+                "issues": issues,
+            }
+        )
 
     top_issues = sorted(cross_issue_totals.items(), key=lambda kv: kv[1], reverse=True)[:5]
     top_issues_data = [
@@ -475,9 +493,7 @@ async def generate_team_report(
         raise ValueError("users must be a non-empty list of Jira usernames.")
 
     if fmt not in _VALID_FORMATS:
-        raise ValueError(
-            f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}."
-        )
+        raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
 
     monday, friday = _week_bounds(date_from, date_to, config.timezone)
     iso_from = monday.isoformat()

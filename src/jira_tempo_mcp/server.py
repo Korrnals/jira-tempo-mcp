@@ -9,6 +9,7 @@ or via the console script:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 import sys
@@ -83,7 +84,7 @@ TOOLS: list[Tool] = [
             "The worklog is attributed to the token owner unless author_account_id is given. "
             "On some Tempo installations, `attributes` with `_Специализация_` is **required**. "
             "If you get a VALIDATION_FAILED error, provide "
-            "`attributes: {\"_Специализация_\": \"<value>\", \"_Форматработы_\": \"<value>\"}`."
+            '`attributes: {"_Специализация_": "<value>", "_Форматработы_": "<value>"}`.'
         ),
         inputSchema={
             "type": "object",
@@ -107,7 +108,7 @@ TOOLS: list[Tool] = [
                 },
                 "attributes": {
                     "type": "object",
-                    "description": "Optional Tempo work attributes (e.g. {\"_Специализация_\": \"Devops\", \"_Форматработы_\": \"Удаленно\"}). Required on some installations.",
+                    "description": 'Optional Tempo work attributes (e.g. {"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}). Required on some installations.',
                     "additionalProperties": {"type": "string"},
                 },
             },
@@ -525,10 +526,7 @@ def _format_worklog_details(wl: dict[str, Any], indent: str = "  ") -> str:
         lines.append(f"{indent}Attributes:")
         for ak, av in attrs.items():
             # Tempo attribute values are {"value": "..."} or plain strings.
-            if isinstance(av, dict):
-                val = av.get("value", "") or av.get("key", "")
-            else:
-                val = str(av)
+            val = av.get("value", "") or av.get("key", "") if isinstance(av, dict) else str(av)
             # Strip leading/trailing underscores from key for display.
             display_key = ak.strip("_")
             lines.append(f"{indent}  {display_key}: {val}")
@@ -548,10 +546,7 @@ async def _handle_list_worklogs(
 
     # BUG-3: validate date formats before API calls.
     parsed_from = _validate_date(date_from, "date_from")
-    if date_to != date_from:
-        parsed_to = _validate_date(date_to, "date_to")
-    else:
-        parsed_to = parsed_from
+    parsed_to = _validate_date(date_to, "date_to") if date_to != date_from else parsed_from
     # BUG-4: validate date_from <= date_to.
     if parsed_from > parsed_to:
         raise ValueError("date_from must be on or before date_to.")
@@ -627,11 +622,9 @@ async def _handle_create_worklog(
         if status_code == 400:
             # Try to fetch the full attribute definitions for a richer hint.
             attr_defs: list[dict[str, Any]] = []
-            try:
+            # Endpoint unavailable — fall back to parsing the error body.
+            with contextlib.suppress(JiraTempoError):
                 attr_defs = await client.get_work_attributes()
-            except JiraTempoError:
-                # Endpoint unavailable — fall back to parsing the error body.
-                pass
 
             required_attrs = [a for a in attr_defs if a.get("required")]
             if required_attrs:
@@ -710,8 +703,7 @@ async def _handle_get_issue(
     if not isinstance(components_list, list):
         components_list = []
     components = ", ".join(
-        c.get("name", "") for c in components_list
-        if isinstance(c, dict) and c.get("name")
+        c.get("name", "") for c in components_list if isinstance(c, dict) and c.get("name")
     )
     lines = [f"{key}: {summary}"]
     lines.append(f"Status: {status}")
@@ -730,7 +722,9 @@ async def _handle_list_favorites(
     try:
         favs = await client.list_favorite_issues()
     except FavoritesEndpointUnavailableError:
-        return "Favorite issues endpoint unavailable on this Jira installation. No favorites returned."
+        return (
+            "Favorite issues endpoint unavailable on this Jira installation. No favorites returned."
+        )
     if not favs:
         return "No favorite issues found."
     lines = [f"- {f['key']}: {f['summary']}" for f in favs]
@@ -764,9 +758,8 @@ async def _handle_generate_report(
 
     # UX-7: optional username override.
     username = arguments.get("username")
-    if username is not None:
-        if not isinstance(username, str) or not username.strip():
-            raise ValueError("'username' must be a non-empty string.")
+    if username is not None and (not isinstance(username, str) or not username.strip()):
+        raise ValueError("'username' must be a non-empty string.")
 
     path = await generate_weekly_report(
         client,
@@ -877,11 +870,10 @@ async def _handle_list_user_tasks(
         raise ValueError("'username' must be a non-empty string.")
 
     status_filter = arguments.get("status_filter")
-    if status_filter is not None:
-        if not isinstance(status_filter, list) or not all(
-            isinstance(s, str) for s in status_filter
-        ):
-            raise ValueError("'status_filter' must be a list of strings.")
+    if status_filter is not None and (
+        not isinstance(status_filter, list) or not all(isinstance(s, str) for s in status_filter)
+    ):
+        raise ValueError("'status_filter' must be a list of strings.")
 
     max_results = arguments.get("max_results", 100)
     if not isinstance(max_results, int) or max_results < 1:
@@ -982,7 +974,11 @@ async def _handle_generate_tasks_report(
         out_dir = _validate_output_dir(raw_dir, config)
 
     result = await generate_tasks_report(
-        client, config, users, active_only=active_only, output_dir=out_dir,
+        client,
+        config,
+        users,
+        active_only=active_only,
+        output_dir=out_dir,
         fmt=arguments.get("format", "md"),
     )
     return f"{result.summary}\nReports directory: {result.file_path.parent}"

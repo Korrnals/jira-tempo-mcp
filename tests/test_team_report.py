@@ -320,9 +320,7 @@ class TestTeamReportMarkdown:
             "bob": [_make_worklog("PROJECT-200", 7200, 16, "Bob on B")],
         }
         config = _make_config()
-        mock_client = _make_mock_client(
-            user_worklogs, {"PROJECT-200": "Task B"}
-        )
+        mock_client = _make_mock_client(user_worklogs, {"PROJECT-200": "Task B"})
 
         result = await generate_team_report(
             cast(JiraTempoClient, mock_client),
@@ -371,9 +369,7 @@ class TestTeamReportJSON:
             "bob": [_make_worklog("PROJECT-200", 7200, 16, "Bob on B")],
         }
         config = _make_config()
-        mock_client = _make_mock_client(
-            user_worklogs, {"PROJECT-200": "Task B"}
-        )
+        mock_client = _make_mock_client(user_worklogs, {"PROJECT-200": "Task B"})
 
         result = await generate_team_report(
             cast(JiraTempoClient, mock_client),
@@ -387,6 +383,7 @@ class TestTeamReportJSON:
 
         assert result.file_path.suffix == ".json"
         import json as _json
+
         data = _json.loads(result.file_path.read_text(encoding="utf-8"))
         assert data["date_from"] == "2026-06-15"
         assert data["date_to"] == "2026-06-19"

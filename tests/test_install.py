@@ -692,8 +692,12 @@ class TestRegisterMcpStep:
         """register_mcp_step calls clear_mcp_tool_cache after writing config."""
         _autoc_confirm(monkeypatch, True)
         called = {"clear": False, "cleanup": False}
-        monkeypatch.setattr(install, "clear_mcp_tool_cache", lambda: called.__setitem__("clear", True))
-        monkeypatch.setattr(install, "cleanup_bak_files", lambda: called.__setitem__("cleanup", True))
+        monkeypatch.setattr(
+            install, "clear_mcp_tool_cache", lambda: called.__setitem__("clear", True)
+        )
+        monkeypatch.setattr(
+            install, "cleanup_bak_files", lambda: called.__setitem__("cleanup", True)
+        )
 
         result = install.register_mcp_step()
 
@@ -814,7 +818,6 @@ class TestClearMcpToolCache:
 
     def test_locked_workspace_db_is_skipped(self, fake_vscode_paths: dict[str, Path]) -> None:
         """A sqlite3.Error on a workspace DB is silently skipped, not fatal."""
-        import sqlite3
 
         vscode_dir = fake_vscode_paths["vscode_dir"]
         ws_storage = vscode_dir / "workspaceStorage"

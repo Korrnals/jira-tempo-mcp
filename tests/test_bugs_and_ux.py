@@ -122,9 +122,17 @@ class TestBug1StatusFilter:
             # Verify the JQL uses statusCategory, not status.
             # We can't check JQL directly, but we verify the call succeeds.
             return [
-                {"key": "DEVOPS-1", "summary": "Test", "status": "В работе",
-                 "statusCategory": "In Progress", "statusCategoryKey": "indeterminate",
-                 "duedate": "", "priority": "High", "comment_count": 0, "comments": []}
+                {
+                    "key": "DEVOPS-1",
+                    "summary": "Test",
+                    "status": "В работе",
+                    "statusCategory": "In Progress",
+                    "statusCategoryKey": "indeterminate",
+                    "duedate": "",
+                    "priority": "High",
+                    "comment_count": 0,
+                    "comments": [],
+                }
             ]
 
         mock_client.list_user_tasks.side_effect = _list_user_tasks
@@ -138,6 +146,7 @@ class TestBug1StatusFilter:
     async def test_client_translates_russian_status(self) -> None:
         """Verify client.list_user_tasks builds statusCategory JQL for Russian statuses."""
         from jira_tempo_mcp.client import _RU_STATUS_TO_CATEGORY
+
         assert _RU_STATUS_TO_CATEGORY["В работе"] == "In Progress"
         assert _RU_STATUS_TO_CATEGORY["Готово"] == "Done"
         assert _RU_STATUS_TO_CATEGORY["Открыта"] == "To Do"
@@ -200,12 +209,16 @@ class TestBug5TeamReportFilename:
         mock_client.get_issue.side_effect = _get_issue
 
         result1 = await generate_team_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice", "bob"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            output_dir=tmp_path,
         )
         result2 = await generate_team_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["charlie"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["charlie"],
+            output_dir=tmp_path,
         )
         assert result1.file_path != result2.file_path
 
@@ -230,12 +243,16 @@ class TestBug5TeamReportFilename:
         mock_client.get_issue.side_effect = _get_issue
 
         result1 = await generate_team_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice", "bob"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            output_dir=tmp_path,
         )
         result2 = await generate_team_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["bob", "alice"], output_dir=tmp_path,  # different order
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["bob", "alice"],
+            output_dir=tmp_path,  # different order
         )
         assert result1.file_path == result2.file_path
 
@@ -252,18 +269,14 @@ class TestBug6Favorites404:
             raise FavoritesEndpointUnavailableError("404")
 
         mock_client.list_favorite_issues.side_effect = _list_favorites
-        result = await _handle_list_favorites(
-            {}, config, cast(JiraTempoClient, mock_client)
-        )
+        result = await _handle_list_favorites({}, config, cast(JiraTempoClient, mock_client))
         assert "endpoint unavailable" in result.lower()
 
     async def test_empty_list_message(self) -> None:
         config = _make_config()
         mock_client = AsyncMock(spec=JiraTempoClient)
         mock_client.list_favorite_issues.return_value = []
-        result = await _handle_list_favorites(
-            {}, config, cast(JiraTempoClient, mock_client)
-        )
+        result = await _handle_list_favorites({}, config, cast(JiraTempoClient, mock_client))
         assert "No favorite issues found" in result
 
 
@@ -274,6 +287,7 @@ class TestUX1WorkersCache:
     async def test_workers_endpoint_cached_as_unavailable(self) -> None:
         """After first 404, subsequent calls skip /workers."""
         from jira_tempo_mcp.client import JiraTempoClient as RealClient
+
         config = _make_config()
         # We can't easily test the real HTTP path, but we verify the
         # _workers_endpoint_available attribute exists and is used.
@@ -326,8 +340,12 @@ class TestUX3CommentsInTasks:
         mock_client = AsyncMock(spec=JiraTempoClient)
         mock_client.list_user_tasks.return_value = [
             {
-                "key": "DEVOPS-1", "summary": "Test", "status": "В работе",
-                "duedate": "", "priority": "High", "comment_count": 2,
+                "key": "DEVOPS-1",
+                "summary": "Test",
+                "status": "В работе",
+                "duedate": "",
+                "priority": "High",
+                "comment_count": 2,
                 "comments": [
                     {"author": "Alice", "body": "First comment", "created": "2026-06-20"},
                     {"author": "Bob", "body": "Second comment here", "created": "2026-06-21"},
@@ -348,8 +366,12 @@ class TestUX3CommentsInTasks:
         long_body = "x" * 200
         mock_client.list_user_tasks.return_value = [
             {
-                "key": "DEVOPS-1", "summary": "Test", "status": "В работе",
-                "duedate": "", "priority": "High", "comment_count": 1,
+                "key": "DEVOPS-1",
+                "summary": "Test",
+                "status": "В работе",
+                "duedate": "",
+                "priority": "High",
+                "comment_count": 1,
                 "comments": [{"author": "Alice", "body": long_body, "created": "2026-06-20"}],
             }
         ]
@@ -395,14 +417,27 @@ class TestUX5ListIssuesByJql:
         config = _make_config()
         mock_client = AsyncMock(spec=JiraTempoClient)
         mock_client.search_issues.return_value = [
-            {"key": "DEVOPS-1", "summary": "Task A", "status": "In Progress",
-             "priority": "High", "duedate": "2026-06-30", "assignee": "Golikhin"},
-            {"key": "DEVOPS-2", "summary": "Task B", "status": "Done",
-             "priority": "Medium", "duedate": "", "assignee": ""},
+            {
+                "key": "DEVOPS-1",
+                "summary": "Task A",
+                "status": "In Progress",
+                "priority": "High",
+                "duedate": "2026-06-30",
+                "assignee": "Golikhin",
+            },
+            {
+                "key": "DEVOPS-2",
+                "summary": "Task B",
+                "status": "Done",
+                "priority": "Medium",
+                "duedate": "",
+                "assignee": "",
+            },
         ]
         result = await _handle_list_issues_by_jql(
             {"jql": "project = DEVOPS", "max_results": 2},
-            config, cast(JiraTempoClient, mock_client)
+            config,
+            cast(JiraTempoClient, mock_client),
         )
         assert "DEVOPS-1" in result
         assert "Task A" in result
@@ -440,9 +475,7 @@ class TestUX6GetCurrentUser:
             "key": "JIRAUSER40101",
             "active": True,
         }
-        result = await _handle_get_current_user(
-            {}, config, cast(JiraTempoClient, mock_client)
-        )
+        result = await _handle_get_current_user({}, config, cast(JiraTempoClient, mock_client))
         assert "golikhin" in result
         assert "Голихин Леонид Сергеевич" in result
         assert "golikhin@komus.net" in result
@@ -461,8 +494,10 @@ class TestUX7WeeklyReportUsername:
         mock_client.search_worklogs.return_value = []
 
         await generate_weekly_report(
-            cast(JiraTempoClient, mock_client), config,
-            target_date=date(2026, 6, 17), output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=date(2026, 6, 17),
+            output_dir=tmp_path,
             username="dmz",
         )
         mock_client.find_worker_key.assert_called_once_with("dmz")
@@ -474,8 +509,10 @@ class TestUX7WeeklyReportUsername:
         mock_client.search_worklogs.return_value = []
 
         await generate_weekly_report(
-            cast(JiraTempoClient, mock_client), config,
-            target_date=date(2026, 6, 17), output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=date(2026, 6, 17),
+            output_dir=tmp_path,
         )
         mock_client.find_worker_key.assert_called_once_with("testuser")
 
@@ -491,8 +528,10 @@ class TestUX8ISOFilenames:
         mock_client.search_worklogs.return_value = []
 
         result = await generate_weekly_report(
-            cast(JiraTempoClient, mock_client), config,
-            target_date=date(2026, 6, 17), output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=date(2026, 6, 17),
+            output_dir=tmp_path,
         )
         path = Path(result)
         assert "2026-06-15" in path.name
@@ -520,9 +559,12 @@ class TestUX8ISOFilenames:
         mock_client.get_issue.side_effect = _get_issue
 
         result = await generate_team_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice"], output_dir=tmp_path,
-            date_from="2026-06-15", date_to="2026-06-19",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            output_dir=tmp_path,
+            date_from="2026-06-15",
+            date_to="2026-06-19",
         )
         assert "2026-06-15" in result.file_path.name
         assert "2026-06-19" in result.file_path.name
@@ -553,7 +595,8 @@ class TestUX10CreateWorklogReturnsFull:
 
         result = await _handle_create_worklog(
             {"issue_key": "DEVOPS-100", "time_spent": "1h"},
-            config, cast(JiraTempoClient, mock_client)
+            config,
+            cast(JiraTempoClient, mock_client),
         )
         assert "Tracked 1h" in result
         assert "Worklog ID: 999" in result
@@ -570,7 +613,12 @@ class TestFormatWorklogDetails:
         wl = {
             "tempoWorklogId": "123",
             "timeSpentSeconds": 3600,
-            "issue": {"key": "DEV-1", "summary": "Test", "status": {"name": "Open"}, "project": {"key": "DEV"}},
+            "issue": {
+                "key": "DEV-1",
+                "summary": "Test",
+                "status": {"name": "Open"},
+                "project": {"key": "DEV"},
+            },
             "comment": "Work",
             "started": "2026-06-19",
             "worker": "JIRAUSER1",

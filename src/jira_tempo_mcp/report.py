@@ -45,12 +45,17 @@ from .templates._shared import (
 )
 from .templates._shared import (
     group_worklogs_by_comment,
-    md_escape_cell as _md_escape_cell,
-    month_ru as _month_ru,  # noqa: F401
-    normalize_comment,
     parse_tempo_date,
-    truncate_text as _truncate_text,
     week_range,
+)
+from .templates._shared import (
+    md_escape_cell as _md_escape_cell,
+)
+from .templates._shared import (
+    month_ru as _month_ru,  # noqa: F401
+)
+from .templates._shared import (
+    truncate_text as _truncate_text,
 )
 from .utils import format_seconds_to_human
 
@@ -105,7 +110,9 @@ def _render_weekly_md(
     ]
 
     if not flat:
-        lines.append("*(\u043d\u0435\u0442 \u043e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438)*")
+        lines.append(
+            "*(\u043d\u0435\u0442 \u043e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438)*"
+        )
         lines.append("")
         return "\n".join(lines)
 
@@ -118,7 +125,9 @@ def _render_weekly_md(
     sorted_worklogs = sorted(flat, key=_sort_key)
 
     # --- Worklogs table ---
-    lines.append("| \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b | \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 |")
+    lines.append(
+        "| \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b | \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 |"
+    )
     lines.append("|------|--------|------:|-------------|")
     for wl in sorted_worklogs:
         key = _extract_issue_key(wl) or ""
@@ -168,18 +177,22 @@ def _render_weekly_json(
         task_total = sum(_extract_seconds(w) for w in grouped[key])
         worklog_entries = []
         for comment, secs in group_worklogs_by_comment(grouped[key]):
-            worklog_entries.append({
-                "comment": comment,
-                "seconds": secs,
-                "human": format_seconds_to_human(secs),
-            })
-        issues.append({
-            "key": key,
-            "title": title,
-            "total_seconds": task_total,
-            "total_human": format_seconds_to_human(task_total),
-            "worklogs": worklog_entries,
-        })
+            worklog_entries.append(
+                {
+                    "comment": comment,
+                    "seconds": secs,
+                    "human": format_seconds_to_human(secs),
+                }
+            )
+        issues.append(
+            {
+                "key": key,
+                "title": title,
+                "total_seconds": task_total,
+                "total_human": format_seconds_to_human(task_total),
+                "worklogs": worklog_entries,
+            }
+        )
         used_keys.add(key)
 
     # 2. Remaining issues sorted by total time desc.
@@ -190,18 +203,22 @@ def _render_weekly_json(
         task_total = sum(_extract_seconds(w) for w in grouped[key])
         worklog_entries = []
         for comment, secs in group_worklogs_by_comment(grouped[key]):
-            worklog_entries.append({
-                "comment": comment,
-                "seconds": secs,
-                "human": format_seconds_to_human(secs),
-            })
-        issues.append({
-            "key": key,
-            "title": title,
-            "total_seconds": task_total,
-            "total_human": format_seconds_to_human(task_total),
-            "worklogs": worklog_entries,
-        })
+            worklog_entries.append(
+                {
+                    "comment": comment,
+                    "seconds": secs,
+                    "human": format_seconds_to_human(secs),
+                }
+            )
+        issues.append(
+            {
+                "key": key,
+                "title": title,
+                "total_seconds": task_total,
+                "total_human": format_seconds_to_human(task_total),
+                "worklogs": worklog_entries,
+            }
+        )
 
     data = {
         "author": author if author else config.report_author_header,
@@ -245,9 +262,7 @@ async def generate_weekly_report(
               this user's worker key.
     """
     if fmt not in _VALID_FORMATS:
-        raise ValueError(
-            f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}."
-        )
+        raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
 
     tz = pytz.timezone(config.timezone)
     today = datetime.now(tz).date()
@@ -348,10 +363,7 @@ async def generate_weekly_report(
     # prefix instead of config.jira_user so the file is named after the
     # report subject, not the PAT owner.
     filename_prefix = username if username else config.report_filename_header
-    filename = (
-        f"{filename_prefix}_"
-        f"{monday.isoformat()}_{friday.isoformat()}.{fmt}"
-    )
+    filename = f"{filename_prefix}_{monday.isoformat()}_{friday.isoformat()}.{fmt}"
     out_path = output_dir / filename
     out_path.write_text(report_text, encoding="utf-8")
     total_seconds = sum(_extract_seconds(w) for w in filtered)

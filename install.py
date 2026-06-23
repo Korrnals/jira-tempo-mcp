@@ -343,9 +343,7 @@ def clear_mcp_tool_cache() -> None:
     if global_db.exists():
         try:
             conn = sqlite3.connect(str(global_db))
-            cursor = conn.execute(
-                "DELETE FROM ItemTable WHERE key = 'mcpToolCache'"
-            )
+            cursor = conn.execute("DELETE FROM ItemTable WHERE key = 'mcpToolCache'")
             if cursor.rowcount > 0:
                 _ok(f"Cleared MCP tool cache from global state.vscdb ({cursor.rowcount} entries)")
                 cleared += cursor.rowcount
@@ -364,11 +362,11 @@ def clear_mcp_tool_cache() -> None:
                 continue
             try:
                 conn = sqlite3.connect(str(ws_db))
-                cursor = conn.execute(
-                    "DELETE FROM ItemTable WHERE key = 'mcpToolCache'"
-                )
+                cursor = conn.execute("DELETE FROM ItemTable WHERE key = 'mcpToolCache'")
                 if cursor.rowcount > 0:
-                    _ok(f"Cleared MCP tool cache from {ws_dir.name}/state.vscdb ({cursor.rowcount} entries)")
+                    _ok(
+                        f"Cleared MCP tool cache from {ws_dir.name}/state.vscdb ({cursor.rowcount} entries)"
+                    )
                     cleared += cursor.rowcount
                 conn.commit()
                 conn.close()
@@ -391,10 +389,8 @@ def cleanup_bak_files() -> None:
     if not bak_files:
         return
     for bak in bak_files:
-        try:
+        with contextlib.suppress(OSError):
             bak.unlink()
-        except OSError:
-            pass
     _ok(f"Cleaned up {len(bak_files)} backup file(s) from .vscode/")
 
 

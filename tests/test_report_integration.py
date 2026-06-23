@@ -366,6 +366,7 @@ class TestGenerateWeeklyReportJSON:
         path = Path(result)
         assert path.suffix == ".json"
         import json as _json
+
         data = _json.loads(path.read_text(encoding="utf-8"))
         assert data["author"] == config.report_author_header
         assert data["date_from"] == "2026-06-15"
@@ -386,7 +387,6 @@ class TestGenerateWeeklyReportJSON:
                 output_dir=tmp_path,
                 fmt="xml",
             )
-
 
 
 class TestGenerateWeeklyReportUsernameOverride:
@@ -461,5 +461,6 @@ class TestGenerateWeeklyReportUsernameOverride:
         )
 
         import json as _json
+
         data = _json.loads(Path(result).read_text(encoding="utf-8"))
         assert data["author"] == "otheruser"

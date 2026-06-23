@@ -103,11 +103,12 @@ def _is_active_task(task: dict[str, Any]) -> bool:
     with fallback to ``statusCategory`` name matching for installations
     that return English category names.
     """
-    cat_key = task.get("statusCategoryKey", "")
+    cat_key = str(task.get("statusCategoryKey", ""))
     if cat_key:
         return cat_key == _ACTIVE_CATEGORY_KEY
     # Fallback: match on localized name (English installations).
-    return task.get("statusCategory", "") in ("In Progress", "В работе")
+    category = str(task.get("statusCategory", ""))
+    return category in ("In Progress", "В работе")
 
 
 def _status_emoji(task: dict[str, Any]) -> str:
@@ -155,7 +156,9 @@ def _render_individual_md(
     # --- Summary table at the top ---
     lines.append("## \U0001f4ca \u0420\u0435\u0437\u044e\u043c\u0435")
     lines.append("")
-    lines.append("| \u0421\u0442\u0430\u0442\u0443\u0441 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e |")
+    lines.append(
+        "| \u0421\u0442\u0430\u0442\u0443\u0441 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e |"
+    )
     lines.append("|--------|-----------:|")
     for status, group_tasks in groups.items():
         emoji = _status_emoji(group_tasks[0]) if group_tasks else "\U0001f4cc"
@@ -180,7 +183,9 @@ def _render_individual_md(
             )
             lines.append("|---:|------|--------|-----------|------|-----------|-------------:|")
         else:
-            lines.append("| # | \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u041f\u0440\u0438\u043e\u0440\u0438\u0442\u0435\u0442 | \u0421\u0440\u043e\u043a | \u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e |")
+            lines.append(
+                "| # | \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u041f\u0440\u0438\u043e\u0440\u0438\u0442\u0435\u0442 | \u0421\u0440\u043e\u043a | \u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e |"
+            )
             lines.append("|---:|------|--------|-----------|------|-----------|")
 
         for task in group_tasks:
@@ -211,7 +216,9 @@ def _render_individual_md(
                 key = task.get("key", "")
                 comments = task.get("comments", [])
                 lines.append("<details>")
-                lines.append(f"<summary>\U0001f4ac \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0438 \u043a {key}</summary>")
+                lines.append(
+                    f"<summary>\U0001f4ac \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0438 \u043a {key}</summary>"
+                )
                 lines.append("")
                 for c in comments:
                     author = c.get("author", "?")
@@ -260,7 +267,9 @@ def _render_group_md(
     # --- Summary table at the top ---
     lines.append("## \U0001f4ca \u0421\u0432\u043e\u0434\u043a\u0430")
     lines.append("")
-    lines.append("| \u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a | \u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u0434\u0430\u0447 |")
+    lines.append(
+        "| \u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a | \u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u0434\u0430\u0447 |"
+    )
     lines.append("|-----------|---------------:|")
     for username in users:
         display = user_display_names.get(username, username)
@@ -274,11 +283,15 @@ def _render_group_md(
     for username in users:
         active_tasks = per_user_active[username]
         display = user_display_names.get(username, username)
-        lines.append(f"## {display} ({len(active_tasks)} \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445)")
+        lines.append(
+            f"## {display} ({len(active_tasks)} \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445)"
+        )
         lines.append("")
 
         if not active_tasks:
-            lines.append("*(\u043d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u0434\u0430\u0447)*")
+            lines.append(
+                "*(\u043d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u0434\u0430\u0447)*"
+            )
             lines.append("")
             lines.append("---")
             lines.append("")
@@ -408,7 +421,9 @@ def _render_group_txt(
     lines.append("== Сводка ==")
     lines.append(f"Всего активных задач: {total_active}")
     for username in users:
-        lines.append(f"  - {user_display_names.get(username, username)}: {per_user_counts[username]}")
+        lines.append(
+            f"  - {user_display_names.get(username, username)}: {per_user_counts[username]}"
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -429,23 +444,25 @@ def _render_individual_json(
     status_groups: list[dict[str, Any]] = []
     for status, group_tasks in groups.items():
         emoji = _status_emoji(group_tasks[0]) if group_tasks else "📌"
-        status_groups.append({
-            "status": status,
-            "emoji": emoji,
-            "count": len(group_tasks),
-            "tasks": [
-                {
-                    "key": t.get("key", ""),
-                    "summary": t.get("summary", ""),
-                    "priority": t.get("priority", ""),
-                    "duedate": _format_jira_date(t.get("duedate", "")),
-                    "updated": _format_jira_date(t.get("updated", "")),
-                    "comment_count": t.get("comment_count", 0),
-                    "comments": t.get("comments", []),
-                }
-                for t in group_tasks
-            ],
-        })
+        status_groups.append(
+            {
+                "status": status,
+                "emoji": emoji,
+                "count": len(group_tasks),
+                "tasks": [
+                    {
+                        "key": t.get("key", ""),
+                        "summary": t.get("summary", ""),
+                        "priority": t.get("priority", ""),
+                        "duedate": _format_jira_date(t.get("duedate", "")),
+                        "updated": _format_jira_date(t.get("updated", "")),
+                        "comment_count": t.get("comment_count", 0),
+                        "comments": t.get("comments", []),
+                    }
+                    for t in group_tasks
+                ],
+            }
+        )
 
     data = {
         "username": username,
@@ -478,25 +495,29 @@ def _render_group_json(
         status_groups: list[dict[str, Any]] = []
         for status, group_tasks in groups.items():
             emoji = _status_emoji(group_tasks[0]) if group_tasks else "📌"
-            status_groups.append({
-                "status": status,
-                "emoji": emoji,
-                "count": len(group_tasks),
-                "tasks": [
-                    {
-                        "key": t.get("key", ""),
-                        "summary": t.get("summary", ""),
-                    }
-                    for t in group_tasks
-                ],
-            })
+            status_groups.append(
+                {
+                    "status": status,
+                    "emoji": emoji,
+                    "count": len(group_tasks),
+                    "tasks": [
+                        {
+                            "key": t.get("key", ""),
+                            "summary": t.get("summary", ""),
+                        }
+                        for t in group_tasks
+                    ],
+                }
+            )
 
-        per_user.append({
-            "username": username,
-            "display_name": display,
-            "active_count": len(active_tasks),
-            "status_groups": status_groups,
-        })
+        per_user.append(
+            {
+                "username": username,
+                "display_name": display,
+                "active_count": len(active_tasks),
+                "status_groups": status_groups,
+            }
+        )
 
     data = {
         "generated_at": now.strftime("%d.%m.%Y"),
@@ -559,9 +580,7 @@ async def generate_tasks_report(
         raise ValueError("users must be a non-empty list of Jira usernames.")
 
     if fmt not in _VALID_FORMATS:
-        raise ValueError(
-            f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}."
-        )
+        raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
 
     is_group = len(users) > 1
     # Group mode is always active-only per spec.
@@ -573,7 +592,9 @@ async def generate_tasks_report(
     # Fetch tasks for all users concurrently.
     logger.info(
         "Tasks report: fetching tasks for %d user(s) (active_only=%s, fmt=%s)",
-        len(users), effective_active_only, fmt,
+        len(users),
+        effective_active_only,
+        fmt,
     )
 
     async def _fetch_one(username: str) -> list[dict[str, Any]]:
@@ -600,8 +621,7 @@ async def generate_tasks_report(
         else:
             report_text = _render_group_txt(users, display_names, tasks_by_user, tz)
         total_tasks = sum(
-            len([t for t in tasks_by_user.get(u, []) if _is_active_task(t)])
-            for u in users
+            len([t for t in tasks_by_user.get(u, []) if _is_active_task(t)]) for u in users
         )
     else:
         username = users[0]
@@ -620,7 +640,7 @@ async def generate_tasks_report(
     # --- Output path ---
     if output_dir is None:
         base = config.report_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
-        subdir = 'tasks' if len(users) == 1 else 'tasks-team'
+        subdir = "tasks" if len(users) == 1 else "tasks-team"
         output_dir = Path(base) / str(now.year) / month_ru(now.month) / subdir
     output_dir.mkdir(parents=True, exist_ok=True)
 

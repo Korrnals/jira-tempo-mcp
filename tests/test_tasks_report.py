@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from datetime import date
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -95,7 +93,15 @@ def _make_mock_client(
     async def _search_users(query: str, max_results: int = 10) -> list[dict[str, Any]]:
         names = display_names or {}
         if query in names:
-            return [{"name": query, "key": f"JIRAUSER_{query}", "displayName": names[query], "emailAddress": "", "active": True}]
+            return [
+                {
+                    "name": query,
+                    "key": f"JIRAUSER_{query}",
+                    "displayName": names[query],
+                    "emailAddress": "",
+                    "active": True,
+                }
+            ]
         return []
 
     mock.list_user_tasks.side_effect = _list_user_tasks
@@ -159,17 +165,20 @@ class TestIsActiveTask:
 class TestIndividualReport:
     async def test_single_user_all_tasks(self, tmp_path: Path) -> None:
         tasks = [
-            _make_task("DEVOPS-100", "Task A", "В работе", "In Progress", duedate="2026-06-30", comments=2),
+            _make_task(
+                "DEVOPS-100", "Task A", "В работе", "In Progress", duedate="2026-06-30", comments=2
+            ),
             _make_task("DEVOPS-101", "Task B", "Готово", "Done"),
             _make_task("DEVOPS-102", "Task C", "Открыта", "To Do"),
         ]
         config = _make_config()
-        mock_client = _make_mock_client(
-            {"dmz": tasks}, {"dmz": "Зазнатнов Денис Михайлович"}
-        )
+        mock_client = _make_mock_client({"dmz": tasks}, {"dmz": "Зазнатнов Денис Михайлович"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config, users=["dmz"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["dmz"],
+            output_dir=tmp_path,
             fmt="txt",
         )
 
@@ -201,8 +210,12 @@ class TestIndividualReport:
         mock_client = _make_mock_client({"alice": tasks}, {"alice": "Alice"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice"], active_only=True, output_dir=tmp_path, fmt="txt",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            active_only=True,
+            output_dir=tmp_path,
+            fmt="txt",
         )
 
         assert result.total_tasks == 1
@@ -215,7 +228,10 @@ class TestIndividualReport:
         mock_client = _make_mock_client({"nobody": []}, {"nobody": "Nobody"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config, users=["nobody"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["nobody"],
+            output_dir=tmp_path,
             fmt="txt",
         )
 
@@ -246,8 +262,11 @@ class TestGroupReport:
         )
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["golikhin", "poperech"], output_dir=tmp_path, fmt="txt",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["golikhin", "poperech"],
+            output_dir=tmp_path,
+            fmt="txt",
         )
 
         # Group mode forces active_only — only In Progress tasks count.
@@ -277,8 +296,11 @@ class TestGroupReport:
         mock_client = _make_mock_client(user_tasks, {"alice": "Alice", "bob": "Bob"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice", "bob"], output_dir=tmp_path, fmt="txt",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            output_dir=tmp_path,
+            fmt="txt",
         )
 
         assert result.total_tasks == 1
@@ -306,8 +328,11 @@ class TestValidation:
 
         with pytest.raises(ValueError, match="Invalid format"):
             await generate_tasks_report(
-                cast(JiraTempoClient, mock_client), config,
-                users=["alice"], output_dir=tmp_path, fmt="xml",
+                cast(JiraTempoClient, mock_client),
+                config,
+                users=["alice"],
+                output_dir=tmp_path,
+                fmt="xml",
             )
 
 
@@ -317,16 +342,19 @@ class TestValidation:
 class TestMarkdownIndividualReport:
     async def test_single_user_md_format(self, tmp_path: Path) -> None:
         tasks = [
-            _make_task("DEVOPS-100", "Task A", "В работе", "In Progress", duedate="2026-06-30", comments=2),
+            _make_task(
+                "DEVOPS-100", "Task A", "В работе", "In Progress", duedate="2026-06-30", comments=2
+            ),
             _make_task("DEVOPS-101", "Task B", "Готово", "Done"),
         ]
         config = _make_config()
-        mock_client = _make_mock_client(
-            {"dmz": tasks}, {"dmz": "Зазнатнов Денис Михайлович"}
-        )
+        mock_client = _make_mock_client({"dmz": tasks}, {"dmz": "Зазнатнов Денис Михайлович"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config, users=["dmz"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["dmz"],
+            output_dir=tmp_path,
             fmt="md",
         )
 
@@ -354,7 +382,10 @@ class TestMarkdownIndividualReport:
         mock_client = _make_mock_client({"alice": tasks}, {"alice": "Alice"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config, users=["alice"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            output_dir=tmp_path,
         )
 
         assert result.file_path.suffix == ".md"
@@ -380,8 +411,11 @@ class TestMarkdownGroupReport:
         )
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["golikhin", "poperech"], output_dir=tmp_path, fmt="md",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["golikhin", "poperech"],
+            output_dir=tmp_path,
+            fmt="md",
         )
 
         assert result.file_path.suffix == ".md"
@@ -410,12 +444,16 @@ class TestJsonIndividualReport:
         mock_client = _make_mock_client({"alice": tasks}, {"alice": "Alice"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config, users=["alice"], output_dir=tmp_path,
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            output_dir=tmp_path,
             fmt="json",
         )
 
         assert result.file_path.suffix == ".json"
         import json as _json
+
         data = _json.loads(result.file_path.read_text(encoding="utf-8"))
         assert data["username"] == "alice"
         assert data["display_name"] == "Alice"
@@ -431,12 +469,16 @@ class TestJsonIndividualReport:
         mock_client = _make_mock_client(user_tasks, {"alice": "Alice", "bob": "Bob"})
 
         result = await generate_tasks_report(
-            cast(JiraTempoClient, mock_client), config,
-            users=["alice", "bob"], output_dir=tmp_path, fmt="json",
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            output_dir=tmp_path,
+            fmt="json",
         )
 
         assert result.file_path.suffix == ".json"
         import json as _json
+
         data = _json.loads(result.file_path.read_text(encoding="utf-8"))
         assert data["total_active"] == 1  # Only alice has active tasks.
         assert len(data["per_user"]) == 2
