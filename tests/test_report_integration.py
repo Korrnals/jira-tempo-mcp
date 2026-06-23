@@ -12,13 +12,15 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+import pytest
+
 from jira_tempo_mcp.client import JiraTempoClient
 from jira_tempo_mcp.config import Config
 from jira_tempo_mcp.report import generate_weekly_report
 
 # Target week: Monday 2026-06-15 — Friday 2026-06-19.
 TARGET_DATE = date(2026, 6, 17)  # Wednesday
-EXPECTED_FILENAME = "testuser_150626-190626.txt"
+EXPECTED_FILENAME = "testuser_2026-06-15_2026-06-19.txt"
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -287,3 +289,177 @@ class TestGenerateWeeklyReportEmptyWeek:
         mock_client.find_worker_key.assert_called_once_with("testuser")
         # get_issue never called (no worklogs to group).
         mock_client.get_issue.assert_not_called()
+
+
+# --- Format parameter tests (v0.3.0) ---
+
+
+class TestGenerateWeeklyReportMarkdown:
+    """Markdown format: .md extension, tables, bold formatting."""
+
+    async def test_md_format(self, tmp_path: Path) -> None:
+        worklogs = [
+            _make_worklog("PROJECT-100", 3600, 15, "Stand support"),
+            _make_worklog("PROJECT-200", 7200, 16, "Debug"),
+        ]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs, {"PROJECT-200": "Task B"})
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+            fmt="md",
+        )
+
+        path = Path(result)
+        assert path.suffix == ".md"
+        content = path.read_text(encoding="utf-8")
+        # Markdown header (new table-based format).
+        assert content.startswith("# Отчёт за неделю")
+        assert "15.06.2026" in content
+        assert "19.06.2026" in content
+        # Markdown table with worklogs as rows.
+        assert "| Ключ | Задача | Часы | Комментарий |" in content
+        assert "|------|--------|------:|-------------|" in content
+        # Bold total row at the bottom.
+        assert "**3h**" in content
+        assert "**Сотрудник:**" in content
+        assert "**Всего:**" in content
+
+    async def test_md_default_is_txt(self, tmp_path: Path) -> None:
+        """Default format is txt (backward compatible)."""
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand")]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs)
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+        )
+
+        assert Path(result).suffix == ".txt"
+
+
+class TestGenerateWeeklyReportJSON:
+    """JSON format: .json extension, structured data."""
+
+    async def test_json_format(self, tmp_path: Path) -> None:
+        worklogs = [
+            _make_worklog("PROJECT-100", 3600, 15, "Stand support"),
+            _make_worklog("PROJECT-200", 7200, 16, "Debug"),
+        ]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs, {"PROJECT-200": "Task B"})
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+            fmt="json",
+        )
+
+        path = Path(result)
+        assert path.suffix == ".json"
+        import json as _json
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        assert data["author"] == config.report_author_header
+        assert data["date_from"] == "2026-06-15"
+        assert data["date_to"] == "2026-06-19"
+        assert data["total_seconds"] == 10800
+        assert len(data["issues"]) >= 1
+
+    async def test_invalid_format_raises(self, tmp_path: Path) -> None:
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand")]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs)
+
+        with pytest.raises(ValueError, match="Invalid format"):
+            await generate_weekly_report(
+                cast(JiraTempoClient, mock_client),
+                config,
+                target_date=TARGET_DATE,
+                output_dir=tmp_path,
+                fmt="xml",
+            )
+
+
+
+class TestGenerateWeeklyReportUsernameOverride:
+    """Change 4: username override changes the report header and filename prefix.
+
+    When ``username`` is provided, the report header author label and the
+    filename prefix must reflect the override, not ``config.jira_user`` or
+    ``config.report_author_header``.
+    """
+
+    async def test_username_override_header_and_filename(self, tmp_path: Path) -> None:
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand support")]
+        # Config uses jira_user="testuser", author_display_name="Тестовый Пользователь".
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs)
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+            username="otheruser",
+        )
+
+        # Filename uses the username override as prefix.
+        expected_path = tmp_path / "otheruser_2026-06-15_2026-06-19.txt"
+        assert result == str(expected_path)
+        assert expected_path.exists()
+
+        content = expected_path.read_text(encoding="utf-8")
+        # Header shows the override username, not the configured display name.
+        assert "otheruser" in content
+        assert "Тестовый Пользователь" not in content
+
+        # find_worker_key called with the override username, not config.jira_user.
+        mock_client.find_worker_key.assert_called_once_with("otheruser")
+
+    async def test_username_override_md_header(self, tmp_path: Path) -> None:
+        """Markdown header also reflects the username override."""
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand")]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs)
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+            fmt="md",
+            username="otheruser",
+        )
+
+        path = Path(result)
+        assert path.name == "otheruser_2026-06-15_2026-06-19.md"
+        content = path.read_text(encoding="utf-8")
+        assert "**Сотрудник:** otheruser" in content
+        assert "Тестовый Пользователь" not in content
+
+    async def test_username_override_json_author(self, tmp_path: Path) -> None:
+        """JSON format author field reflects the username override."""
+        worklogs = [_make_worklog("PROJECT-100", 3600, 15, "Stand")]
+        config = _make_config()
+        mock_client = _make_mock_client(worklogs)
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+            output_dir=tmp_path,
+            fmt="json",
+            username="otheruser",
+        )
+
+        import json as _json
+        data = _json.loads(Path(result).read_text(encoding="utf-8"))
+        assert data["author"] == "otheruser"

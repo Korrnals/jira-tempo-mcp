@@ -294,3 +294,101 @@ class TestTeamReportValidation:
                 users=[],
                 output_dir=tmp_path,
             )
+
+    async def test_invalid_format_raises(self, tmp_path: Path) -> None:
+        config = _make_config()
+        mock_client = _make_mock_client({"alice": []})
+        with pytest.raises(ValueError, match="Invalid format"):
+            await generate_team_report(
+                cast(JiraTempoClient, mock_client),
+                config,
+                users=["alice"],
+                output_dir=tmp_path,
+                fmt="xml",
+            )
+
+
+# --- Format parameter tests (v0.3.0) ---
+
+
+class TestTeamReportMarkdown:
+    """Markdown format: .md extension, tables, bold formatting."""
+
+    async def test_md_format(self, tmp_path: Path) -> None:
+        user_worklogs = {
+            "alice": [_make_worklog("PROJECT-100", 3600, 15, "Alice on A")],
+            "bob": [_make_worklog("PROJECT-200", 7200, 16, "Bob on B")],
+        }
+        config = _make_config()
+        mock_client = _make_mock_client(
+            user_worklogs, {"PROJECT-200": "Task B"}
+        )
+
+        result = await generate_team_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            date_from="2026-06-15",
+            date_to="2026-06-19",
+            output_dir=tmp_path,
+            fmt="md",
+        )
+
+        assert result.file_path.suffix == ".md"
+        content = result.file_path.read_text(encoding="utf-8")
+        assert content.startswith("# Командный отчёт")
+        # New table-based format: summary table at top, per-user tables.
+        assert "## 📊 Сводка" in content
+        assert "| Сотрудник | Часы |" in content
+        assert "**Итого**" in content
+        # Per-user section with worklogs table.
+        assert "| Ключ | Задача | Часы | Комментарий |" in content
+
+    async def test_default_is_txt(self, tmp_path: Path) -> None:
+        """Default format is txt (backward compatible)."""
+        user_worklogs = {"alice": [_make_worklog("PROJECT-100", 3600, 15, "A")]}
+        config = _make_config()
+        mock_client = _make_mock_client(user_worklogs)
+
+        result = await generate_team_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            date_from="2026-06-15",
+            date_to="2026-06-19",
+            output_dir=tmp_path,
+        )
+
+        assert result.file_path.suffix == ".txt"
+
+
+class TestTeamReportJSON:
+    """JSON format: .json extension, structured data."""
+
+    async def test_json_format(self, tmp_path: Path) -> None:
+        user_worklogs = {
+            "alice": [_make_worklog("PROJECT-100", 3600, 15, "Alice on A")],
+            "bob": [_make_worklog("PROJECT-200", 7200, 16, "Bob on B")],
+        }
+        config = _make_config()
+        mock_client = _make_mock_client(
+            user_worklogs, {"PROJECT-200": "Task B"}
+        )
+
+        result = await generate_team_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice", "bob"],
+            date_from="2026-06-15",
+            date_to="2026-06-19",
+            output_dir=tmp_path,
+            fmt="json",
+        )
+
+        assert result.file_path.suffix == ".json"
+        import json as _json
+        data = _json.loads(result.file_path.read_text(encoding="utf-8"))
+        assert data["date_from"] == "2026-06-15"
+        assert data["date_to"] == "2026-06-19"
+        assert data["grand_total_seconds"] == 10800
+        assert len(data["per_user"]) == 2

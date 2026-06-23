@@ -23,6 +23,30 @@ class JiraTempoError(Exception):
 class WorkerKeyResolutionError(JiraTempoError):
     """Raised when the Tempo worker key cannot be resolved for the configured user."""
 
+class FavoritesEndpointUnavailableError(JiraTempoError):
+    """Raised when the Jira /user/favourites endpoint is unavailable (404/etc)."""
+
+
+# Russian -> English statusCategory name mapping (BUG-1).
+_RU_STATUS_TO_CATEGORY: dict[str, str] = {
+    "В работе": "In Progress",
+    "In Progress": "In Progress",
+    "Открыта": "To Do",
+    "To Do": "To Do",
+    "Open": "To Do",
+    "Готово": "Done",
+    "Выполнена": "Done",
+    "Решена": "Done",
+    "Done": "Done",
+    "Closed": "Done",
+    "Закрыта": "Done",
+    "Ожидание": "In Progress",
+    "На рассмотрении": "In Progress",
+    "In Review": "In Progress",
+    "Заблокирована": "In Progress",
+    "Blocked": "In Progress",
+}
+
 
 def _redact(url: str) -> str:
     """Strip any credentials from URL for safe logging."""
@@ -35,6 +59,13 @@ def _redact(url: str) -> str:
 
 class JiraTempoClient:
     """Async HTTP client for Jira REST API and Tempo Timesheets 4 API."""
+
+    # UX-1: class-level cache shared across all instances within a process.
+    # The MCP server creates a new JiraTempoClient per tool call, so an
+    # instance-level cache is lost between calls and the /workers 404 noise
+    # reappears every time. The /workers endpoint availability does not
+    # change during a session, so a process-wide class cache is safe.
+    _workers_endpoint_available: bool | None = None
 
     def __init__(self, config: Config) -> None:
         self._config = config
@@ -95,7 +126,13 @@ class JiraTempoClient:
             # m6: truncate to 200 chars to reduce log noise and potential token leakage.
             body = resp.text[:200] if resp.text else ""
             logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
-            raise JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
+            err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
+            err.status_code = resp.status_code  # type: ignore[attr-defined]
+            try:
+                err.response_body = resp.json()  # type: ignore[attr-defined]
+            except Exception:
+                err.response_body = resp.text  # type: ignore[attr-defined]
+            raise err
 
         if resp.status_code == 204 or not resp.text:
             return None
@@ -104,9 +141,9 @@ class JiraTempoClient:
     # --- Jira issue ---
 
     async def get_issue(self, issue_key: str) -> dict[str, Any]:
-        """Get issue metadata (key, summary, status, project)."""
+        """Get issue metadata (key, summary, status, project, priority, assignee, duedate, issuetype, components)."""
         url = f"{self._config.jira_api_base}/issue/{issue_key}"
-        fields = "summary,status,project,issuetype"
+        fields = "summary,status,project,issuetype,priority,assignee,duedate,components"
         data = await self._request("GET", url, self._jira_headers(), params={"fields": fields})
         if not isinstance(data, dict):
             raise JiraTempoError(f"Unexpected response for issue {issue_key}")
@@ -151,71 +188,235 @@ class JiraTempoClient:
         *,
         issue_key: str,
         time_spent_seconds: int,
-        date_started: str,  # ISO 8601 with timezone, e.g. 2026-06-19T10:00:00+03:00
+        date_started: str,  # ISO date, e.g. 2026-06-08 or 2026-06-08T10:00:00+03:00
         comment: str = "",
         author_account_id: str | None = None,
+        attributes: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Create a Tempo worklog.
 
         issue_key: Jira issue key (e.g. PROJECT-100).
         time_spent_seconds: duration in seconds.
-        date_started: ISO 8601 datetime string with timezone offset.
+        date_started: ISO date string. Tempo accepts ``YYYY-MM-DD`` or
+            ``YYYY-MM-DDTHH:MM:SS.000+ZZZZ``. The ``started`` field is used
+            (not ``startDate``) — Tempo's internal field name.
         comment: optional worklog comment.
         author_account_id: Tempo worker key; if None, server uses the token owner.
+        attributes: optional Tempo work attributes (e.g.
+            ``{"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}``).
+            Some Tempo installations require mandatory attributes — without
+            them the API returns 400.
+
+        Tempo's POST /worklogs endpoint does NOT accept ``issueKey`` — it
+        requires ``originTaskId`` (the Jira internal numeric issue ID).
+        This method resolves the issue key to the internal ID via Jira REST
+        API automatically.
         """
+        # Resolve Jira issue key → internal numeric ID.
+        issue_url = f"{self._config.jira_api_base}/issue/{issue_key}"
+        issue_data = await self._request(
+            "GET", issue_url, self._jira_headers(), params={"fields": "summary"}
+        )
+        origin_task_id = issue_data.get("id") if isinstance(issue_data, dict) else None
+        if not origin_task_id:
+            raise JiraTempoError(
+                f"Could not resolve internal issue ID for {issue_key!r}"
+            )
+
         url = f"{self._config.tempo_api_base}/worklogs"
         payload: dict[str, Any] = {
-            "issueKey": issue_key,
+            "originTaskId": int(origin_task_id),
             "timeSpentSeconds": time_spent_seconds,
-            "startDate": date_started,
+            "started": date_started,
             "comment": comment,
         }
         if author_account_id:
-            payload["authorAccountId"] = author_account_id
+            payload["worker"] = author_account_id
+        if attributes:
+            payload["attributes"] = {
+                k: {"value": v} for k, v in attributes.items()
+            }
         data = await self._request("POST", url, self._tempo_headers(), json=payload)
-        if not isinstance(data, dict):
-            raise JiraTempoError("Unexpected create worklog response")
-        return data
+        # Tempo POST /worklogs returns a list of created worklogs (even for
+        # a single entry). Extract the first one.
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict):
+            return data
+        raise JiraTempoError("Unexpected create worklog response")
 
     async def delete_worklog(self, worklog_id: str) -> None:
         """Delete a Tempo worklog by id."""
         url = f"{self._config.tempo_api_base}/worklogs/{worklog_id}"
         await self._request("DELETE", url, self._tempo_headers())
 
+    # --- Tempo work attribute definitions ---
+
+    async def get_work_attributes(self) -> list[dict[str, Any]]:
+        """Get Tempo work attribute definitions.
+
+        Returns a list of dicts with keys: ``key``, ``name``, ``type``,
+        ``required`` (bool), and ``values`` (list[str], only for STATIC_LIST
+        type). Returns an empty list if the endpoint is unavailable (404)
+        or returns an unexpected shape — graceful degradation so callers
+        can fall back to parsing the 400 error body.
+        """
+        url = f"{self._config.tempo_api_base}/work-attributes"
+        try:
+            data = await self._request("GET", url, self._tempo_headers())
+        except JiraTempoError as exc:
+            status = getattr(exc, "status_code", None)
+            if status == 404:
+                logger.warning("Tempo work-attributes endpoint unavailable (404)")
+                return []
+            raise
+        if not isinstance(data, list):
+            logger.warning("Unexpected work-attributes response shape: %s", type(data).__name__)
+            return []
+
+        result: list[dict[str, Any]] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key", item.get("id", "")))
+            name = str(item.get("name", key))
+            attr_type = str(item.get("type", item.get("valueType", "")))
+            required = bool(item.get("required", False))
+            values: list[str] = []
+            # STATIC_LIST attributes expose possible values under "values".
+            possible = item.get("values")
+            if isinstance(possible, list):
+                values = [str(v.get("value", v)) if isinstance(v, dict) else str(v) for v in possible]
+            result.append({
+                "key": key,
+                "name": name,
+                "type": attr_type,
+                "required": required,
+                "values": values,
+            })
+        return result
+
     # --- Tempo worker key lookup ---
 
     async def find_worker_key(self, username: str | None = None) -> str:
         """Find Tempo worker key for a Jira username.
 
-        Tempo 4 API: GET /workers?username=... — returns list of workers.
+        Resolution order:
+        1. TEMPO_WORKER_KEY env var (explicit override, skips API calls).
+        2. Tempo 4 API: GET /workers?username=... — returns list of workers.
+        3. Fallback for the PAT owner (``username`` is None or equals
+           ``config.jira_user``): Jira REST API GET /myself — returns the
+           ``key`` field (e.g. ``JIRAUSER40101``).
+        4. Fallback for any other user: Jira REST API GET /user/search
+           — returns a list of matching users with ``key`` fields.
 
-        Raises WorkerKeyResolutionError if the endpoint is unavailable or the
-        worker is not found. This prevents silent empty-result bugs where
-        list_worklogs returns [] because the wrong key was used.
+        The /workers endpoint is missing or returns 404 on some Tempo
+        installations (e.g. on-prem Jira Data Center with restricted REST
+        modules). The Jira fallbacks keep worker-key resolution working
+        without the Tempo Teams API.
+
+        ``/myself`` only returns the key of the **authenticated user** (the
+        PAT owner), so it is only valid for the default user. For any other
+        username we use ``/user/search?username=...`` which returns the
+        correct per-user ``key``.
+
+        Raises WorkerKeyResolutionError if all strategies fail. This
+        prevents silent empty-result bugs where list_worklogs returns []
+        because the wrong key was used.
         """
+        import os
+
+        # 1. Explicit env override — highest priority, no API calls.
+        env_key = os.getenv("TEMPO_WORKER_KEY", "").strip()
+        if env_key:
+            return env_key
+
         target = username or self._config.jira_user
-        url = f"{self._config.tempo_api_base}/workers"
+
+        # 2. Tempo /workers endpoint (UX-1: skip if known-unavailable).
+        #    Cache is class-level so it persists across per-call instances.
+        if JiraTempoClient._workers_endpoint_available is not False:
+            url = f"{self._config.tempo_api_base}/workers"
+            try:
+                data = await self._request(
+                    "GET", url, self._tempo_headers(), params={"username": target}
+                )
+                JiraTempoClient._workers_endpoint_available = True
+                if isinstance(data, list) and data:
+                    first = data[0]
+                    if isinstance(first, dict):
+                        key = first.get("key") or first.get("accountId") or first.get("id")
+                        if key is not None:
+                            return str(key)
+            except JiraTempoError:
+                if JiraTempoClient._workers_endpoint_available is None:
+                    JiraTempoClient._workers_endpoint_available = False
+                    logger.info(
+                        "Tempo /workers endpoint unavailable, using Jira REST "
+                        "fallback for worker key resolution."
+                    )
+
+        # 3. Jira REST fallback.
+        #    /myself returns the PAT owner's key — only valid for the
+        #    default user. For any other username we must use /user/search
+        #    so we resolve the correct per-user key.
+        is_default_user = target == self._config.jira_user
+        if is_default_user:
+            myself_url = f"{self._config.jira_api_base}/myself"
+            try:
+                myself = await self._request("GET", myself_url, self._jira_headers())
+            except JiraTempoError as exc:
+                raise WorkerKeyResolutionError(
+                    f"Could not resolve Tempo worker key for {target!r}: "
+                    f"Tempo /workers endpoint unavailable and Jira /myself failed: {exc}. "
+                    f"Set TEMPO_WORKER_KEY env var to the worker key (e.g. JIRAUSER12345)."
+                ) from exc
+            key = myself.get("key") if isinstance(myself, dict) else None
+            if key:
+                return str(key)
+            raise WorkerKeyResolutionError(
+                f"Could not resolve Tempo worker key for {target!r}: "
+                f"Tempo /workers endpoint unavailable and Jira /myself returned no key. "
+                f"Set TEMPO_WORKER_KEY env var to the worker key (e.g. JIRAUSER12345)."
+            )
+
+        # 4. Non-default user: Jira REST API user search — returns a list
+        #    of matching users, each with a ``key`` field (e.g.
+        #    ``JIRAUSER40101``) which Tempo accepts as a worker key.
+        search_url = f"{self._config.jira_api_base}/user/search"
         try:
-            data = await self._request(
-                "GET", url, self._tempo_headers(), params={"username": target}
+            results = await self._request(
+                "GET", search_url, self._jira_headers(),
+                params={"username": target},
             )
         except JiraTempoError as exc:
             raise WorkerKeyResolutionError(
-                f"Could not reach Tempo /workers endpoint to resolve worker key "
-                f"for {target!r}: {exc}. Set TEMPO_WORKER_KEY env var or check "
-                f"Tempo API connectivity."
+                f"Could not resolve Tempo worker key for {target!r}: "
+                f"Tempo /workers endpoint unavailable and Jira user search failed: {exc}. "
+                f"Set TEMPO_WORKER_KEY env var to the worker key (e.g. JIRAUSER12345)."
             ) from exc
 
-        if isinstance(data, list) and data:
-            first = data[0]
-            if isinstance(first, dict):
-                key = first.get("key") or first.get("accountId") or first.get("id")
-                if key is not None:
+        if isinstance(results, list):
+            # Prefer an exact match by username (``name``) or key.
+            for user in results:
+                if not isinstance(user, dict):
+                    continue
+                user_name = user.get("name", "")
+                user_key = user.get("key", "")
+                if user_name == target or user_key == target:
+                    key = user.get("key")
+                    if key:
+                        return str(key)
+            # No exact match — take the first result's key if present.
+            if results and isinstance(results[0], dict):
+                key = results[0].get("key")
+                if key:
                     return str(key)
 
         raise WorkerKeyResolutionError(
-            f"Tempo /workers returned no matching worker for username {target!r}. "
-            f"Verify the JIRA_USER is correct or set TEMPO_WORKER_KEY manually."
+            f"Could not resolve Tempo worker key for {target!r}: "
+            f"Tempo /workers endpoint unavailable and Jira user search returned no match. "
+            f"Set TEMPO_WORKER_KEY env var to the worker key (e.g. JIRAUSER12345)."
         )
 
     # --- favorites (optional convenience) ---
@@ -224,13 +425,15 @@ class JiraTempoClient:
         """List favorite issues for the current user via Jira REST API.
 
         Uses the /user/favourites endpoint for issues. Returns list of
-        {key, summary} dicts. May return empty if endpoint is unavailable.
+        {key, summary} dicts. Raises FavoritesEndpointUnavailableError if the endpoint is unavailable (404/other error).
         """
         url = f"{self._config.jira_api_base}/user/favourites"
         try:
             data = await self._request("GET", url, self._jira_headers())
-        except JiraTempoError:
-            return []
+        except JiraTempoError as exc:
+            raise FavoritesEndpointUnavailableError(
+                f"Favorite issues endpoint unavailable: {exc}"
+            ) from exc
         if not isinstance(data, list):
             return []
         out: list[dict[str, Any]] = []
@@ -242,3 +445,227 @@ class JiraTempoClient:
                 if key:
                     out.append({"key": key, "summary": summary})
         return out
+
+    # --- User search & task listing ---
+
+    async def search_users(self, query: str, max_results: int = 10) -> list[dict[str, Any]]:
+        """Search Jira users by name, surname, or username.
+
+        Returns list of dicts with: name, key, displayName, emailAddress, active.
+        """
+        url = f"{self._config.jira_api_base}/user/search"
+        data = await self._request(
+            "GET", url, self._jira_headers(),
+            params={"username": query, "maxResults": max_results},
+        )
+        if not isinstance(data, list):
+            return []
+        return [
+            {
+                "name": u.get("name", ""),
+                "key": u.get("key", ""),
+                "displayName": u.get("displayName", ""),
+                "emailAddress": u.get("emailAddress", ""),
+                "active": u.get("active", True),
+            }
+            for u in data if isinstance(u, dict)
+        ]
+
+    async def list_user_tasks(
+        self,
+        username: str,
+        *,
+        status_filter: list[str] | None = None,
+        max_results: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get tasks assigned to a user.
+
+        Args:
+            username: Jira username (e.g. 'golikhin').
+            status_filter: if provided, only return tasks in these statuses.
+            max_results: max number of tasks to return.
+
+        Returns list of task dicts with: key, summary, status, statusCategory,
+        duedate, priority, issuetype, project, projectKey, created, updated,
+        comments (last 3), comment_count.
+        """
+        # JQL assignee accepts the Jira username directly (not the Jira key /
+        # Tempo worker key). Quoting handles usernames with spaces.
+        jql = f'assignee = "{username}"'
+        if status_filter:
+            # BUG-1: Translate Russian status names to language-independent
+            # statusCategory names. If all filter values map successfully,
+            # use statusCategory IN (...). If any value is unknown, fall back
+            # to status IN (...) with the original values.
+            mapped: list[str] = []
+            all_mapped = True
+            for s in status_filter:
+                cat = _RU_STATUS_TO_CATEGORY.get(s)
+                if cat is not None:
+                    mapped.append(cat)
+                else:
+                    all_mapped = False
+                    break
+            if all_mapped and mapped:
+                seen: set[str] = set()
+                unique_cats: list[str] = []
+                for c in mapped:
+                    if c not in seen:
+                        seen.add(c)
+                        unique_cats.append(c)
+                cats = ", ".join(f'"{c}"' for c in unique_cats)
+                jql += f' AND statusCategory IN ({cats})'
+            else:
+                statuses = ", ".join(f'"{s}"' for s in status_filter)
+                jql += f' AND status IN ({statuses})'
+        jql += ' ORDER BY updated DESC'
+
+        url = f"{self._config.jira_api_base}/search"
+        data = await self._request(
+            "GET", url, self._jira_headers(),
+            params={
+                "jql": jql,
+                "fields": "summary,status,duedate,comment,priority,issuetype,project,created,updated",
+                "maxResults": max_results,
+            },
+        )
+        if not isinstance(data, dict) or "issues" not in data:
+            return []
+
+        tasks: list[dict[str, Any]] = []
+        for issue in data["issues"]:
+            if not isinstance(issue, dict):
+                continue
+            fields = issue.get("fields", {})
+            if not isinstance(fields, dict):
+                fields = {}
+            status_obj = fields.get("status", {})
+            if not isinstance(status_obj, dict):
+                status_obj = {}
+            priority_obj = fields.get("priority", {})
+            if not isinstance(priority_obj, dict):
+                priority_obj = {}
+            issuetype_obj = fields.get("issuetype", {})
+            if not isinstance(issuetype_obj, dict):
+                issuetype_obj = {}
+            project_obj = fields.get("project", {})
+            if not isinstance(project_obj, dict):
+                project_obj = {}
+            comments_obj = fields.get("comment", {})
+            if not isinstance(comments_obj, dict):
+                comments_obj = {}
+            comment_list = comments_obj.get("comments", [])
+            if not isinstance(comment_list, list):
+                comment_list = []
+
+            # Extract last 3 comments (most recent last in Jira API).
+            recent_comments: list[dict[str, Any]] = []
+            for c in comment_list[-3:]:
+                if not isinstance(c, dict):
+                    continue
+                author_obj = c.get("author", {})
+                author = author_obj.get("displayName", "?") if isinstance(author_obj, dict) else "?"
+                body = c.get("body", "")
+                created = c.get("created", "")
+                recent_comments.append({
+                    "author": author,
+                    "body": str(body)[:200],
+                    "created": created,
+                })
+
+            status_cat = status_obj.get("statusCategory", {})
+            if not isinstance(status_cat, dict):
+                status_cat = {}
+
+            tasks.append({
+                "key": issue.get("key", ""),
+                "summary": fields.get("summary", ""),
+                "status": status_obj.get("name", ""),
+                "statusCategory": status_cat.get("name", ""),
+                "statusCategoryKey": status_cat.get("key", ""),
+                "duedate": fields.get("duedate", ""),
+                "priority": priority_obj.get("name", ""),
+                "issuetype": issuetype_obj.get("name", ""),
+                "project": project_obj.get("name", ""),
+                "projectKey": project_obj.get("key", ""),
+                "created": fields.get("created", ""),
+                "updated": fields.get("updated", ""),
+                "comments": recent_comments,
+                "comment_count": len(comment_list),
+            })
+        return tasks
+
+    # --- JQL search (UX-5) ---
+
+    async def search_issues(
+        self,
+        jql: str,
+        fields: str = "summary,status,priority,duedate,assignee,issuetype,project,created,updated",
+        max_results: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Search Jira issues via JQL (read-only GET /rest/api/2/search)."""
+        if not isinstance(jql, str) or not jql.strip():
+            raise JiraTempoError("jql must be a non-empty string.")
+        capped_max = min(max_results, 100)
+        url = f"{self._config.jira_api_base}/search"
+        data = await self._request(
+            "GET", url, self._jira_headers(),
+            params={"jql": jql, "fields": fields, "maxResults": capped_max},
+        )
+        if not isinstance(data, dict) or "issues" not in data:
+            return []
+        issues: list[dict[str, Any]] = []
+        for issue in data["issues"]:
+            if not isinstance(issue, dict):
+                continue
+            fields_obj = issue.get("fields", {})
+            if not isinstance(fields_obj, dict):
+                fields_obj = {}
+            status_obj = fields_obj.get("status", {})
+            if not isinstance(status_obj, dict):
+                status_obj = {}
+            priority_obj = fields_obj.get("priority", {})
+            if not isinstance(priority_obj, dict):
+                priority_obj = {}
+            issuetype_obj = fields_obj.get("issuetype", {})
+            if not isinstance(issuetype_obj, dict):
+                issuetype_obj = {}
+            project_obj = fields_obj.get("project", {})
+            if not isinstance(project_obj, dict):
+                project_obj = {}
+            assignee_obj = fields_obj.get("assignee", {})
+            if not isinstance(assignee_obj, dict):
+                assignee_obj = {}
+            issues.append({
+                "key": issue.get("key", ""),
+                "summary": fields_obj.get("summary", ""),
+                "status": status_obj.get("name", ""),
+                "priority": priority_obj.get("name", ""),
+                "duedate": fields_obj.get("duedate", ""),
+                "assignee": assignee_obj.get("displayName", ""),
+                "issuetype": issuetype_obj.get("name", ""),
+                "project": project_obj.get("name", ""),
+                "projectKey": project_obj.get("key", ""),
+                "created": fields_obj.get("created", ""),
+                "updated": fields_obj.get("updated", ""),
+            })
+        return issues
+
+    # --- Current user (UX-6) ---
+
+    async def get_myself(self) -> dict[str, Any]:
+        """Get info about the authenticated user (PAT owner).
+
+        Returns dict with: name, displayName, emailAddress, key, active.
+        """
+        url = f"{self._config.jira_api_base}/myself"
+        data = await self._request("GET", url, self._jira_headers())
+        if not isinstance(data, dict):
+            raise JiraTempoError("Unexpected response from /myself")
+        return {
+            "name": data.get("name", ""),
+            "displayName": data.get("displayName", ""),
+            "emailAddress": data.get("emailAddress", ""),
+            "key": data.get("key", ""),
+            "active": data.get("active", True),
+        }

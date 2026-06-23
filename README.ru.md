@@ -13,7 +13,20 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 всё из вашего AI-агента (Copilot, Claude и др.) через Model Context Protocol.
 
 > 📖 **English version:** [README.md](README.md)
-> 📚 **Полная документация:** [docs/README.ru.md](docs/README.ru.md)
+
+## 📚 Документация
+
+| Документ | Описание |
+|----------|---------|
+| [API-справочник](docs/api.ru.md) | Полное описание MCP-инструментов с параметрами и примерами |
+| [Установка](docs/installation.ru.md) | Установка и настройка |
+| [Конфигурация](docs/configuration.ru.md) | Переменные окружения |
+| [Отчёты](docs/reports.ru.md) | Форматы отчётов (txt, md, json) и шаблоны |
+| [Архитектура](docs/architecture.ru.md) | Архитектура проекта и проектные решения |
+| [CLI](docs/cli.ru.md) | Командная строка |
+| [Решение проблем](docs/troubleshooting.ru.md) | Частые проблемы и решения |
+| [MCP-интеграция](docs/mcp-integration.ru.md) | Интеграция с MCP-клиентами (VS Code и др.) |
+| [Развёртывание](docs/deployment.ru.md) | Docker и варианты развёртывания |
 
 ---
 
@@ -27,13 +40,18 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 | `delete_worklog` | Удалить worklog (отмена неправильно учтённого времени) |
 | `get_issue` | Получить метаданные задачи Jira (summary, статус, проект) |
 | `list_favorite_issues` | Список избранных задач текущего пользователя |
-| `generate_weekly_report` | Сгенерировать еженедельный отчёт `.txt` из worklog'ов Tempo |
-| `generate_team_report` | Сгенерировать командный отчёт для нескольких пользователей Jira (с rate-limiting) |
+| `search_users` | Поиск пользователей Jira по имени, фамилии или username |
+| `list_user_tasks` | Задачи пользователя со статусом, приоритетом, комментариями |
+| `generate_weekly_report` | Сгенерировать еженедельный отчёт (txt/md/json) из worklog'ов Tempo |
+| `generate_team_report` | Сгенерировать командный отчёт (txt/md/json) для нескольких пользователей |
+| `generate_tasks_report` | Сгенерировать отчёт по задачам (md/txt/json) с группировкой по статусам |
 | `list_report_templates` | Показать доступные шаблоны отчётов (встроенные + кастомные) |
 
 Начиная с v0.2.0 сервер поддерживает **командные отчёты** (агрегация по
 пользователям с rate-limiting) и **кастомные шаблоны отчётов** (Jinja2-песочница
-+ opt-in Python). Подробнее — в [docs/reports.ru.md](docs/reports.ru.md#командные-отчёты).
++ opt-in Python). Начиная с v0.3.0 все генераторы отчётов поддерживают **три
+формата вывода**: `txt` (plain text), `md` (Markdown с таблицами и эмодзи) и
+`json` (структурированный JSON). Подробнее — в [docs/reports.ru.md](docs/reports.ru.md).
 
 Полный справочник инструментов с параметрами и примерами — в [docs/api.ru.md](docs/api.ru.md).
 
@@ -185,22 +203,6 @@ jira-tempo-mcp --version        # показать версию
 
 ---
 
-## 📖 Документация
-
-| Тема | Документ |
-| --- | --- |
-| 📦 Установка | [docs/installation.ru.md](docs/installation.ru.md) |
-| ⚙️ Настройка | [docs/configuration.ru.md](docs/configuration.ru.md) |
-| 🔌 MCP-интеграция | [docs/mcp-integration.ru.md](docs/mcp-integration.ru.md) |
-| 🖥️ CLI | [docs/cli.ru.md](docs/cli.ru.md) |
-| 🌐 API (MCP-инструменты) | [docs/api.ru.md](docs/api.ru.md) |
-| 🏗️ Архитектура | [docs/architecture.ru.md](docs/architecture.ru.md) |
-| 📝 Отчёты | [docs/reports.ru.md](docs/reports.ru.md) |
-| 🐳 Развёртывание | [docs/deployment.ru.md](docs/deployment.ru.md) |
-| 🐛 Решение проблем | [docs/troubleshooting.ru.md](docs/troubleshooting.ru.md) |
-
----
-
-## 📄 Лицензия
+##  Лицензия
 
 MIT

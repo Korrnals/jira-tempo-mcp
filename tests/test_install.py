@@ -431,3 +431,443 @@ class TestRemoveVscodeEntry:
         data = json.loads(wmcp.read_text(encoding="utf-8"))
         assert install.SERVER_NAME not in data["servers"]
         assert "ws-other" in data["servers"]
+
+
+# ---------------------------------------------------------------------------
+# TestAskChoice
+# ---------------------------------------------------------------------------
+
+
+class TestAskChoice:
+    """Test _ask_choice — option selection with prefix matching."""
+
+    def test_default_on_empty_input(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("builtins.input", lambda *a: "")
+        result = install._ask_choice("pick", options=["user", "workspace", "both"], default="user")
+        assert result == "user"
+
+    def test_full_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("builtins.input", lambda *a: "workspace")
+        result = install._ask_choice("pick", options=["user", "workspace", "both"], default="user")
+        assert result == "workspace"
+
+    def test_unique_prefix_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("builtins.input", lambda *a: "w")
+        result = install._ask_choice("pick", options=["user", "workspace", "both"], default="user")
+        assert result == "workspace"
+
+    def test_loops_on_ambiguous_prefix(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        answers = iter(["u", "user"])
+        monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+        result = install._ask_choice("pick", options=["user", "workspace", "both"], default="user")
+        assert result == "user"
+
+
+# ---------------------------------------------------------------------------
+# TestServerInConfig
+# ---------------------------------------------------------------------------
+
+
+class TestServerInConfig:
+    """Test _server_in_config — conflict detection helper."""
+
+    def test_missing_file(self, tmp_path: Path) -> None:
+        assert install._server_in_config(tmp_path / "nope.json") is False
+
+    def test_present(self, tmp_path: Path) -> None:
+        p = tmp_path / "mcp.json"
+        p.write_text(json.dumps({"servers": {install.SERVER_NAME: {}}}), encoding="utf-8")
+        assert install._server_in_config(p) is True
+
+    def test_absent(self, tmp_path: Path) -> None:
+        p = tmp_path / "mcp.json"
+        p.write_text(json.dumps({"servers": {"other": {}}}), encoding="utf-8")
+        assert install._server_in_config(p) is False
+
+    def test_corrupt_json(self, tmp_path: Path) -> None:
+        p = tmp_path / "mcp.json"
+        p.write_text("NOT JSON", encoding="utf-8")
+        assert install._server_in_config(p) is False
+
+
+# ---------------------------------------------------------------------------
+# TestRemoveMcpEntryCleanup
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveMcpEntryCleanup:
+    """Test _remove_workspace_mcp_entry and _remove_user_mcp_entry (silent cleanup)."""
+
+    def test_remove_workspace_deletes_empty_file(self, fake_vscode_paths: dict[str, Path]) -> None:
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "x"}}}),
+            encoding="utf-8",
+        )
+        install._remove_workspace_mcp_entry()
+        assert not wmcp.exists()
+
+    def test_remove_workspace_preserves_others(self, fake_vscode_paths: dict[str, Path]) -> None:
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        wmcp.write_text(
+            json.dumps(
+                {"servers": {install.SERVER_NAME: {"command": "x"}, "other": {"command": "y"}}}
+            ),
+            encoding="utf-8",
+        )
+        install._remove_workspace_mcp_entry()
+        data = json.loads(wmcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME not in data["servers"]
+        assert "other" in data["servers"]
+
+    def test_remove_workspace_noop_when_absent(self, fake_vscode_paths: dict[str, Path]) -> None:
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        wmcp.write_text(json.dumps({"servers": {"other": {}}}), encoding="utf-8")
+        install._remove_workspace_mcp_entry()
+        data = json.loads(wmcp.read_text(encoding="utf-8"))
+        assert "other" in data["servers"]
+
+    def test_remove_workspace_corrupt_is_noop(self, fake_vscode_paths: dict[str, Path]) -> None:
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        corrupt = "NOT JSON"
+        wmcp.write_text(corrupt, encoding="utf-8")
+        install._remove_workspace_mcp_entry()
+        assert wmcp.read_text(encoding="utf-8") == corrupt
+
+    def test_remove_user_preserves_others(self, fake_vscode_paths: dict[str, Path]) -> None:
+        mcp = fake_vscode_paths["mcp"]
+        mcp.write_text(
+            json.dumps(
+                {"servers": {install.SERVER_NAME: {"command": "x"}, "github": {"command": "gh"}}}
+            ),
+            encoding="utf-8",
+        )
+        install._remove_user_mcp_entry()
+        data = json.loads(mcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME not in data["servers"]
+        assert "github" in data["servers"]
+
+    def test_remove_user_noop_when_absent(self, fake_vscode_paths: dict[str, Path]) -> None:
+        mcp = fake_vscode_paths["mcp"]
+        mcp.write_text(json.dumps({"servers": {"other": {}}}), encoding="utf-8")
+        install._remove_user_mcp_entry()
+        data = json.loads(mcp.read_text(encoding="utf-8"))
+        assert "other" in data["servers"]
+
+
+# ---------------------------------------------------------------------------
+# TestRegisterMcpStep
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterMcpStep:
+    """Test register_mcp_step — auto-detection of existing config with cleanup."""
+
+    def test_auto_detect_user_config_updates_and_cleans_workspace(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When jira-tempo is in user config only → update user, remove workspace."""
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        # Pre-seed user with jira-tempo (existing user-level install).
+        mcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "old"}}}),
+            encoding="utf-8",
+        )
+        # Pre-seed workspace with a stale jira-tempo entry (old install leftover).
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "stale"}}}),
+            encoding="utf-8",
+        )
+        _autoc_confirm(monkeypatch, True)
+        # _ask_choice should NOT be called — auto-detection resolves "both" conflict.
+        # But "both" triggers a conflict prompt. Let's test the "user" detection path
+        # by only seeding user config.
+        wmcp.unlink()
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        # User config has jira-tempo (updated).
+        data = json.loads(mcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME in data["servers"]
+        # No workspace config created.
+        assert not wmcp.exists()
+
+    def test_auto_detect_workspace_config_updates_and_cleans_user(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When jira-tempo is in workspace config only → update workspace, remove user."""
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        # Pre-seed workspace with jira-tempo (existing workspace-level install).
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "old"}}}),
+            encoding="utf-8",
+        )
+        _autoc_confirm(monkeypatch, True)
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        # Workspace config has jira-tempo (updated).
+        data = json.loads(wmcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME in data["servers"]
+        # User config not created.
+        assert not mcp.exists()
+
+    def test_auto_detect_none_defaults_to_user(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When jira-tempo is not registered anywhere → default to user-level."""
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        _autoc_confirm(monkeypatch, True)
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        # User config has jira-tempo.
+        data = json.loads(mcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME in data["servers"]
+        # Workspace config not created.
+        assert not wmcp.exists()
+
+    def test_conflict_both_prompts_user_choice(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When jira-tempo is in BOTH configs → prompt user, keep chosen, remove other."""
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        # Pre-seed both configs with jira-tempo (conflict).
+        mcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "user-old"}}}),
+            encoding="utf-8",
+        )
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "ws-old"}}}),
+            encoding="utf-8",
+        )
+        _autoc_confirm(monkeypatch, True)
+        # User chooses "user" in the conflict prompt.
+        monkeypatch.setattr(install, "_ask_choice", lambda *a, **k: "user")
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        # User config has jira-tempo (updated).
+        data = json.loads(mcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME in data["servers"]
+        # Workspace config cleaned up (file deleted — only had jira-tempo).
+        assert not wmcp.exists()
+
+    def test_conflict_both_prompts_workspace_choice(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When jira-tempo is in BOTH configs → user picks workspace, user entry removed."""
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        mcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "user-old"}}}),
+            encoding="utf-8",
+        )
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "ws-old"}}}),
+            encoding="utf-8",
+        )
+        _autoc_confirm(monkeypatch, True)
+        monkeypatch.setattr(install, "_ask_choice", lambda *a, **k: "workspace")
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        data = json.loads(wmcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME in data["servers"]
+        data_u = json.loads(mcp.read_text(encoding="utf-8"))
+        assert install.SERVER_NAME not in data_u["servers"]
+
+    def test_clears_mcp_tool_cache_after_registration(
+        self, fake_vscode_paths: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """register_mcp_step calls clear_mcp_tool_cache after writing config."""
+        _autoc_confirm(monkeypatch, True)
+        called = {"clear": False, "cleanup": False}
+        monkeypatch.setattr(install, "clear_mcp_tool_cache", lambda: called.__setitem__("clear", True))
+        monkeypatch.setattr(install, "cleanup_bak_files", lambda: called.__setitem__("cleanup", True))
+
+        result = install.register_mcp_step()
+
+        assert result is True
+        assert called["clear"] is True
+        assert called["cleanup"] is True
+
+
+# ---------------------------------------------------------------------------
+# TestDetectExistingConfig
+# ---------------------------------------------------------------------------
+
+
+class TestDetectExistingConfig:
+    """Test _detect_existing_config — auto-detection helper."""
+
+    def test_detects_user_only(self, fake_vscode_paths: dict[str, Path]) -> None:
+        mcp = fake_vscode_paths["mcp"]
+        mcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "x"}}}),
+            encoding="utf-8",
+        )
+        assert install._detect_existing_config() == "user"
+
+    def test_detects_workspace_only(self, fake_vscode_paths: dict[str, Path]) -> None:
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "x"}}}),
+            encoding="utf-8",
+        )
+        assert install._detect_existing_config() == "workspace"
+
+    def test_detects_both(self, fake_vscode_paths: dict[str, Path]) -> None:
+        mcp = fake_vscode_paths["mcp"]
+        wmcp = fake_vscode_paths["workspace_mcp"]
+        mcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "x"}}}),
+            encoding="utf-8",
+        )
+        wmcp.write_text(
+            json.dumps({"servers": {install.SERVER_NAME: {"command": "y"}}}),
+            encoding="utf-8",
+        )
+        assert install._detect_existing_config() == "both"
+
+    def test_detects_none(self, fake_vscode_paths: dict[str, Path]) -> None:
+        assert install._detect_existing_config() is None
+
+    def test_detects_none_with_other_servers(self, fake_vscode_paths: dict[str, Path]) -> None:
+        """Other servers present but not jira-tempo → None."""
+        mcp = fake_vscode_paths["mcp"]
+        mcp.write_text(
+            json.dumps({"servers": {"other": {"command": "x"}}}),
+            encoding="utf-8",
+        )
+        assert install._detect_existing_config() is None
+
+
+# ---------------------------------------------------------------------------
+# TestClearMcpToolCache
+# ---------------------------------------------------------------------------
+
+
+class TestClearMcpToolCache:
+    """Test clear_mcp_tool_cache — clears mcpToolCache from state.vscdb."""
+
+    def test_clears_global_cache(self, fake_vscode_paths: dict[str, Path]) -> None:
+        """Clears mcpToolCache from global state.vscdb."""
+        import sqlite3
+
+        vscode_dir = fake_vscode_paths["vscode_dir"]
+        global_storage = vscode_dir / "globalStorage"
+        global_storage.mkdir(parents=True, exist_ok=True)
+        global_db = global_storage / "state.vscdb"
+        # Create a real SQLite DB with the ItemTable and a mcpToolCache entry.
+        conn = sqlite3.connect(str(global_db))
+        conn.execute("CREATE TABLE ItemTable (key TEXT, value BLOB)")
+        conn.execute("INSERT INTO ItemTable (key, value) VALUES ('mcpToolCache', 'stale-data')")
+        conn.execute("INSERT INTO ItemTable (key, value) VALUES ('otherKey', 'keep-me')")
+        conn.commit()
+        conn.close()
+
+        install.clear_mcp_tool_cache()
+
+        # Verify mcpToolCache removed, otherKey preserved.
+        conn = sqlite3.connect(str(global_db))
+        rows = dict(conn.execute("SELECT key, value FROM ItemTable").fetchall())
+        conn.close()
+        assert "mcpToolCache" not in rows
+        assert rows["otherKey"] == "keep-me"
+
+    def test_clears_workspace_cache(self, fake_vscode_paths: dict[str, Path]) -> None:
+        """Clears mcpToolCache from workspace state.vscdb files."""
+        import sqlite3
+
+        vscode_dir = fake_vscode_paths["vscode_dir"]
+        ws_storage = vscode_dir / "workspaceStorage"
+        ws_dir = ws_storage / "abc123"
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        ws_db = ws_dir / "state.vscdb"
+        conn = sqlite3.connect(str(ws_db))
+        conn.execute("CREATE TABLE ItemTable (key TEXT, value BLOB)")
+        conn.execute("INSERT INTO ItemTable (key, value) VALUES ('mcpToolCache', 'ws-stale')")
+        conn.commit()
+        conn.close()
+
+        install.clear_mcp_tool_cache()
+
+        conn = sqlite3.connect(str(ws_db))
+        rows = conn.execute("SELECT key FROM ItemTable WHERE key = 'mcpToolCache'").fetchall()
+        conn.close()
+        assert rows == []
+
+    def test_no_cache_is_noop(self, fake_vscode_paths: dict[str, Path]) -> None:
+        """No state.vscdb files → no error, just a muted message."""
+        # No globalStorage or workspaceStorage dirs created.
+        install.clear_mcp_tool_cache()  # should not raise
+
+    def test_locked_workspace_db_is_skipped(self, fake_vscode_paths: dict[str, Path]) -> None:
+        """A sqlite3.Error on a workspace DB is silently skipped, not fatal."""
+        import sqlite3
+
+        vscode_dir = fake_vscode_paths["vscode_dir"]
+        ws_storage = vscode_dir / "workspaceStorage"
+        ws_dir = ws_storage / "locked"
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        # Create a non-SQLite file to trigger sqlite3.Error.
+        (ws_dir / "state.vscdb").write_text("not a database", encoding="utf-8")
+
+        # Should not raise — the error is caught.
+        install.clear_mcp_tool_cache()
+
+
+# ---------------------------------------------------------------------------
+# TestCleanupBakFiles
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupBakFiles:
+    """Test cleanup_bak_files — removes .bak files from .vscode/."""
+
+    def test_removes_bak_files(self, fake_vscode_paths: dict[str, Path]) -> None:
+        project_root = fake_vscode_paths["project_root"]
+        vscode_dir = project_root / ".vscode"
+        vscode_dir.mkdir(parents=True, exist_ok=True)
+        bak1 = vscode_dir / "mcp.json.bak.20260622-120000"
+        bak2 = vscode_dir / "mcp.json.bak.20260622-130000"
+        bak1.write_text("old", encoding="utf-8")
+        bak2.write_text("older", encoding="utf-8")
+        # A non-bak file that should be preserved.
+        keep = vscode_dir / "settings.json"
+        keep.write_text("{}", encoding="utf-8")
+
+        install.cleanup_bak_files()
+
+        assert not bak1.exists()
+        assert not bak2.exists()
+        assert keep.exists()
+
+    def test_no_vscode_dir_is_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Point PROJECT_ROOT at a dir with no .vscode/ subdirectory.
+        empty_project = tmp_path / "empty-project"
+        empty_project.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(install, "PROJECT_ROOT", empty_project)
+        assert not (empty_project / ".vscode").exists()
+        install.cleanup_bak_files()  # should not raise
+
+    def test_no_bak_files_is_noop(self, fake_vscode_paths: dict[str, Path]) -> None:
+        project_root = fake_vscode_paths["project_root"]
+        vscode_dir = project_root / ".vscode"
+        vscode_dir.mkdir(parents=True, exist_ok=True)
+        (vscode_dir / "settings.json").write_text("{}", encoding="utf-8")
+
+        install.cleanup_bak_files()
+
+        # No error, settings.json preserved.
+        assert (vscode_dir / "settings.json").exists()

@@ -203,6 +203,217 @@ def _confirm(msg: str, default: bool = True) -> bool:
     return ans in ("y", "yes", "д", "да") if ans else default
 
 
+def _ask_choice(prompt: str, *, options: list[str], default: str) -> str:
+    """Ask user to choose from *options*. Returns the selected option.
+
+    Accepts the full option word or a unique prefix. Empty input returns
+    *default*. Loops until a valid choice is made.
+    """
+    options_str = "/".join(options)
+    default_idx = options.index(default)
+    hint = "/".join(o.upper() if i == default_idx else o for i, o in enumerate(options))
+    while True:
+        resp = input(f"  {_color(C_INFO, '?', bold=True)} {prompt} [{hint}]: ").strip().lower()
+        if not resp:
+            return default
+        if resp in options:
+            return resp
+        # Try unique prefix match.
+        matches = [o for o in options if o.startswith(resp)]
+        if len(matches) == 1:
+            return matches[0]
+        print(f"  Please choose one of: {options_str}")
+
+
+# ---------- MCP conflict detection & cleanup ----------
+
+
+def _server_in_config(path: Path) -> bool:
+    """Return True if *path* exists, is valid JSON, and has a ``jira-tempo`` server."""
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    servers = data.get("servers")
+    if not isinstance(servers, dict):
+        # Some configs put servers at the top level (older format).
+        return SERVER_NAME in data if isinstance(data, dict) else False
+    return SERVER_NAME in servers
+
+
+def _check_mcp_conflict() -> None:
+    """Warn if ``jira-tempo`` is registered in BOTH user and workspace configs.
+
+    VS Code loads both configs and overwrites one with the other repeatedly,
+    so the MCP server may never start. This is a read-only warning — cleanup
+    happens via ``_remove_workspace_mcp_entry`` / ``_remove_user_mcp_entry``
+    once the user picks a config.
+    """
+    in_user = _server_in_config(VSCODE_MCP)
+    in_workspace = _server_in_config(WORKSPACE_MCP)
+    if in_user and in_workspace:
+        _warn(f"'{SERVER_NAME}' is registered in BOTH user and workspace configs.")
+        _warn(
+            "VS Code will overwrite one config with the other repeatedly — the server may not start."
+        )
+        _muted(f"    • User:      {VSCODE_MCP}")
+        _muted(f"    • Workspace: {WORKSPACE_MCP}")
+
+
+def _remove_workspace_mcp_entry() -> None:
+    """Silently remove ``jira-tempo`` from workspace ``.vscode/mcp.json``.
+
+    If no other servers remain, the file is deleted entirely. Corrupt files
+    are left untouched. No backup is created (this is a cleanup, not a
+    destructive edit of user-authored content — the entry was auto-written
+    by this installer).
+    """
+    if not WORKSPACE_MCP.exists():
+        return
+    try:
+        data = json.loads(WORKSPACE_MCP.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return  # Don't touch corrupt files.
+    servers = data.get("servers")
+    if not isinstance(servers, dict) or SERVER_NAME not in servers:
+        return
+    del servers[SERVER_NAME]
+    if not servers:
+        WORKSPACE_MCP.unlink()
+        _ok(f"Removed empty workspace config: {WORKSPACE_MCP}")
+    else:
+        data["servers"] = servers
+        WORKSPACE_MCP.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        _ok(f"Removed '{SERVER_NAME}' from workspace config: {WORKSPACE_MCP}")
+
+
+def _remove_user_mcp_entry() -> None:
+    """Silently remove ``jira-tempo`` from user-level ``mcp.json``.
+
+    Creates a timestamped backup before writing (user-level config may contain
+    entries from other MCP servers that the user authored manually). Corrupt
+    files are left untouched.
+    """
+    if not VSCODE_MCP.exists():
+        return
+    try:
+        data = json.loads(VSCODE_MCP.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    servers = data.get("servers")
+    if not isinstance(servers, dict) or SERVER_NAME not in servers:
+        return
+    backup = _backup_mcp_json(VSCODE_MCP)
+    del servers[SERVER_NAME]
+    data["servers"] = servers
+    VSCODE_MCP.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    _ok(f"Removed '{SERVER_NAME}' from user config: {VSCODE_MCP} (backup: {backup})")
+
+
+def clear_mcp_tool_cache() -> None:
+    """Clear mcpToolCache from VS Code state.vscdb so tools are re-discovered.
+
+    VS Code caches MCP tool lists in state.vscdb (SQLite). When the server
+    code changes but mcp.json doesn't, VS Code uses the stale cache and
+    doesn't restart the server. This function clears the cache to force
+    re-discovery on next VS Code start.
+
+    Safe to call while VS Code is running — SQLite handles concurrent access.
+    The change takes effect on next VS Code restart.
+    """
+    import sqlite3
+
+    # Global state.vscdb
+    global_db = VSCODE_DIR / "globalStorage" / "state.vscdb"
+
+    # Find workspace state.vscdb files
+    ws_storage = VSCODE_DIR / "workspaceStorage"
+
+    cleared = 0
+
+    # Clear global cache
+    if global_db.exists():
+        try:
+            conn = sqlite3.connect(str(global_db))
+            cursor = conn.execute(
+                "DELETE FROM ItemTable WHERE key = 'mcpToolCache'"
+            )
+            if cursor.rowcount > 0:
+                _ok(f"Cleared MCP tool cache from global state.vscdb ({cursor.rowcount} entries)")
+                cleared += cursor.rowcount
+            conn.commit()
+            conn.close()
+        except sqlite3.Error as e:
+            _warn(f"Could not clear global MCP cache: {e}")
+
+    # Clear workspace caches
+    if ws_storage.exists():
+        for ws_dir in ws_storage.iterdir():
+            if not ws_dir.is_dir():
+                continue
+            ws_db = ws_dir / "state.vscdb"
+            if not ws_db.exists():
+                continue
+            try:
+                conn = sqlite3.connect(str(ws_db))
+                cursor = conn.execute(
+                    "DELETE FROM ItemTable WHERE key = 'mcpToolCache'"
+                )
+                if cursor.rowcount > 0:
+                    _ok(f"Cleared MCP tool cache from {ws_dir.name}/state.vscdb ({cursor.rowcount} entries)")
+                    cleared += cursor.rowcount
+                conn.commit()
+                conn.close()
+            except sqlite3.Error:
+                pass  # Workspace DB might be locked
+
+    if cleared == 0:
+        _muted("No stale MCP tool cache found (already clean).")
+    else:
+        _ok(f"Cleared {cleared} stale MCP tool cache entries total.")
+        _info("VS Code will re-discover tools on next restart.")
+
+
+def cleanup_bak_files() -> None:
+    """Remove old mcp.json.bak.* files from .vscode/ directory."""
+    vscode_dir = PROJECT_ROOT / ".vscode"
+    if not vscode_dir.exists():
+        return
+    bak_files = list(vscode_dir.glob("mcp.json.bak.*"))
+    if not bak_files:
+        return
+    for bak in bak_files:
+        try:
+            bak.unlink()
+        except OSError:
+            pass
+    _ok(f"Cleaned up {len(bak_files)} backup file(s) from .vscode/")
+
+
+def _detect_existing_config() -> str | None:
+    """Detect which config already has jira-tempo registered.
+
+    Returns 'user', 'workspace', 'both', or None.
+    """
+    in_user = _server_in_config(VSCODE_MCP)
+    in_workspace = _server_in_config(WORKSPACE_MCP)
+    if in_user and in_workspace:
+        return "both"
+    if in_user:
+        return "user"
+    if in_workspace:
+        return "workspace"
+    return None
+
+
 # ---------- steps ----------
 
 
@@ -594,13 +805,13 @@ def print_next_steps() -> None:
     _info(f"JIRA_PAT is stored in {ENV_LOCAL} (chmod 600).")
     _muted("    Edit that file to update the token if it expires.")
     print()
-    _info("Two MCP configs were written:")
-    _muted(f"    • User-level:    {VSCODE_MCP}")
-    _muted(f"    • Workspace:     {WORKSPACE_MCP}")
-    _info("The workspace config uses ${workspaceFolder} variables — when you open")
-    _info("this project in VS Code, the server uses the project .venv python automatically.")
+    _info("MCP config written to ONE of:")
+    _muted(f"    • User-level:    {VSCODE_MCP} (works across all workspaces)")
+    _muted(f"    • Workspace:     {WORKSPACE_MCP} (portable with this project)")
+    _info("If you need to switch, re-run: python install.py")
     print()
-    _info("Restart VS Code and approve the 'jira-tempo' MCP server in the MCP panel.")
+    _info("Restart VS Code (not just reload window) to pick up the new MCP tools.")
+    _muted("    Then approve the 'jira-tempo' MCP server in the MCP panel.")
     print()
     _info("Quick check — from the project dir:")
     _muted(f"    cd {PROJECT_ROOT}")
@@ -613,6 +824,76 @@ def print_next_steps() -> None:
 
 
 # ---------- main ----------
+
+
+def register_mcp_step() -> bool:
+    """Register MCP server with auto-detection of existing config.
+
+    VS Code loads both user-level and workspace-level ``mcp.json``. If the
+    same server name appears in both, VS Code overwrites one with the other
+    on every reload and the server may never start.
+
+    Auto-detection logic:
+    - If jira-tempo is already in user-level config → update user-level,
+      remove workspace entry.
+    - If jira-tempo is already in workspace-level config → update workspace,
+      remove user entry.
+    - If in BOTH → conflict, ask user which to keep.
+    - If not registered anywhere → default to user-level (recommended).
+
+    Only prompts when there's a conflict (both configs) or the user
+    explicitly wants to change. After writing the config, clears the MCP
+    tool cache so VS Code re-discovers tools on next restart.
+    """
+    _info("Register MCP server in VS Code.")
+
+    existing = _detect_existing_config()
+
+    if existing == "user":
+        # Auto-proceed with user-level, just update it.
+        _muted("Found existing user-level config — updating.")
+        if not register_vscode():
+            return False
+        _remove_workspace_mcp_entry()
+    elif existing == "workspace":
+        _muted("Found existing workspace-level config — updating.")
+        if not register_workspace_vscode():
+            return False
+        _remove_user_mcp_entry()
+    elif existing == "both":
+        # Conflict — need user decision.
+        _warn(f"'{SERVER_NAME}' is in BOTH configs — this causes VS Code conflicts.")
+        _muted(f"    • User:      {VSCODE_MCP}")
+        _muted(f"    • Workspace: {WORKSPACE_MCP}")
+        print()
+        choice = _ask_choice(
+            "Which config to keep?",
+            options=["user", "workspace"],
+            default="user",
+        )
+        if choice == "user":
+            if not register_vscode():
+                return False
+            _remove_workspace_mcp_entry()
+        else:
+            if not register_workspace_vscode():
+                return False
+            _remove_user_mcp_entry()
+    else:
+        # New installation — auto-use user-level (recommended).
+        _muted("No existing config found — using user-level (recommended).")
+        _muted("User-level config works across all workspaces.")
+        if not register_vscode():
+            return False
+        _remove_workspace_mcp_entry()
+
+    # Clear MCP tool cache so VS Code re-discovers tools on next restart.
+    clear_mcp_tool_cache()
+
+    # Clean up old backup files from .vscode/.
+    cleanup_bak_files()
+
+    return True
 
 
 def main() -> int:
@@ -630,10 +911,8 @@ def main() -> int:
     if not write_env():
         return 1
 
-    _step(3, total, "Register MCP server in VS Code (user + workspace)")
-    if not register_vscode():
-        return 1
-    if not register_workspace_vscode():
+    _step(3, total, "Register MCP server in VS Code")
+    if not register_mcp_step():
         return 1
 
     _step(4, total, "Verify Jira connectivity (optional)")

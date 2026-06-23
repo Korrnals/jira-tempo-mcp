@@ -49,9 +49,12 @@ class WeeklySummaryTemplate:
             total_seconds += secs
 
         lines: list[str] = []
-        author = config.report_author_header
+        # UX-7: prefer the ``author`` override (passed when generating
+        # a report for a different user via ``username``), else fall back
+        # to config.report_author_header.
+        author_label = kwargs.get("author") or config.report_author_header
         lines.append(
-            f"[{author}] Сводка за неделю ({format_date(monday)} - {format_date(friday)}):"
+            f"[{author_label}] Сводка за неделю ({format_date(monday)} - {format_date(friday)}):"
         )
         lines.append("")
         lines.append(f"Всего отработано: {format_seconds_to_human(total_seconds)}")

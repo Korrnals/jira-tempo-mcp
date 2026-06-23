@@ -13,10 +13,10 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
-    extract_comment,
     extract_issue_key,
     extract_seconds,
     format_date,
+    group_worklogs_by_comment,
     week_range,
 )
 
@@ -94,12 +94,11 @@ class TeamReportTemplate:
                     continue
                 title = issue_titles.get(key, config.section_map.get(key, key))
                 lines.append(f"  - {key} ({title}):")
-                for wl in grouped[key]:
-                    comment = extract_comment(wl)
+                for comment, secs in group_worklogs_by_comment(grouped[key]):
                     if comment:
-                        lines.append(f"      + {comment}")
+                        lines.append(f"      + {comment} — {format_seconds_to_human(secs)}")
                     else:
-                        lines.append(f"      + {format_seconds_to_human(extract_seconds(wl))}")
+                        lines.append(f"      + {format_seconds_to_human(secs)} отработано")
                 used.add(key)
             remaining = sorted(
                 (k for k in grouped if k not in used),
@@ -109,12 +108,11 @@ class TeamReportTemplate:
             for key in remaining:
                 title = issue_titles.get(key, key)
                 lines.append(f"  - {key} ({title}):")
-                for wl in grouped[key]:
-                    comment = extract_comment(wl)
+                for comment, secs in group_worklogs_by_comment(grouped[key]):
                     if comment:
-                        lines.append(f"      + {comment}")
+                        lines.append(f"      + {comment} — {format_seconds_to_human(secs)}")
                     else:
-                        lines.append(f"      + {format_seconds_to_human(extract_seconds(wl))}")
+                        lines.append(f"      + {format_seconds_to_human(secs)} отработано")
             lines.append("")
 
         # --- Aggregate summary ---

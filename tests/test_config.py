@@ -180,3 +180,70 @@ class TestLoadConfig:
                 os.environ.pop(key, None)
             c = load_config()
         assert c.http_timeout == 30.0
+
+
+class TestReportTeamUsers:
+    """Tests for REPORT_TEAM_USERS env var and team_users_resolved property."""
+
+    def test_report_team_users_from_env(self) -> None:
+        env = {
+            "JIRA_BASE_URL": "https://jira.test",
+            "JIRA_USER": "tester",
+            "JIRA_PAT": "tok123",
+            "REPORT_TEAM_USERS": '["pikalov", "tarasenk", "dmz", "gritsel"]',
+        }
+        with patch.dict(os.environ, env, clear=False):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "REPORT_SECTION_MAP_FILE",
+                "JIRA_HTTP_TIMEOUT",
+            ):
+                os.environ.pop(key, None)
+            c = load_config()
+        assert c.report_team_users == ["pikalov", "tarasenk", "dmz", "gritsel"]
+        assert c.team_users_resolved == ["pikalov", "tarasenk", "dmz", "gritsel"]
+
+    def test_team_users_resolved_fallback_to_jira_user(self) -> None:
+        env = {
+            "JIRA_BASE_URL": "https://jira.test",
+            "JIRA_USER": "tester",
+            "JIRA_PAT": "tok123",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "REPORT_SECTION_MAP_FILE",
+                "JIRA_HTTP_TIMEOUT",
+                "REPORT_TEAM_USERS",
+            ):
+                os.environ.pop(key, None)
+            c = load_config()
+        assert c.report_team_users == []
+        assert c.team_users_resolved == ["tester"]
+
+    def test_report_team_users_invalid_json_empty(self) -> None:
+        env = {
+            "JIRA_BASE_URL": "https://jira.test",
+            "JIRA_USER": "tester",
+            "JIRA_PAT": "tok123",
+            "REPORT_TEAM_USERS": "not-json",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            for key in (
+                "TEMPO_API_TOKEN",
+                "REPORT_OUTPUT_DIR",
+                "REPORT_AUTHOR_NAME",
+                "REPORT_SECTION_MAP",
+                "REPORT_SECTION_MAP_FILE",
+                "JIRA_HTTP_TIMEOUT",
+            ):
+                os.environ.pop(key, None)
+            c = load_config()
+        assert c.report_team_users == []
+        assert c.team_users_resolved == ["tester"]

@@ -61,3 +61,9 @@ install.py.*.bak
 
 # Code-review reports (rudiment)
 .cr/
+
+# Local reports symlink (per-user, not project artefact)
+reports
+
+# Manual integration smoke test (writes .env with live PAT, dev-only)
+test_all_tools.py
