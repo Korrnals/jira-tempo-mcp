@@ -16,7 +16,8 @@ from .._shared import (
     extract_issue_key,
     extract_seconds,
     format_date,
-    group_worklogs_by_comment,
+    group_worklogs_by_comment_raw,
+    render_comment_lines,
     week_range,
 )
 
@@ -94,11 +95,16 @@ class TeamReportTemplate:
                     continue
                 title = issue_titles.get(key, config.section_map.get(key, key))
                 lines.append(f"  - {key} ({title}):")
-                for comment, secs in group_worklogs_by_comment(grouped[key]):
+                for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
+                    human = format_seconds_to_human(secs)
                     if comment:
-                        lines.append(f"      + {comment} — {format_seconds_to_human(secs)}")
+                        lines.extend(
+                            render_comment_lines(
+                                comment, indent="      ", marker="+", time_human=human
+                            )
+                        )
                     else:
-                        lines.append(f"      + {format_seconds_to_human(secs)} отработано")
+                        lines.append(f"      + {human} отработано")
                 used.add(key)
             remaining = sorted(
                 (k for k in grouped if k not in used),
@@ -108,11 +114,16 @@ class TeamReportTemplate:
             for key in remaining:
                 title = issue_titles.get(key, key)
                 lines.append(f"  - {key} ({title}):")
-                for comment, secs in group_worklogs_by_comment(grouped[key]):
+                for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
+                    human = format_seconds_to_human(secs)
                     if comment:
-                        lines.append(f"      + {comment} — {format_seconds_to_human(secs)}")
+                        lines.extend(
+                            render_comment_lines(
+                                comment, indent="      ", marker="+", time_human=human
+                            )
+                        )
                     else:
-                        lines.append(f"      + {format_seconds_to_human(secs)} отработано")
+                        lines.append(f"      + {human} отработано")
             lines.append("")
 
         # --- Aggregate summary ---

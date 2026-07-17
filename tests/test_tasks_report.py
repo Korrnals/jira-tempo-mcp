@@ -505,3 +505,37 @@ class TestStatusEmoji:
     def test_fallback_no_category(self) -> None:
         task = _make_task("DEVOPS-4", "Test", "В работе", "В работе", status_category_key="")
         assert _status_emoji(task) == "🔄"
+
+
+class TestTasksMdCommentSanitization:
+    """Hotfix: multi-line / pipe-laden Jira comment bodies must not break MD."""
+
+    def test_multiline_comment_body_stays_single_line(self) -> None:
+        from jira_tempo_mcp.tasks_report import _render_individual_md
+
+        task = {
+            "key": "DEVOPS-100",
+            "summary": "Task A",
+            "status": "В работе",
+            "statusCategory": "In Progress",
+            "statusCategoryKey": "indeterminate",
+            "duedate": "",
+            "priority": "Medium",
+            "updated": "2026-06-20T10:00:00.000+0300",
+            "comments": [
+                {
+                    "author": "User1",
+                    "body": "line one\nline two | with pipe",
+                    "created": "2026-06-20T10:00:00.000+0300",
+                }
+            ],
+            "comment_count": 1,
+        }
+        md = _render_individual_md("alice", "Alice", [task], "Europe/Moscow")
+        # The comment must be rendered on a single list line (no raw newline
+        # splitting it across two markdown items).
+        comment_lines = [ln for ln in md.splitlines() if ln.startswith("- **User1**")]
+        assert len(comment_lines) == 1
+        line = comment_lines[0]
+        assert "line one line two" in line  # newline collapsed to space
+        assert "\\|" in line  # pipe escaped

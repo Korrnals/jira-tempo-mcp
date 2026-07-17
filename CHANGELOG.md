@@ -5,7 +5,51 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_No unreleased changes._
+
+## [0.3.1] — 2026-07-17
+
+### Added
+
+- **Non-interactive installer mode** (`install.py --non-interactive`).
+  Enables setup from CI, scripts, and agents without a TTY. CLI flags
+  (`--jira-base-url`, `--jira-user`, `--jira-pat`, `--jira-timezone`,
+  `--log-level`) and env-var fallbacks replace interactive prompts.
+  `--register-only` skips venv/pip and only writes `~/.config/Code/User/.env.local`
+  + registers the MCP server in VS Code `mcp.json`. `--skip-vscode` skips
+  VS Code registration. Missing required values exit 1 with a clear stderr
+  message instead of raising `KeyError`.
+- **`ConfigError` diagnostics for missing required env vars** (`config.py`).
+  When `JIRA_BASE_URL`, `JIRA_USER`, or `JIRA_PAT` is empty after
+  `load_dotenv()`, `load_config()` raises `ConfigError(ValueError)` with
+  backend-specific remediation instructions (VS Code `envFile`, CLI `.env`,
+  Docker `--env-file`). The message never contains the secret value —
+  only the variable name. Replaces pydantic's generic "field required".
+- **26 new tests** (19 for `install.py` non-interactive mode, 7 for
+  `ConfigError` diagnostics). 245 → 271 total.
+
+### Fixed
+
+- **Broken bullet rendering in worklog reports (all types, all formats).**
+  Multi-line worklog comments were collapsed into a single line and templates
+  prepended their own marker, producing duplicated markers (`+ + …`) and merged
+  actions. Fixed across TXT, Markdown, and JSON for weekly, team, weekly-summary
+  and tasks reports:
+  - New pure helpers in `templates/_shared.py`: `strip_bullet_marker`,
+    `split_comment_lines`, `render_comment_lines` (TXT), `render_comment_cell`
+    (MD `<br>`-joined cells), and `group_worklogs_by_comment_raw` (separates the
+    normalized grouping key from the raw render payload so newlines survive).
+  - Each action now renders as its own bullet with a single unified marker; the
+    human-readable time suffix is attached to the last sub-item only.
+  - Markdown cells stay table-safe (escaped pipes, `<br>` line breaks); JSON now
+    round-trips the raw multi-line comment faithfully.
+  - Grouping and time summation are unchanged.
+  - 26 new regression tests (219 → 245).
+
 ## [0.3.0] — 2026-06-23
+
 
 ### Added
 

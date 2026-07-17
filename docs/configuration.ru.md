@@ -15,6 +15,30 @@
 | `JIRA_USER` | да | — | Имя пользователя Jira (логин) — для фильтрации worklog'ов по автору |
 | `JIRA_PAT` | да | — | Personal Access Token — **никогда не коммитьте** |
 
+### 🩺 Диагностика отсутствующих обязательных переменных
+
+Если после `load_dotenv()` любая из обязательных переменных (`JIRA_BASE_URL`,
+`JIRA_USER`, `JIRA_PAT`) пуста или отсутствует, `load_config()` поднимает
+явное исключение `ConfigError` (наследник `ValueError`) с инструкцией для
+каждого бэкенда. Сообщение **никогда не содержит значения PAT** — только имя
+переменной и описание:
+
+```text
+JIRA_PAT (Jira Personal Access Token (PAT)) не найден в окружении.
+Проверьте источник (в порядке приоритета):
+  • VS Code MCP: укажите envFile в mcp.json → ~/.config/Code/User/.env.local
+    (см. docs/mcp-integration.ru.md)
+  • CLI: создайте .env в корне репо (cp .env.example .env)
+  • Docker: передайте --env-file при запуске
+Запустите `python install.py --non-interactive --register-only` для
+автоматической настройки.
+```
+
+> 💡 **Совет:** `ConfigError` наследует `ValueError`, поэтому существующие
+> блоки `except ValueError` и тесты `pytest.raises((RuntimeError, ValueError))`
+> продолжают работать. Импортируйте его явно при необходимости:
+> `from jira_tempo_mcp.config import ConfigError`.
+
 ### 🔌 Подключение к Jira (опциональные)
 
 | Переменная | Обяз. | По умолч. | Описание |

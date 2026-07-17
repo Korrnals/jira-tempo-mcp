@@ -149,3 +149,72 @@ class TestExtractFunctions:
 
     def test_extract_worker_missing(self) -> None:
         assert _extract_worker({"foo": "bar"}) is None
+
+
+# --- Weekly MD / JSON comment rendering (hotfix regression) ---
+
+
+class TestWeeklyMdJsonComments:
+    """Weekly MD cells stay table-safe; JSON preserves raw comment structure."""
+
+    @staticmethod
+    def _config() -> object:
+        from jira_tempo_mcp.config import Config
+
+        return Config(
+            jira_base_url="https://jira.test.example",
+            jira_user="testuser",
+            jira_pat="fake-pat",
+            section_map={"PROJECT-100": "Section A"},
+            stable_order=["PROJECT-100"],
+            non_issue_sections=[],
+        )
+
+    def test_md_multiline_comment_cell_is_table_safe(self) -> None:
+        from jira_tempo_mcp.report import _render_weekly_md
+
+        config = self._config()
+        worklogs = [
+            {
+                "issueKey": "PROJECT-100",
+                "timeSpentSeconds": 7200,
+                "comment": "+ разработка\n+ корректировка",
+            }
+        ]
+        md = _render_weekly_md(
+            worklogs, config, date(2026, 6, 15), date(2026, 6, 19), {"PROJECT-100": "Section A"}
+        )
+        # Locate the worklog row (the line that has the issue key + a bullet).
+        rows = [ln for ln in md.splitlines() if ln.startswith("| PROJECT-100 |")]
+        assert rows, "expected a worklog row"
+        row = rows[0]
+        # Every table row has exactly the right number of pipe-delimited cells.
+        assert row.count("|") == 5
+        # No raw newline leaked into the cell, multi-action uses <br>.
+        assert "<br>" in row
+        # No double marker.
+        assert "+ +" not in row
+
+    def test_json_preserves_raw_multiline_comment(self) -> None:
+        import json as _json
+
+        from jira_tempo_mcp.report import _render_weekly_json
+
+        config = self._config()
+        multiline = "+ разработка\n+ корректировка"
+        worklogs = [
+            {"issueKey": "PROJECT-100", "timeSpentSeconds": 3600, "comment": multiline},
+            {"issueKey": "PROJECT-100", "timeSpentSeconds": 7200, "comment": multiline},
+        ]
+        out = _render_weekly_json(
+            worklogs, config, date(2026, 6, 15), date(2026, 6, 19), {"PROJECT-100": "Section A"}
+        )
+        data = _json.loads(out)
+        issue = data["issues"][0]
+        # Grouping + summation intact.
+        assert len(issue["worklogs"]) == 1
+        entry = issue["worklogs"][0]
+        assert entry["seconds"] == 10800
+        # Raw comment round-trips faithfully (newline structure preserved).
+        assert entry["comment"] == multiline
+        assert "\n" in entry["comment"]

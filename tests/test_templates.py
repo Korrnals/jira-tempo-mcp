@@ -133,6 +133,197 @@ class TestBuiltinRegistry:
         assert "Сводка по команде" in text
 
 
+# --- Bullet/comment rendering helpers (hotfix: no double markers, splitting) ---
+
+
+class TestBulletHelpers:
+    """Unit tests for the shared bullet-rendering helpers."""
+
+    def test_strip_bullet_marker_variants(self) -> None:
+        from jira_tempo_mcp.templates._shared import strip_bullet_marker
+
+        assert strip_bullet_marker("+ text") == "text"
+        assert strip_bullet_marker("- text") == "text"
+        assert strip_bullet_marker("* text") == "text"
+        assert strip_bullet_marker("\u2022 text") == "text"
+        assert strip_bullet_marker("\u2013 text") == "text"
+        assert strip_bullet_marker("\u2014 text") == "text"
+        assert strip_bullet_marker("1. text") == "text"
+        assert strip_bullet_marker("2) text") == "text"
+        assert strip_bullet_marker("\t+ text") == "text"
+
+    def test_strip_bullet_marker_collapses_double(self) -> None:
+        from jira_tempo_mcp.templates._shared import strip_bullet_marker
+
+        # A doubly-marked source line collapses to a single clean string.
+        assert strip_bullet_marker("+ + text") == "text"
+        assert strip_bullet_marker("- + text") == "text"
+
+    def test_strip_bullet_marker_keeps_hyphenated_words(self) -> None:
+        from jira_tempo_mcp.templates._shared import strip_bullet_marker
+
+        # No space after '-': it's part of a word, not a marker.
+        assert strip_bullet_marker("re-deploy service") == "re-deploy service"
+        assert strip_bullet_marker("text without marker") == "text without marker"
+
+    def test_split_comment_lines_multiline(self) -> None:
+        from jira_tempo_mcp.templates._shared import split_comment_lines
+
+        comment = "+ разработка Helm-чарта\n+ корректировка чартов\n+ деплой"
+        assert split_comment_lines(comment) == [
+            "разработка Helm-чарта",
+            "корректировка чартов",
+            "деплой",
+        ]
+
+    def test_split_comment_lines_single(self) -> None:
+        from jira_tempo_mcp.templates._shared import split_comment_lines
+
+        assert split_comment_lines("just one action") == ["just one action"]
+
+    def test_split_comment_lines_empty(self) -> None:
+        from jira_tempo_mcp.templates._shared import split_comment_lines
+
+        assert split_comment_lines("") == []
+        assert split_comment_lines(None) == []
+        assert split_comment_lines("\n\n  \n") == []
+
+    def test_split_comment_lines_crlf(self) -> None:
+        from jira_tempo_mcp.templates._shared import split_comment_lines
+
+        assert split_comment_lines("a\r\nb\rc") == ["a", "b", "c"]
+
+    def test_render_comment_lines_time_on_last_only(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_lines
+
+        out = render_comment_lines("+ a\n+ b\n+ c", indent="\t", marker="+", time_human="4h")
+        assert out == ["\t+ a", "\t+ b", "\t+ c \u2014 4h"]
+
+    def test_render_comment_lines_single(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_lines
+
+        out = render_comment_lines("only one", indent="\t", marker="+", time_human="2h")
+        assert out == ["\t+ only one \u2014 2h"]
+
+    def test_render_comment_lines_no_double_marker(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_lines
+
+        # Source already has '+' markers — must NOT become '+ +'.
+        out = render_comment_lines("+ a\n+ b", indent="\t", marker="+", time_human=None)
+        assert out == ["\t+ a", "\t+ b"]
+        assert all("+ +" not in line for line in out)
+
+    def test_render_comment_lines_empty(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_lines
+
+        assert render_comment_lines("", indent="\t", marker="+", time_human="1h") == []
+
+    def test_render_comment_cell_single(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_cell
+
+        assert render_comment_cell("+ just one") == "just one"
+
+    def test_render_comment_cell_multiline_uses_br(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_cell
+
+        cell = render_comment_cell("+ a\n+ b")
+        assert "<br>" in cell
+        assert "\n" not in cell  # no raw newline that would break the table
+        assert cell == "\u2022 a<br>\u2022 b"
+
+    def test_render_comment_cell_escapes_pipes(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_cell
+
+        cell = render_comment_cell("a | b\nc | d")
+        assert "\\|" in cell
+        assert "<br>" in cell
+
+    def test_render_comment_cell_empty(self) -> None:
+        from jira_tempo_mcp.templates._shared import render_comment_cell
+
+        assert render_comment_cell("") == "\u2014"
+
+    def test_group_raw_preserves_structure_and_sums(self) -> None:
+        from jira_tempo_mcp.templates._shared import group_worklogs_by_comment_raw
+
+        multiline = "+ разработка\n+ корректировка"
+        worklogs = [
+            {"timeSpentSeconds": 3600, "comment": multiline},
+            {"timeSpentSeconds": 7200, "comment": multiline},
+        ]
+        grouped = group_worklogs_by_comment_raw(worklogs)
+        # Two worklogs with the same (multi-line) comment group + sum.
+        assert len(grouped) == 1
+        comment, secs = grouped[0]
+        assert secs == 10800
+        # Raw newline structure preserved (not flattened).
+        assert "\n" in comment
+
+    def test_group_raw_matches_normalized_grouping_totals(self) -> None:
+        from jira_tempo_mcp.templates._shared import (
+            group_worklogs_by_comment,
+            group_worklogs_by_comment_raw,
+        )
+
+        # Same comment up to whitespace differences must still group together.
+        worklogs = [
+            {"timeSpentSeconds": 1800, "comment": "+ a\n+ b"},
+            {"timeSpentSeconds": 1800, "comment": "+ a   \n  + b"},
+        ]
+        norm = group_worklogs_by_comment(worklogs)
+        raw = group_worklogs_by_comment_raw(worklogs)
+        assert len(norm) == 1
+        assert len(raw) == 1
+        assert norm[0][1] == raw[0][1] == 3600
+
+
+class TestDefaultTemplateMultilineComments:
+    """Regression: multi-line worklog comments must not double-mark or merge."""
+
+    def test_multiline_comment_splits_into_items(self) -> None:
+        reg = builtin_registry()
+        tpl = reg.get("default")
+        assert tpl is not None
+        config = _make_config()
+        multiline = "+ разработка Helm-чарта\n+ корректировка чартов\n+ деплой"
+        text = tpl.render(
+            [_make_worklog("PROJECT-100", 14400, 15, multiline)],
+            config,
+            monday=date(2026, 6, 15),
+            friday=date(2026, 6, 19),
+            issue_titles={"PROJECT-100": "Section A"},
+        )
+        # (a) no double markers anywhere.
+        assert "+ +" not in text
+        # (b) each action is its own line with a single marker.
+        assert "\t+ разработка Helm-чарта" in text
+        assert "\t+ корректировка чартов" in text
+        assert "\t+ деплой" in text
+        # (c) the time suffix lands on the LAST sub-item only, exactly once.
+        assert text.count("\u2014 4h") == 1
+        assert "\t+ деплой \u2014 4h" in text
+
+    def test_marker_unified_strips_dash_source(self) -> None:
+        reg = builtin_registry()
+        tpl = reg.get("default")
+        assert tpl is not None
+        config = _make_config()
+        # Source mixes '-' and '+' markers — output must unify to '+'.
+        mixed = "- first action\n* second action"
+        text = tpl.render(
+            [_make_worklog("PROJECT-100", 3600, 15, mixed)],
+            config,
+            monday=date(2026, 6, 15),
+            friday=date(2026, 6, 19),
+            issue_titles={"PROJECT-100": "Section A"},
+        )
+        assert "\t+ first action" in text
+        assert "\t+ second action" in text
+        # No stray source markers leaked into the rendered bullet text.
+        assert "\t- first action" not in text
+        assert "\t+ - first action" not in text
+
+
 # --- Custom Jinja2 templates ---
 
 

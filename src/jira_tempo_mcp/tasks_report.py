@@ -222,7 +222,7 @@ def _render_individual_md(
                 lines.append("")
                 for c in comments:
                     author = c.get("author", "?")
-                    body = c.get("body", "")
+                    body = md_escape_cell(c.get("body", ""))
                     created = _format_jira_date(c.get("created", "")) or "\u2014"
                     lines.append(f"- **{author}** ({created}): {body}")
                 lines.append("")
