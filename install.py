@@ -3,16 +3,22 @@
 One-command setup:
     python install.py
 
+Non-interactive (CI / scripts / agents):
+    JIRA_BASE_URL=https://jira.example.com JIRA_USER=user JIRA_PAT=*** \\
+        python install.py --non-interactive --register-only
+
 Steps:
 1. Verify Python >= 3.11 and project layout
-2. Create .venv and install package
+2. Create .venv and install package (skipped with --register-only)
 3. Interactively create .env from .env.example (with secret input hidden)
+   — or take values from CLI flags / env vars in --non-interactive mode
 4. Optionally register MCP server in VS Code mcp.json
 5. Optionally verify connectivity to Jira
 """
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import datetime
 import json
@@ -23,6 +29,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +38,15 @@ ENV_FILE = PROJECT_ROOT / ".env"
 ENV_EXAMPLE = PROJECT_ROOT / ".env.example"
 SERVER_NAME = "jira-tempo"
 PY_MIN = (3, 11)
+
+# Required env vars for non-interactive mode — must come from flag, env,
+# or an existing .env.local. If all three sources are empty for any var,
+# the installer exits 1 with a clear message (never a KeyError / IndexError).
+_NON_INTERACTIVE_REQUIRED: tuple[str, ...] = ("JIRA_BASE_URL", "JIRA_USER", "JIRA_PAT")
+_NON_INTERACTIVE_OPTIONAL_DEFAULTS: dict[str, str] = {
+    "JIRA_TIMEZONE": "Europe/Moscow",
+    "LOG_LEVEL": "INFO",
+}
 
 
 def _vscode_user_dir() -> Path:
@@ -51,6 +67,109 @@ VSCODE_DIR = _vscode_user_dir()
 VSCODE_MCP = VSCODE_DIR / "mcp.json"
 ENV_LOCAL = VSCODE_DIR / ".env.local"
 WORKSPACE_MCP = PROJECT_ROOT / ".vscode" / "mcp.json"
+
+
+# ---------- non-interactive mode state ----------
+#
+# Populated by ``_parse_args`` at the start of ``main``. When
+# ``options.non_interactive`` is True, ``_ask`` / ``_confirm`` take values
+# from CLI flags / env vars / defaults instead of prompting on stdin.
+# The module-level singleton keeps helper functions signatures unchanged
+# (they don't thread an options object through every call) while still
+# being testable — tests monkeypatch ``install._OPTIONS``.
+@dataclass
+class InstallOptions:
+    """Parsed installer options (interactive + non-interactive)."""
+
+    non_interactive: bool = False
+    register_only: bool = False
+    skip_vscode: bool = False
+    jira_base_url: str | None = None
+    jira_user: str | None = None
+    jira_pat: str | None = None
+    jira_timezone: str | None = None
+    log_level: str | None = None
+
+
+_OPTIONS = InstallOptions()
+
+
+def _parse_args(argv: list[str] | None = None) -> InstallOptions:
+    """Parse CLI args into ``InstallOptions``.
+
+    Flags fall back to the matching env var (e.g. ``--jira-pat`` → ``JIRA_PAT``)
+    so the installer can be driven entirely by environment variables in CI.
+    """
+    parser = argparse.ArgumentParser(
+        prog="install.py",
+        description="Install jira-tempo-mcp (interactive by default).",
+    )
+    parser.add_argument(
+        "-n",
+        "--non-interactive",
+        "--yes",
+        dest="non_interactive",
+        action="store_true",
+        help="Run without prompts; take values from flags / env vars / defaults.",
+    )
+    parser.add_argument(
+        "--register-only",
+        action="store_true",
+        help="Skip venv/pip — only write .env.local and register in mcp.json.",
+    )
+    parser.add_argument(
+        "--skip-vscode",
+        action="store_true",
+        help="Skip VS Code registration (only write .env.local).",
+    )
+    parser.add_argument("--jira-base-url", default=os.getenv("JIRA_BASE_URL"))
+    parser.add_argument("--jira-user", default=os.getenv("JIRA_USER"))
+    parser.add_argument("--jira-pat", default=os.getenv("JIRA_PAT"))
+    parser.add_argument(
+        "--jira-timezone",
+        default=os.getenv("JIRA_TIMEZONE", "Europe/Moscow"),
+    )
+    parser.add_argument(
+        "--log-level",
+        default=os.getenv("LOG_LEVEL", "INFO"),
+    )
+    args = parser.parse_args(argv)
+    return InstallOptions(
+        non_interactive=args.non_interactive,
+        register_only=args.register_only,
+        skip_vscode=args.skip_vscode,
+        jira_base_url=args.jira_base_url,
+        jira_user=args.jira_user,
+        jira_pat=args.jira_pat,
+        jira_timezone=args.jira_timezone,
+        log_level=args.log_level,
+    )
+
+
+def _opt_value(var_name: str, *, secret: bool = False) -> str | None:
+    """Resolve a config value from CLI flag → env var.
+
+    Used by non-interactive helpers to honour the precedence:
+    explicit flag (which already holds the env-var fallback from argparse)
+    → process env. Returns ``None`` if neither source provides a value.
+
+    ``secret`` is informational only — kept for symmetry with ``_ask``.
+    """
+    # argparse already defaulted each flag to os.getenv(...), so reading the
+    # attribute covers both flag and env. Fall through to env one more time
+    # in case the flag was explicitly None but env was set after parse
+    # (rare, but cheap).
+    mapping = {
+        "JIRA_BASE_URL": _OPTIONS.jira_base_url,
+        "JIRA_USER": _OPTIONS.jira_user,
+        "JIRA_PAT": _OPTIONS.jira_pat,
+        "JIRA_TIMEZONE": _OPTIONS.jira_timezone,
+        "LOG_LEVEL": _OPTIONS.log_level,
+    }
+    val = mapping.get(var_name)
+    if val:
+        return val
+    return os.getenv(var_name)
 
 
 def _backup_mcp_json(path: Path) -> Path:
@@ -164,7 +283,17 @@ def _ask(label: str, default: str = "", *, secret: bool = False, required: bool 
 
     The user input is captured via input() in raw mode so we can echo it back
     in colour. Secret prompts (e.g. PAT) use getpass with no echo.
+
+    In non-interactive mode (``install._OPTIONS.non_interactive`` is True) this
+    function does NOT prompt — it returns the value resolved from the CLI
+    flag / env var, falling back to *default*. The label is used only to
+    derive the matching env var name when the caller passes it via the
+    ``env_var`` parameter (kept for symmetry; resolved upstream by
+    ``write_env``).
     """
+    if _OPTIONS.non_interactive:
+        return default
+
     label_styled = _color(C_INFO, "?", bold=True) + " " + _color("1", label, bold=True)
     suffix = " " + _color(C_MUTED, f"[{default}]") if default else ""
     shown = f"  {label_styled}{suffix}: "
@@ -194,6 +323,8 @@ def _ask(label: str, default: str = "", *, secret: bool = False, required: bool 
 
 
 def _confirm(msg: str, default: bool = True) -> bool:
+    if _OPTIONS.non_interactive:
+        return default
     label = _color(C_INFO, "?", bold=True) + " " + msg
     suffix = " " + _color(C_MUTED, "[Y/n]" if default else "[y/N]")
     ans = input(f"  {label}{suffix}: ").strip().lower()
@@ -208,7 +339,11 @@ def _ask_choice(prompt: str, *, options: list[str], default: str) -> str:
 
     Accepts the full option word or a unique prefix. Empty input returns
     *default*. Loops until a valid choice is made.
+
+    In non-interactive mode, returns *default* without prompting.
     """
+    if _OPTIONS.non_interactive:
+        return default
     options_str = "/".join(options)
     default_idx = options.index(default)
     hint = "/".join(o.upper() if i == default_idx else o for i, o in enumerate(options))
@@ -559,16 +694,72 @@ def _write_env_local(updates: dict[str, str]) -> bool:
     return True
 
 
+def _missing_required_message(missing: list[str]) -> str:
+    """Build a clear error message for non-interactive mode missing required vars.
+
+    Lists each missing variable and the remediation (existing .env.local
+    value, env var, or CLI flag). Never echoes secret values.
+    """
+    bullets = "\n".join(f"  • {var}" for var in missing)
+    return (
+        "Non-interactive mode requires the following variables but they are "
+        "missing (not set via CLI flag, env var, or existing .env.local):\n"
+        f"{bullets}\n"
+        "Provide them via flags (--jira-base-url, --jira-user, --jira-pat) "
+        "or env vars (JIRA_BASE_URL, JIRA_USER, JIRA_PAT), or run without "
+        "--non-interactive for interactive setup."
+    )
+
+
 def write_env() -> bool:
     """Write Jira credentials to ~/.config/Code/User/.env.local (merged).
 
     If .env.local already exists, JIRA_* keys are merged in — other servers'
     secrets (github, tavily, context7) are preserved untouched.
+
+    In non-interactive mode, takes values from CLI flags / env vars /
+    existing .env.local, with sensible defaults for optional fields. Missing
+    required values cause exit 1 with a clear message (never a KeyError).
     """
     defaults = _read_env_example()
     existing_local = _parse_env_local()
     existing_project = _parse_existing_env()
 
+    # --- non-interactive path ---
+    # Required vars: resolve from CLI flag / env var → existing .env.local →
+    # existing project .env. .env.example defaults are NOT trusted — they are
+    # placeholders ("your-username", "your_personal_access_token_here") and
+    # would silently mask a missing real value.
+    if _OPTIONS.non_interactive:
+        resolved: dict[str, str] = {}
+        missing: list[str] = []
+        for var in _NON_INTERACTIVE_REQUIRED:
+            val = (
+                _opt_value(var) or existing_local.get(var, "") or existing_project.get(var, "")
+            ).strip()
+            if not val:
+                missing.append(var)
+            else:
+                resolved[var] = val
+        # Optional vars — defaults from .env.example / built-in defaults are fine.
+        for var, default_val in _NON_INTERACTIVE_OPTIONAL_DEFAULTS.items():
+            val = (
+                _opt_value(var)
+                or existing_local.get(var, "")
+                or existing_project.get(var, "")
+                or defaults.get(var, "")
+                or default_val
+            ).strip() or default_val
+            resolved[var] = val
+
+        if missing:
+            _err("Missing required configuration in non-interactive mode.")
+            print(_missing_required_message(missing), file=sys.stderr)
+            return False
+
+        return _write_env_local(resolved)
+
+    # --- interactive path (unchanged) ---
     # Prefer values from project .env (if user ran installer before),
     # then from .env.local, then from .env.example defaults.
     def _resolve(key: str, fallback_default: str = "") -> str:
@@ -840,7 +1031,14 @@ def register_mcp_step() -> bool:
     Only prompts when there's a conflict (both configs) or the user
     explicitly wants to change. After writing the config, clears the MCP
     tool cache so VS Code re-discovers tools on next restart.
+
+    Skipped entirely when ``--skip-vscode`` is set (only .env.local is
+    written).
     """
+    if _OPTIONS.skip_vscode:
+        _muted("--skip-vscode: skipping VS Code registration.")
+        return True
+
     _info("Register MCP server in VS Code.")
 
     existing = _detect_existing_config()
@@ -892,10 +1090,26 @@ def register_mcp_step() -> bool:
     return True
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # Parse CLI flags / env vars into the module-level options singleton.
+    # Must happen first so helpers (_ask / _confirm / write_env) see it.
+    global _OPTIONS
+    _OPTIONS = _parse_args(argv)
+
     _title("jira-tempo-mcp installer")
     if not check_python() or not check_files():
         return 1
+
+    if _OPTIONS.register_only:
+        # --register-only: skip venv/pip, go straight to .env.local + register.
+        _step(1, 2, "Write .env.local with Jira credentials")
+        if not write_env():
+            return 1
+
+        _step(2, 2, "Register MCP server in VS Code")
+        if not register_mcp_step():
+            return 1
+        return 0
 
     total = 5
 
@@ -1085,9 +1299,11 @@ def uninstall() -> int:
 
 
 if __name__ == "__main__":
-    # Allow `python install.py [install|uninstall]` as a convenience entrypoint.
-    # When invoked via the CLI dispatcher (cli.py), sys.argv is set to
-    # [install.py_path, subcommand] so this guard dispatches correctly.
+    # Allow `python install.py [install|uninstall] [flags]` as a convenience
+    # entrypoint. When invoked via the CLI dispatcher (cli.py), sys.argv is
+    # set to [install.py_path, subcommand] so this guard dispatches correctly.
     if len(sys.argv) >= 2 and sys.argv[1] == "uninstall":
         sys.exit(uninstall())
-    sys.exit(main())
+    # Drop the optional "install" subcommand so argparse doesn't see it.
+    extra = sys.argv[2:] if len(sys.argv) >= 2 and sys.argv[1] == "install" else sys.argv[1:]
+    sys.exit(main(extra))

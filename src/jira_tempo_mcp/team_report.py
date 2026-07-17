@@ -33,9 +33,10 @@ from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
     extract_comment,
     extract_issue_key,
-    group_worklogs_by_comment,
+    group_worklogs_by_comment_raw,
     md_escape_cell,
     month_ru,
+    render_comment_cell,
     truncate_text,
     week_range,
 )
@@ -330,7 +331,7 @@ def _render_team_md(
             lines.append(
                 f"| {key} | {md_escape_cell(truncate_text(title, 50))} | "
                 f"{format_seconds_to_human(secs)} | "
-                f"{md_escape_cell(truncate_text(comment, 80))} |"
+                f"{render_comment_cell(comment)} |"
             )
         lines.append(f"| | | **{format_seconds_to_human(user_total)}** | |")
         lines.append("")
@@ -381,7 +382,7 @@ def _render_team_json(
             title = issue_titles.get(key, config.section_map.get(key, key))
             task_total = sum(w.get("timeSpentSeconds", 0) for w in grouped[key])
             worklog_entries = []
-            for comment, secs in group_worklogs_by_comment(grouped[key]):
+            for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
                 worklog_entries.append(
                     {
                         "comment": comment,
@@ -409,7 +410,7 @@ def _render_team_json(
             title = issue_titles.get(key, key)
             task_total = sum(w.get("timeSpentSeconds", 0) for w in grouped[key])
             worklog_entries = []
-            for comment, secs in group_worklogs_by_comment(grouped[key]):
+            for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
                 worklog_entries.append(
                     {
                         "comment": comment,

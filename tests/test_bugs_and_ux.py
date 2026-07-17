@@ -650,3 +650,50 @@ class TestFormatWorklogDetails:
         wl = {"tempoWorklogId": "1", "timeSpentSeconds": 60}
         result = _format_worklog_details(wl)
         assert "Attributes:" not in result
+
+
+# --- HOTFIX: bullet rendering regression (multi-line worklog comments) ---
+
+
+class TestWeeklyReportBulletRendering:
+    """End-to-end: multi-line worklog comment must not produce double markers
+    and must split into separate bullet items with one unified marker."""
+
+    async def test_weekly_txt_multiline_no_double_marker(self, tmp_path: Path) -> None:
+        config = _make_config()
+        mock_client = AsyncMock(spec=JiraTempoClient)
+        mock_client.find_worker_key.return_value = "wk"
+
+        multiline = (
+            "+ разработка и доработка Helm-чарта\n+ корректировка values\n+ деплой в кластер"
+        )
+
+        async def _search_worklogs(
+            date_from: str, date_to: str, *, worker_keys: list[str] | None = None
+        ) -> list[dict[str, Any]]:
+            return [
+                {
+                    "issue": {"key": "PROJECT-100"},
+                    "timeSpentSeconds": 14400,
+                    "comment": multiline,
+                    "started": "2026-06-17",
+                }
+            ]
+
+        mock_client.search_worklogs.side_effect = _search_worklogs
+
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=date(2026, 6, 17),
+            output_dir=tmp_path,
+        )
+        content = Path(result).read_text(encoding="utf-8")
+        # No duplicated markers anywhere.
+        assert "+ +" not in content
+        # Each action on its own line with a single unified marker.
+        assert "\t+ разработка и доработка Helm-чарта" in content
+        assert "\t+ корректировка values" in content
+        assert "\t+ деплой в кластер" in content
+        # Time suffix appears once (on the last sub-item only).
+        assert content.count("\u2014 4h") == 1
