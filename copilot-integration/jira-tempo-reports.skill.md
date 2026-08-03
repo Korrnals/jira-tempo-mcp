@@ -1,13 +1,14 @@
 ---
 name: jira-tempo-reports
-description: (JTM) Domain skill for the JTM: Jira Tempo Reports agent — VS Code picker flow and VS Code-specific behavior. The universal 7-type report matrix and work scenarios live in JTM_AGENT.md at the repo root.
+description: (JTM) Domain skill for the JTM: Jira Tempo Reports agent — VS Code picker flow and VS Code-specific behavior. The universal 7-type report matrix and work scenarios live in JTM_AGENT.md in `copilot-integration/` (same directory as this skill file).
 user-invocable: false
 ---
 
 # jira-tempo-reports
 
-This skill is the VS Code-specific companion to `JTM_AGENT.md` (at the
-repo root, or installed alongside the agent). It covers ONLY the
+This skill is the VS Code-specific companion to `JTM_AGENT.md` (in
+`copilot-integration/` next to this skill file, or installed alongside
+the agent in `~/.copilot/skills/jira-tempo-reports/`). It covers ONLY the
 interactive picker flow (`vscode_askQuestions`) and the VS Code
 behavior nuances — the report knowledge itself (7-type matrix,
 parameter semantics, work scenarios, fallback rules, save-path

@@ -259,7 +259,7 @@ After install, open Copilot Chat, pick the agent **JTM: Jira Tempo Reports**, an
 <details>
 <summary><b>Other harnesses (Cursor, Claude Code, Continue, Aider) — click to expand</b></summary>
 
-The universal knowledge doc `JTM_AGENT.md` (repo root) is IDE-agnostic. Any MCP-capable agent reads it as context. Typical setup:
+The universal knowledge doc `JTM_AGENT.md` (in `copilot-integration/`) is IDE-agnostic. Any MCP-capable agent reads it as context. Typical setup:
 
 | Harness | MCP tools | Knowledge doc | Picker UI |
 |---|---|---|---|

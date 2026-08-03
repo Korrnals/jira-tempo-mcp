@@ -19,9 +19,10 @@ report type + format + template, call the matching generator, and
 report the saved file path.
 
 Your domain knowledge lives in `JTM_AGENT.md`. When running from
-source it is at the repo root (`JTM_AGENT.md`); when installed it
-lives at `~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` (next
-to `SKILL.md`, NOT in `~/.copilot/agents/` — VS Code scans that
+source it is in the same directory as this agent file
+(`copilot-integration/JTM_AGENT.md`); when installed it lives at
+`~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` (next to the
+skill file, NOT in `~/.copilot/agents/` — VS Code scans that
 dir for agents and would surface it as a second fake agent). That
 document contains the 7-type report matrix, the parameter semantics,
 the work scenarios, and the fallback rules. **Read `JTM_AGENT.md`

@@ -46,11 +46,12 @@ COPILOT_AGENTS_DIR = Path.home() / ".copilot" / "agents"
 COPILOT_SKILLS_DIR = Path.home() / ".copilot" / "skills"
 AGENT_FILE_NAME = "jtm-jira-tempo-reports.agent.md"
 SKILL_DIR_NAME = "jira-tempo-reports"
-SKILL_FILE_NAME = "SKILL.md"
+SKILL_FILE_NAME = "jira-tempo-reports.skill.md"  # consolidated source filename
+INSTALLED_SKILL_FILE_NAME = "SKILL.md"  # VS Code expects this name in the skills dir
 JTM_AGENT_MD_NAME = "JTM_AGENT.md"  # universal knowledge doc, copied next to the agent
-REPO_AGENT_SRC = PROJECT_ROOT / "agents" / AGENT_FILE_NAME
-REPO_SKILL_SRC = PROJECT_ROOT / "skills" / SKILL_DIR_NAME / SKILL_FILE_NAME
-REPO_JTM_AGENT_MD = PROJECT_ROOT / JTM_AGENT_MD_NAME
+REPO_AGENT_SRC = PROJECT_ROOT / "copilot-integration" / AGENT_FILE_NAME
+REPO_SKILL_SRC = PROJECT_ROOT / "copilot-integration" / SKILL_FILE_NAME
+REPO_JTM_AGENT_MD = PROJECT_ROOT / "copilot-integration" / JTM_AGENT_MD_NAME
 
 # Required env vars for non-interactive mode — must come from flag, env,
 # or an existing .env.local. If all three sources are empty for any var,
@@ -1047,7 +1048,7 @@ def print_agent_announcement() -> None:
     """
     agent_target = COPILOT_AGENTS_DIR / AGENT_FILE_NAME
     jtm_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME / JTM_AGENT_MD_NAME
-    skill_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME / SKILL_FILE_NAME
+    skill_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME / INSTALLED_SKILL_FILE_NAME
     if not (agent_target.exists() and jtm_target.exists() and skill_target.exists()):
         # Agent not installed in this run — no announcement.
         return
@@ -1162,7 +1163,7 @@ def install_copilot_agent() -> bool:
     # is not scanned for agents, so the knowledge doc stays invisible to
     # the agent picker.
     skill_dir_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME
-    skill_file_target = skill_dir_target / SKILL_FILE_NAME
+    skill_file_target = skill_dir_target / INSTALLED_SKILL_FILE_NAME
     jtm_target = skill_dir_target / JTM_AGENT_MD_NAME
     skill_dir_target.mkdir(parents=True, exist_ok=True)
     if skill_file_target.exists():

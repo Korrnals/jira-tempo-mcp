@@ -259,7 +259,7 @@ make build      # python -m build (sdist + wheel)
 <details>
 <summary><b>Другие harness-ы (Cursor, Claude Code, Continue, Aider) — нажмите для раскрытия</b></summary>
 
-Универсальный документ знаний `JTM_AGENT.md` (в корне репозитория) — IDE-agnostic. Любой агент с поддержкой MCP читает его как контекст. Типовая настройка:
+Универсальный документ знаний `JTM_AGENT.md` (в `copilot-integration/`) — IDE-agnostic. Любой агент с поддержкой MCP читает его как контекст. Типовая настройка:
 
 | Harness | MCP-инструменты | Документ знаний | Picker UI |
 |---|---|---|---|
