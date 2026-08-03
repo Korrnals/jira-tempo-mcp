@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.3.2] — 2026-08-03
+
+### Added
+
+- **Standalone JTM Copilot Chat agent** — a ready-to-use AI agent (`JTM: Jira Tempo Reports`) that produces Jira/Tempo worklog reports predictably via the `jira-tempo` MCP generators. Installs by default with `python install.py` into `~/.copilot/agents/` (agent) and `~/.copilot/skills/jira-tempo-reports/` (skill + universal knowledge doc). Escape hatches: `--no-agent` (skip agent on install), `--uninstall-agent` (remove only the agent, keep the MCP server). See README §"JTM Agent" for the full integration matrix.
+- **Universal knowledge doc `JTM_AGENT.md`** — IDE-agnostic 7-type report matrix, MCP-tool mapping, work scenarios, and fallback rules. Works with any MCP-capable agent (Cursor, Claude Code, Continue, Aider) that reads it as context. The VS Code wrapper (`copilot-integration/jtm-jira-tempo-reports.agent.md` + `copilot-integration/jira-tempo-reports.skill.md`) adds the interactive `vscode_askQuestions` picker and VS Code-specific behavior on top of this universal layer.
+- **Installer agent integration** — `install.py` extended with `install_copilot_agent()` / `uninstall_copilot_agent()`, `--no-agent` and `--uninstall-agent` flags, and a loud announcement block at the end of install confirming the agent location and one-click usage. Full uninstall (`python install.py uninstall`) now also removes the agent + skill + knowledge doc.
+- **README §"JTM Agent"** — new section documenting the agent install locations, VS Code one-click usage, and a harness integration table (VS Code, Cursor, Claude Code, Continue, Aider) with the MCP server JSON entry for non-VS Code harnesses.
+- **README Quick start uninstall one-liners** — two copy-pasteable one-liners: full uninstall (`python install.py uninstall` / `curl ... | bash -- --uninstall`) and agent-only uninstall (`python install.py --uninstall-agent`).
+
+### Fixed
+
+- **`JTM_AGENT.md` install location** — the universal knowledge doc was initially copied into `~/.copilot/agents/`, which VS Code Copilot Chat scans for agents — it appeared as a second fake agent in the picker. Fixed: `JTM_AGENT.md` now installs into `~/.copilot/skills/jira-tempo-reports/` (next to `SKILL.md`), which VS Code does not scan for agents.
+
 ## [0.3.1] — 2026-08-03
 
 ### Added

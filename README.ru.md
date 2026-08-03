@@ -72,6 +72,7 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 - ✅ Устанавливает пакет
 - ✅ Проводит через настройку учётных данных Jira
 - ✅ Регистрирует MCP-сервер в VS Code (user + workspace)
+- ✅ По умолчанию устанавливает standalone-агент **JTM: Jira Tempo Reports** для Copilot Chat (пропустить через `--no-agent`) — см. [§Агент JTM](#-агент-jtm-standalone-агент-для-copilot-chat)
 
 > 💡 **Совет:** Установщик не требует `sudo` — всё ставится в user space.
 > Скрипт идемпотентен: повторный запуск обновляет без затирания существующего конфига.
@@ -79,8 +80,16 @@ curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/script
 **Удаление:**
 
 ```bash
+# Полное удаление (MCP-сервер + агент Copilot Chat + skill):
 curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash -- --uninstall
+# …или из локального клона:
+python install.py uninstall
+
+# Удалить ТОЛЬКО агент Copilot Chat (MCP-сервер остаётся):
+python install.py --uninstall-agent
 ```
+
+Полное удаление убирает запись в VS Code `mcp.json`, агента + skill + knowledge-документ Copilot Chat, а также (по запросу) учётные данные Jira из `.env.local` и pip-пакет. Удаление только агента оставляет MCP-сервер полностью рабочим — используйте его, если установили агента, но решили, что он не нужен.
 
 **Docker:**
 
@@ -93,7 +102,8 @@ docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:lates
 
 ---
 
-### 🔧 Из исходников (разработка)
+<details>
+<summary><b>🔧 Из исходников (разработка)</b></summary>
 
 Интерактивный установщик создаёт venv, записывает `.env`, регистрирует
 MCP-сервер в VS Code и опционально проверяет связь с Jira:
@@ -123,6 +133,8 @@ docker run -i --rm \
 ```
 
 Все способы установки: [docs/installation.ru.md](docs/installation.ru.md).
+
+</details>
 
 ---
 
@@ -171,7 +183,8 @@ docker run -i --rm \
 
 ---
 
-## 🖥️ CLI
+<details>
+<summary><b>🖥️ CLI</b></summary>
 
 ```text
 jira-tempo-mcp                  # запустить MCP-сервер (по умолчанию)
@@ -183,9 +196,12 @@ jira-tempo-mcp --version        # показать версию
 
 Полный справочник: [docs/cli.ru.md](docs/cli.ru.md).
 
+</details>
+
 ---
 
-## 🔒 Безопасность
+<details>
+<summary><b>🔒 Безопасность</b></summary>
 
 - **🔑 Токены не покидают локальный процесс** — `JIRA_PAT` отправляется только
   на инстанс Jira через HTTPS.
@@ -199,7 +215,12 @@ jira-tempo-mcp --version        # показать версию
 
 Полная модель: [docs/architecture.ru.md#безопасность](docs/architecture.ru.md#безопасность).
 
-## 🛠️ Разработка
+</details>
+
+---
+
+<details>
+<summary><b>🛠️ Разработка</b></summary>
 
 Канонический quality gate для этого репозитория — локальный набор `make`.
 GitHub Actions в этом репозитории намеренно отключены, поэтому `make ci` —
@@ -213,6 +234,62 @@ make typecheck  # mypy
 make test       # pytest
 make build      # python -m build (sdist + wheel)
 ```
+
+</details>
+
+---
+
+## 🤖 Агент JTM (standalone-агент для Copilot Chat)
+
+В этом репозитории поставляется standalone AI-агент, который предсказуемо строит отчёты по журналу работ Jira/Tempo, вызывая генераторы MCP-сервера `jira-tempo`. Знания агента IDE-agnostic, а поверх них — тонкая обёртка для VS Code Copilot Chat для генерации отчётов в один клик.
+
+### Что куда устанавливается
+
+`python install.py` по умолчанию устанавливает агента:
+- `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` — агент для VS Code Copilot Chat.
+- `~/.copilot/agents/JTM_AGENT.md` — универсальный документ знаний (матрица из 7 типов отчётов, сценарии, правила), копируется рядом с агентом.
+- `~/.copilot/skills/jira-tempo-reports/SKILL.md` — VS Code-специфичный skill (интерактивный picker-флоу).
+
+В конце `install.py` выводится громкий блок-анонс, подтверждающий установку. Пропустить агента: `python install.py --no-agent`. Удалить только агента: `python install.py --uninstall-agent`.
+
+### VS Code Copilot Chat (в один клик)
+
+После установки откройте Copilot Chat, выберите агента **JTM: Jira Tempo Reports** и нажмите **📊 Недельный отчёт (по умолчанию)** для отчёта за неделю в один клик (basic + txt + текущая неделя + текущий пользователь). Для разрешения неоднозначностей агент использует графический пикер (`vscode_askQuestions`).
+
+<details>
+<summary><b>Другие harness-ы (Cursor, Claude Code, Continue, Aider) — нажмите для раскрытия</b></summary>
+
+Универсальный документ знаний `JTM_AGENT.md` (в `copilot-integration/`) — IDE-agnostic. Любой агент с поддержкой MCP читает его как контекст. Типовая настройка:
+
+| Harness | MCP-инструменты | Документ знаний | Picker UI |
+|---|---|---|---|
+| VS Code Copilot Chat | авто-регистрация через `install.py` | авто-установка в `~/.copilot/agents/` | `vscode_askQuestions` (графический) |
+| Cursor | добавить `jira-tempo` в `.cursor/mcp.json` (та же запись сервера, что и в mcp.json для VS Code) | указать в Cursor rules на `JTM_AGENT.md` | текстовые вопросы (без GUI-пикера) |
+| Claude Code | добавить `jira-tempo` в `~/.claude/mcp.json` | ссылка на `JTM_AGENT.md` в `CLAUDE.md` | текстовые вопросы |
+| Continue | добавить `jira-tempo` в секцию MCP `~/.continue/config.json` | ссылка на `JTM_AGENT.md` в конфиге | текстовые вопросы |
+| Aider / прочие MCP-клиенты | конфиг MCP для конкретного клиента | передать `JTM_AGENT.md` как файл контекста (`--read JTM_AGENT.md` для Aider) | текстовые вопросы |
+
+Запись MCP-сервера для не-VS Code harness-ов (скопируйте из mcp.json для VS Code, который пишет установщик):
+```json
+{
+  "jira-tempo": {
+    "command": "/path/to/your/venv/bin/python",
+    "args": ["-m", "jira_tempo_mcp.server"],
+    "env": { "PYTHONPATH": "/path/to/this/repo/src" }
+  }
+}
+```
+Укажите `PYTHONPATH` на `src/` этого репозитория, чтобы пакет был импортируем. Передавайте `JIRA_BASE_URL`, `JIRA_USER`, `JIRA_PAT` через переменные окружения или env-файл согласно вашему harness-у.
+
+</details>
+
+### Что агент НЕ делает
+
+- Операции записи в Jira (создание/обновление задач или журнала работ) — только чтение.
+- Аналитика за пределами агрегации сырого журнала работ (тренды, прогнозирование) — вне области действия.
+- Авторинг кастомных шаблонов (написание файлов шаблонов `.py`/`.j2`) — вне области действия.
+
+Полная матрица из 7 типов отчётов, семантика параметров и рабочие сценарии — в `JTM_AGENT.md`.
 
 ---
 

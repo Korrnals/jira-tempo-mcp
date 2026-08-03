@@ -39,6 +39,20 @@ ENV_EXAMPLE = PROJECT_ROOT / ".env.example"
 SERVER_NAME = "jira-tempo"
 PY_MIN = (3, 11)
 
+# Copilot Chat agent + skill (standalone, VS Code Copilot Chat).
+# These are installed by default into ~/.copilot/agents/ and ~/.copilot/skills/.
+# Skip with --no-agent. Remove-only with --uninstall-agent.
+COPILOT_AGENTS_DIR = Path.home() / ".copilot" / "agents"
+COPILOT_SKILLS_DIR = Path.home() / ".copilot" / "skills"
+AGENT_FILE_NAME = "jtm-jira-tempo-reports.agent.md"
+SKILL_DIR_NAME = "jira-tempo-reports"
+SKILL_FILE_NAME = "jira-tempo-reports.skill.md"  # consolidated source filename
+INSTALLED_SKILL_FILE_NAME = "SKILL.md"  # VS Code expects this name in the skills dir
+JTM_AGENT_MD_NAME = "JTM_AGENT.md"  # universal knowledge doc, copied next to the agent
+REPO_AGENT_SRC = PROJECT_ROOT / "copilot-integration" / AGENT_FILE_NAME
+REPO_SKILL_SRC = PROJECT_ROOT / "copilot-integration" / SKILL_FILE_NAME
+REPO_JTM_AGENT_MD = PROJECT_ROOT / "copilot-integration" / JTM_AGENT_MD_NAME
+
 # Required env vars for non-interactive mode — must come from flag, env,
 # or an existing .env.local. If all three sources are empty for any var,
 # the installer exits 1 with a clear message (never a KeyError / IndexError).
@@ -89,6 +103,8 @@ class InstallOptions:
     jira_pat: str | None = None
     jira_timezone: str | None = None
     log_level: str | None = None
+    no_agent: bool = False
+    uninstall_agent: bool = False
 
 
 _OPTIONS = InstallOptions()
@@ -133,6 +149,16 @@ def _parse_args(argv: list[str] | None = None) -> InstallOptions:
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
     )
+    parser.add_argument(
+        "--no-agent",
+        action="store_true",
+        help="Skip Copilot Chat agent installation (agent installs by default).",
+    )
+    parser.add_argument(
+        "--uninstall-agent",
+        action="store_true",
+        help="Remove only the Copilot Chat agent + skill + JTM_AGENT.md, then exit.",
+    )
     args = parser.parse_args(argv)
     return InstallOptions(
         non_interactive=args.non_interactive,
@@ -143,6 +169,8 @@ def _parse_args(argv: list[str] | None = None) -> InstallOptions:
         jira_pat=args.jira_pat,
         jira_timezone=args.jira_timezone,
         log_level=args.log_level,
+        no_agent=args.no_agent,
+        uninstall_agent=args.uninstall_agent,
     )
 
 
@@ -1009,6 +1037,183 @@ def print_next_steps() -> None:
     _info("To regenerate the .env later, run: python install.py")
     print()
 
+    print_agent_announcement()
+
+
+def print_agent_announcement() -> None:
+    """Loud announcement block for the Copilot Chat agent (if installed).
+
+    Only printed when the agent was actually installed in this run — skipped
+    via ``--no-agent`` / ``--skip-vscode`` / missing source files suppresses it.
+    """
+    agent_target = COPILOT_AGENTS_DIR / AGENT_FILE_NAME
+    jtm_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME / JTM_AGENT_MD_NAME
+    skill_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME / INSTALLED_SKILL_FILE_NAME
+    if not (agent_target.exists() and jtm_target.exists() and skill_target.exists()):
+        # Agent not installed in this run — no announcement.
+        return
+
+    print()
+    print(f"  {_color(C_ACCENT, '╭' + '─' * 60, bold=True)}")
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)} {_color('1', 'Copilot Chat agent installed', bold=True)}"
+    )
+    print(f"  {_color(C_ACCENT, '│', bold=True)}")
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_OK, '✓', bold=True)} MCP server registered in VS Code mcp.json"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_OK, '✓', bold=True)} Agent:    {agent_target}"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_OK, '✓', bold=True)} Skill:    {skill_target}"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_OK, '✓', bold=True)} Knowledge: {jtm_target}"
+    )
+    print(f"  {_color(C_ACCENT, '│', bold=True)}")
+    print(f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_INFO, 'How to use:', bold=True)}")
+    print(f"  {_color(C_ACCENT, '│', bold=True)}   1. Open Copilot Chat in VS Code")
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)}   2. Pick the agent: {_color('1', 'JTM: Jira Tempo Reports', bold=True)}"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)}   3. Click {_color('1', '📊 Недельный отчёт (по умолчанию)', bold=True)} for the one-click default"
+    )
+    print(f"  {_color(C_ACCENT, '│', bold=True)}")
+    print(f"  {_color(C_ACCENT, '│', bold=True)} {_color(C_WARN, 'Escape hatches:', bold=True)}")
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)}   • {_color(C_MUTED, 'python install.py --no-agent')}  skip on next install"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)}   • {_color(C_MUTED, 'python install.py --uninstall')} remove agent + MCP server"
+    )
+    print(
+        f"  {_color(C_ACCENT, '│', bold=True)}   • {_color(C_MUTED, 'python install.py --uninstall-agent')} remove agent only"
+    )
+    print(f"  {_color(C_ACCENT, '╰' + '─' * 60, bold=True)}")
+    print()
+
+
+# ---------- Copilot Chat agent + skill ----------
+
+
+def _backup_file(path: Path) -> Path:
+    """Create a timestamped backup of *path* before overwriting.
+
+    Mirrors ``_backup_mcp_json`` but works for any file extension. Produces
+    ``<path>.bak.YYYYMMDD-HHMMSS``; appends ``-1``, ``-2``, … on collisions.
+    """
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = path.with_suffix(path.suffix + f".bak.{stamp}")
+    counter = 1
+    while backup.exists():
+        backup = path.with_suffix(path.suffix + f".bak.{stamp}-{counter}")
+        counter += 1
+    shutil.copy2(path, backup)
+    return backup
+
+
+def install_copilot_agent() -> bool:
+    """Install the standalone Copilot Chat agent + skill + knowledge doc.
+
+    Optional and non-blocking: missing source files or copy failures are
+    warnings, not failures — the MCP server install proceeds regardless.
+
+    Skipped when ``--no-agent`` or ``--skip-vscode`` is set (the agent is
+    VS Code-specific). Returns True on success or skip; returns False only
+    when a hard copy error occurred (caller still continues).
+    """
+    if _OPTIONS.no_agent:
+        _muted("--no-agent: skipping Copilot Chat agent installation.")
+        return True
+    if _OPTIONS.skip_vscode:
+        _muted(
+            "--skip-vscode: skipping Copilot Chat agent installation (agent is VS Code-specific)."
+        )
+        return True
+
+    # Verify source artefacts exist (they are authored in parallel; if any
+    # is missing, warn and skip — the agent is optional polish on top of MCP).
+    missing = [
+        str(p) for p in (REPO_AGENT_SRC, REPO_SKILL_SRC, REPO_JTM_AGENT_MD) if not p.exists()
+    ]
+    if missing:
+        _warn("Copilot Chat agent source files are missing — skipping agent installation.")
+        for m in missing:
+            _muted(f"    • {m}")
+        _muted("The MCP server is still installed; the agent is optional.")
+        return True
+
+    _info("Install Copilot Chat agent + skill into ~/.copilot/.")
+
+    # --- agent file ---
+    agent_target = COPILOT_AGENTS_DIR / AGENT_FILE_NAME
+    COPILOT_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+    if agent_target.exists():
+        backup = _backup_file(agent_target)
+        _ok(f"Backed up existing agent file → {backup}")
+    shutil.copy2(REPO_AGENT_SRC, agent_target)
+    _ok(f"Agent installed: {agent_target}")
+
+    # --- skill + knowledge doc (skill dir, not agents dir) ---
+    # JTM_AGENT.md lives in the skills dir, NOT the agents dir. VS Code
+    # Copilot Chat scans ~/.copilot/agents/ for *.md and would surface
+    # JTM_AGENT.md as a second fake agent in the picker. The skills dir
+    # is not scanned for agents, so the knowledge doc stays invisible to
+    # the agent picker.
+    skill_dir_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME
+    skill_file_target = skill_dir_target / INSTALLED_SKILL_FILE_NAME
+    jtm_target = skill_dir_target / JTM_AGENT_MD_NAME
+    skill_dir_target.mkdir(parents=True, exist_ok=True)
+    if skill_file_target.exists():
+        backup = _backup_file(skill_file_target)
+        _ok(f"Backed up existing skill file → {backup}")
+    shutil.copy2(REPO_SKILL_SRC, skill_file_target)
+    _ok(f"Skill installed: {skill_file_target}")
+    if jtm_target.exists():
+        backup = _backup_file(jtm_target)
+        _ok(f"Backed up existing knowledge doc → {backup}")
+    shutil.copy2(REPO_JTM_AGENT_MD, jtm_target)
+    _ok(f"Knowledge doc installed: {jtm_target}")
+
+    return True
+
+
+def uninstall_copilot_agent() -> bool:
+    """Remove the Copilot Chat agent + skill + knowledge doc.
+
+    Removes only our own files — never touches other agents in
+    ``~/.copilot/agents/`` or other skills in ``~/.copilot/skills/``.
+    Idempotent: missing files are reported as info, not errors.
+    """
+    _info("Remove Copilot Chat agent + skill + knowledge doc.")
+
+    agent_target = COPILOT_AGENTS_DIR / AGENT_FILE_NAME
+    skill_dir_target = COPILOT_SKILLS_DIR / SKILL_DIR_NAME
+    # JTM_AGENT.md now lives inside the skill dir, so rmtree below covers it.
+
+    removed = 0
+    if agent_target.exists():
+        with contextlib.suppress(OSError):
+            agent_target.unlink()
+            _ok(f"Removed agent: {agent_target}")
+            removed += 1
+    else:
+        _info(f"No agent file at {agent_target} — already clean.")
+
+    if skill_dir_target.exists():
+        with contextlib.suppress(OSError):
+            shutil.rmtree(skill_dir_target, ignore_errors=False)
+            _ok(f"Removed skill directory: {skill_dir_target}")
+            removed += 1
+    else:
+        _info(f"No skill directory at {skill_dir_target} — already clean.")
+
+    if removed == 0:
+        _muted("Nothing to remove — agent was not installed (or already uninstalled).")
+    return True
+
 
 # ---------- main ----------
 
@@ -1096,6 +1301,13 @@ def main(argv: list[str] | None = None) -> int:
     global _OPTIONS
     _OPTIONS = _parse_args(argv)
 
+    # --uninstall-agent: remove ONLY the Copilot Chat agent + skill + JTM_AGENT.md,
+    # do not touch the MCP server registration. Clean escape hatch.
+    if _OPTIONS.uninstall_agent:
+        _title("jira-tempo-mcp — agent uninstaller")
+        uninstall_copilot_agent()
+        return 0
+
     _title("jira-tempo-mcp installer")
     if not check_python() or not check_files():
         return 1
@@ -1109,9 +1321,13 @@ def main(argv: list[str] | None = None) -> int:
         _step(2, 2, "Register MCP server in VS Code")
         if not register_mcp_step():
             return 1
+
+        _step(3, 3, "Install Copilot Chat agent (optional)")
+        if not install_copilot_agent():
+            _warn("Copilot Chat agent install failed — continuing (agent is optional).")
         return 0
 
-    total = 5
+    total = 6
 
     _step(1, total, "Create venv and install package")
     if not create_venv_and_install():
@@ -1128,7 +1344,11 @@ def main(argv: list[str] | None = None) -> int:
     _step(4, total, "Verify Jira connectivity (optional)")
     verify_jira()
 
-    _step(5, total, "Summary")
+    _step(5, total, "Install Copilot Chat agent (optional)")
+    if not install_copilot_agent():
+        _warn("Copilot Chat agent install failed — continuing (agent is optional).")
+
+    _step(6, total, "Summary")
     print_next_steps()
     return 0
 
@@ -1259,10 +1479,12 @@ def _uninstall_pip_package() -> bool:
 
 
 def uninstall() -> int:
-    """Reverse the installation: remove VS Code entry, optionally delete .env and pip package."""
+    """Reverse the installation: remove VS Code entry, Copilot Chat agent,
+    optionally delete .env and pip package.
+    """
     _title("jira-tempo-mcp uninstaller")
 
-    total = 4
+    total = 5
 
     _step(1, total, "Remove 'jira-tempo' from VS Code mcp.json (user + workspace)")
     if not _remove_vscode_entry():
@@ -1270,10 +1492,14 @@ def uninstall() -> int:
     if not _remove_workspace_vscode_entry():
         _warn("Workspace mcp.json entry removal failed — continuing with remaining steps.")
 
-    _step(2, total, "Delete .env (optional, destructive)")
+    _step(2, total, "Remove Copilot Chat agent + skill + knowledge doc")
+    if not uninstall_copilot_agent():
+        _warn("Copilot Chat agent removal failed — continuing with remaining steps.")
+
+    _step(3, total, "Delete .env (optional, destructive)")
     _delete_env()
 
-    _step(3, total, "Uninstall pip package from venv (optional)")
+    _step(4, total, "Uninstall pip package from venv (optional)")
     _info("This removes the editable install from the project venv.")
     _info("The .venv directory itself is kept — remove it manually if desired.")
     if _confirm("Uninstall pip package", default=False):
@@ -1281,7 +1507,7 @@ def uninstall() -> int:
     else:
         _info("Keeping pip package — no changes made.")
 
-    _step(4, total, "Summary")
+    _step(5, total, "Summary")
     print()
     print(f"  {_color(C_OK, '✓', bold=True)} {_color('1', 'Uninstall complete.', bold=True)}")
     print()
