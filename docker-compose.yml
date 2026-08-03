@@ -1,0 +1,21 @@
+# docker-compose.yml — run jira-tempo-mcp MCP server in a container.
+#
+# The MCP server speaks stdio (stdin/stdout). To use it from an MCP client
+# (VS Code, Cursor, etc.), point the client at this container's stdio, OR
+# run `docker compose run --rm -T jira-tempo-mcp` to drive it interactively.
+#
+# Secrets: provide JIRA_BASE_URL, JIRA_USER, JIRA_PAT (and optionally
+# JIRA_TIMEZONE, LOG_LEVEL) via the .env file (chmod 600, gitignored).
+# Copy .env.example to .env and fill in your Jira credentials.
+#
+# Image: pinned to release 0.3.2. Update the tag when upgrading.
+
+services:
+  jira-tempo-mcp:
+    image: ghcr.io/korrnals/jira-tempo-mcp:0.3.2
+    container_name: jira-tempo-mcp
+    env_file:
+      - .env
+    stdin: true
+    tty: true
+    restart: unless-stopped
