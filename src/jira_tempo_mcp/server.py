@@ -150,7 +150,7 @@ TOOLS: list[Tool] = [
         description=(
             "Generate a weekly work report from Tempo worklogs and save it as a file. "
             "Groups worklogs by issue, maps known issues to stable sections, and writes "
-            "<prefix>_<DDMMYY>-<DDMMYY>.<ext> to the configured output directory. "
+            "<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.<fmt> to the configured output directory. "
             "Returns the path to the generated file. "
             "Since v0.2.0 a custom template can be selected via the 'template' parameter (txt only). "
             "Since v0.3.0 the 'format' parameter selects output: txt (default), md (Markdown), json."
@@ -201,7 +201,7 @@ TOOLS: list[Tool] = [
             "Generate a team work report from Tempo worklogs for multiple Jira users. "
             "Fetches worklogs per user with bounded concurrency (rate-limit safe), "
             "renders per-user sections plus an aggregate summary, and writes "
-            "team_<DDMMYY>-<DDMMYY>.<ext> to the configured output directory. "
+            "team_<YYYY-MM-DD>_<YYYY-MM-DD>_<users_hash>.<fmt> to the configured output directory. "
             "Returns the file path and a short summary (per-user totals, top issues). "
             "Since v0.3.0 the 'format' parameter selects output: txt (default), md (Markdown), json."
         ),
