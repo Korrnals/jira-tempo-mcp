@@ -73,6 +73,7 @@ This downloads and runs the interactive installer, which:
 - ✅ Installs the package
 - ✅ Guides you through Jira credentials setup
 - ✅ Registers the MCP server in VS Code (user + workspace)
+- ✅ Installs the standalone **JTM: Jira Tempo Reports** Copilot Chat agent by default (skip with `--no-agent`) — see [§JTM Agent](#-jtm-agent-standalone-copilot-chat-agent) for details
 
 > 💡 **Tip:** The installer never requires `sudo` — everything lives in user space.
 > It's idempotent: re-running updates without clobbering existing config.
@@ -80,8 +81,16 @@ This downloads and runs the interactive installer, which:
 **Uninstall:**
 
 ```bash
+# Remove everything (MCP server + Copilot Chat agent + skill):
 curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash -- --uninstall
+# …or from a local clone:
+python install.py uninstall
+
+# Remove ONLY the Copilot Chat agent (keep the MCP server):
+python install.py --uninstall-agent
 ```
+
+The full uninstall removes the VS Code `mcp.json` entry, the Copilot Chat agent + skill + knowledge doc, and optionally the `.env.local` Jira credentials and the pip package (it asks before removing those). The agent-only removal leaves the MCP server fully functional — use it if you installed the agent but decided you do not want it.
 
 **Docker:**
 
@@ -94,7 +103,8 @@ docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:lates
 
 ---
 
-### 🔧 From source (development)
+<details>
+<summary><b>🔧 From source (development)</b></summary>
 
 The interactive installer creates a venv, writes `.env`, registers the MCP
 server in VS Code, and optionally verifies Jira connectivity:
@@ -124,6 +134,8 @@ docker run -i --rm \
 ```
 
 Full installation paths: [docs/installation.md](docs/installation.md).
+
+</details>
 
 ---
 
@@ -172,7 +184,8 @@ Full guide: [docs/mcp-integration.md](docs/mcp-integration.md).
 
 ---
 
-## 🖥️ CLI
+<details>
+<summary><b>🖥️ CLI</b></summary>
 
 ```text
 jira-tempo-mcp                  # start the MCP server (default)
@@ -184,9 +197,12 @@ jira-tempo-mcp --version        # show version
 
 Full reference: [docs/cli.md](docs/cli.md).
 
+</details>
+
 ---
 
-## 🔒 Security
+<details>
+<summary><b>🔒 Security</b></summary>
 
 - **🔑 Tokens never leave the local process** — `JIRA_PAT` is sent only to your
   Jira instance over HTTPS.
@@ -199,7 +215,12 @@ Full reference: [docs/cli.md](docs/cli.md).
 
 Full model: [docs/architecture.md#security](docs/architecture.md#security).
 
-## 🛠️ Development
+</details>
+
+---
+
+<details>
+<summary><b>🛠️ Development</b></summary>
 
 The canonical quality gate for this repo is the local `make` suite — GitHub
 Actions are intentionally disabled here, so `make ci` is what every change
@@ -213,6 +234,62 @@ make typecheck  # mypy
 make test       # pytest
 make build      # python -m build (sdist + wheel)
 ```
+
+</details>
+
+---
+
+## 🤖 JTM Agent (standalone Copilot Chat agent)
+
+This repo ships a standalone AI agent that produces Jira/Tempo worklog reports predictably by calling the `jira-tempo` MCP generators. It is IDE-agnostic in its knowledge, with a thin VS Code Copilot Chat wrapper for one-click report generation.
+
+### What installs where
+
+`python install.py` installs the agent by default:
+- `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` — the VS Code Copilot Chat agent.
+- `~/.copilot/agents/JTM_AGENT.md` — the universal knowledge doc (7-type report matrix, scenarios, rules), copied next to the agent.
+- `~/.copilot/skills/jira-tempo-reports/SKILL.md` — the VS Code-specific skill (interactive picker flow).
+
+A loud announcement block at the end of `install.py` confirms the install. To skip the agent: `python install.py --no-agent`. To remove only the agent: `python install.py --uninstall-agent`.
+
+### VS Code Copilot Chat (one-click)
+
+After install, open Copilot Chat, pick the agent **JTM: Jira Tempo Reports**, and click **📊 Недельный отчёт (по умолчанию)** for the one-click weekly report (basic + txt + current week + current user). The agent uses a graphical picker (`vscode_askQuestions`) for ambiguity resolution.
+
+<details>
+<summary><b>Other harnesses (Cursor, Claude Code, Continue, Aider) — click to expand</b></summary>
+
+The universal knowledge doc `JTM_AGENT.md` (repo root) is IDE-agnostic. Any MCP-capable agent reads it as context. Typical setup:
+
+| Harness | MCP tools | Knowledge doc | Picker UI |
+|---|---|---|---|
+| VS Code Copilot Chat | auto-registered via `install.py` | auto-installed into `~/.copilot/agents/` | `vscode_askQuestions` (graphical) |
+| Cursor | add `jira-tempo` to `.cursor/mcp.json` (same server entry as VS Code mcp.json) | point Cursor rules at `JTM_AGENT.md` | prose questions (no GUI picker) |
+| Claude Code | add `jira-tempo` to `~/.claude/mcp.json` | reference `JTM_AGENT.md` in `CLAUDE.md` | prose questions |
+| Continue | add `jira-tempo` to `~/.continue/config.json` MCP section | reference `JTM_AGENT.md` in config | prose questions |
+| Aider / other MCP clients | per-client MCP config | pass `JTM_AGENT.md` as a context file (`--read JTM_AGENT.md` for Aider) | prose questions |
+
+The MCP server entry for non-VS Code harnesses (copy from the VS Code mcp.json the installer writes):
+```json
+{
+  "jira-tempo": {
+    "command": "/path/to/your/venv/bin/python",
+    "args": ["-m", "jira_tempo_mcp.server"],
+    "env": { "PYTHONPATH": "/path/to/this/repo/src" }
+  }
+}
+```
+Point `PYTHONPATH` at this repo's `src/` so the package is importable. Provide `JIRA_BASE_URL`, `JIRA_USER`, `JIRA_PAT` via env vars or an env file per your harness.
+
+</details>
+
+### What the agent does NOT do
+
+- Jira write operations (create/update issues or worklogs) — read-only.
+- Analytics beyond raw worklog aggregation (trends, forecasting) — out of scope.
+- Custom template authoring (writing `.py`/`.j2` template files) — out of scope.
+
+See `JTM_AGENT.md` for the full 7-type report matrix, parameter semantics, and work scenarios.
 
 ---
 
