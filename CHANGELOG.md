@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
-## [0.3.1] — 2026-07-17
+## [0.3.1] — 2026-08-03
 
 ### Added
 
@@ -47,6 +47,16 @@ _No unreleased changes._
     round-trips the raw multi-line comment faithfully.
   - Grouping and time summation are unchanged.
   - 26 new regression tests (219 → 245).
+
+- **Pagination in `client.py`** for `search_worklogs` / `list_user_tasks` / `search_issues` / `list_users` via a new `_paginated_get` helper. Jira REST responses with >100 items were silently truncated (single-page `maxResults`); now pages through `startAt` / `total`. Covered by new `tests/test_client_pagination.py`.
+- **`JiraTempoError` attributes** `status_code` / `response_body` declared on the class — removed 3 unjustified `# type: ignore[attr-defined]`; mypy tracks them natively.
+- **Bare `except` narrowed to `except ValueError`** in `_request` JSON-parse fallback (catches `json.JSONDecodeError`; no longer swallows `KeyboardInterrupt` / `SystemExit`).
+- **Stale tool descriptions corrected** — `generate_weekly_report` / `generate_team_report` referenced a `<DDMMYY>` filename format, but the actual output uses ISO `<YYYY-MM-DD>`.
+- **Version sync** — `__init__.py` `__version__` was `0.3.0` while pyproject was `0.3.1`; `cli --version` printed the wrong number.
+- **`test_all_tools.py` internal refs removed** (internal hostname, real username) — parameterized, safe for public visibility.
+- **LICENSE file added (MIT)** + MIT classifier in pyproject.
+- **Local CI scaffold** — `Makefile` + `scripts/local-ci.sh` provide `make ci` / `test` / `lint` / `typecheck` / `build` (GitHub Actions intentionally disabled; local CI is the canonical gate).
+- **README badges + Development section** — removed GitHub Actions status badges (Actions disabled); added a Development section documenting `make` targets.
 
 ## [0.3.0] — 2026-06-23
 
