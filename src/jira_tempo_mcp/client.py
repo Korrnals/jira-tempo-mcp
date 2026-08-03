@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 class JiraTempoError(Exception):
     """Raised on API errors. Message never contains tokens or full URLs with auth."""
 
+    # HTTP status + body of the failing response, populated by _request().
+    status_code: int | None = None
+    response_body: Any = None
+
 
 class WorkerKeyResolutionError(JiraTempoError):
     """Raised when the Tempo worker key cannot be resolved for the configured user."""
@@ -128,16 +132,77 @@ class JiraTempoClient:
             body = resp.text[:200] if resp.text else ""
             logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
             err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
-            err.status_code = resp.status_code  # type: ignore[attr-defined]
+            err.status_code = resp.status_code
             try:
-                err.response_body = resp.json()  # type: ignore[attr-defined]
-            except Exception:
-                err.response_body = resp.text  # type: ignore[attr-defined]
+                err.response_body = resp.json()
+            except ValueError:
+                # Malformed JSON body (json.JSONDecodeError is a subclass
+                # of ValueError) — fall back to raw response text.
+                err.response_body = resp.text
             raise err
 
         if resp.status_code == 204 or not resp.text:
             return None
         return resp.json()
+
+    # --- paginated GET (Jira REST startAt/total) ---
+
+    async def _paginated_get(
+        self,
+        url: str,
+        params: dict[str, Any],
+        *,
+        results_key: str = "issues",
+        page_size: int = 100,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all rows from a Jira REST endpoint that uses startAt/total paging.
+
+        Jira /search returns ``{issues: [...], startAt, maxResults, total}``.
+        Some endpoints (e.g. /user/search) return a bare list with no
+        envelope; for those we page while the page is full and trust the
+        server to return an empty/short final page.
+
+        ``max_results`` caps the TOTAL number of rows returned across all
+        pages (caller-requested cap), distinct from ``page_size`` (rows per
+        HTTP request). Stops early once the cap is reached.
+        """
+        page_size = max(1, page_size)
+        out: list[dict[str, Any]] = []
+        start_at = 0
+        while True:
+            page_params = dict(params)
+            page_params["startAt"] = start_at
+            page_params["maxResults"] = page_size
+            data = await self._request("GET", url, self._jira_headers(), params=page_params)
+            page: list[Any] = []
+            total: int | None = None
+            if isinstance(data, list):
+                # Bare-list response (no pagination envelope): each item is a row.
+                page = [item for item in data if isinstance(item, dict)]
+            elif isinstance(data, dict):
+                chunk = data.get(results_key)
+                if isinstance(chunk, list):
+                    page = [item for item in chunk if isinstance(item, dict)]
+                raw_total = data.get("total")
+                if isinstance(raw_total, int):
+                    total = raw_total
+            out.extend(page)
+            if max_results is not None and len(out) >= max_results:
+                return out[:max_results]
+            if not page:
+                # Empty page -> done (also covers the empty-result case).
+                break
+            # Envelope shape: stop once we have reached `total`.
+            if total is not None:
+                if start_at + len(page) >= total:
+                    break
+            else:
+                # Bare-list shape: stop when a page is short (underfull).
+                if len(page) < page_size:
+                    break
+            start_at += len(page)
+        return out
 
     # --- Jira issue ---
 
@@ -458,14 +523,16 @@ class JiraTempoClient:
         Returns list of dicts with: name, key, displayName, emailAddress, active.
         """
         url = f"{self._config.jira_api_base}/user/search"
-        data = await self._request(
-            "GET",
+        # /user/search returns a bare list (no pagination envelope); page
+        # until a short/empty page is returned so large user sets are not
+        # silently truncated.
+        users = await self._paginated_get(
             url,
-            self._jira_headers(),
-            params={"username": query, "maxResults": max_results},
+            {"username": query},
+            results_key="values",
+            page_size=max(1, max_results),
+            max_results=max_results,
         )
-        if not isinstance(data, list):
-            return []
         return [
             {
                 "name": u.get("name", ""),
@@ -474,8 +541,7 @@ class JiraTempoClient:
                 "emailAddress": u.get("emailAddress", ""),
                 "active": u.get("active", True),
             }
-            for u in data
-            if isinstance(u, dict)
+            for u in users
         ]
 
     async def list_user_tasks(
@@ -528,21 +594,22 @@ class JiraTempoClient:
         jql += " ORDER BY updated DESC"
 
         url = f"{self._config.jira_api_base}/search"
-        data = await self._request(
-            "GET",
+        # Paginate via startAt/total so users with >100 assigned issues
+        # are not silently truncated (BUG: single-page maxResults). Here
+        # ``max_results`` is the per-request page size, not a total cap —
+        # all assigned tasks are returned.
+        issues = await self._paginated_get(
             url,
-            self._jira_headers(),
-            params={
+            {
                 "jql": jql,
                 "fields": "summary,status,duedate,comment,priority,issuetype,project,created,updated",
-                "maxResults": max_results,
             },
+            results_key="issues",
+            page_size=max_results,
         )
-        if not isinstance(data, dict) or "issues" not in data:
-            return []
 
         tasks: list[dict[str, Any]] = []
-        for issue in data["issues"]:
+        for issue in issues:
             if not isinstance(issue, dict):
                 continue
             fields = issue.get("fields", {})
@@ -619,18 +686,19 @@ class JiraTempoClient:
         """Search Jira issues via JQL (read-only GET /rest/api/2/search)."""
         if not isinstance(jql, str) or not jql.strip():
             raise JiraTempoError("jql must be a non-empty string.")
+        # Cap the TOTAL result size at 100, but page through startAt/total
+        # so the cap is honoured without early truncation on large result sets.
         capped_max = min(max_results, 100)
         url = f"{self._config.jira_api_base}/search"
-        data = await self._request(
-            "GET",
+        raw_issues = await self._paginated_get(
             url,
-            self._jira_headers(),
-            params={"jql": jql, "fields": fields, "maxResults": capped_max},
+            {"jql": jql, "fields": fields},
+            results_key="issues",
+            page_size=capped_max,
+            max_results=capped_max,
         )
-        if not isinstance(data, dict) or "issues" not in data:
-            return []
         issues: list[dict[str, Any]] = []
-        for issue in data["issues"]:
+        for issue in raw_issues:
             if not isinstance(issue, dict):
                 continue
             fields_obj = issue.get("fields", {})

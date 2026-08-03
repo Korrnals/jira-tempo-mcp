@@ -44,7 +44,7 @@ from .templates._shared import (
     format_date_short as _format_date_short,  # noqa: F401
 )
 from .templates._shared import (
-    group_worklogs_by_comment,
+    group_worklogs_by_comment_raw,
     parse_tempo_date,
     week_range,
 )
@@ -53,6 +53,9 @@ from .templates._shared import (
 )
 from .templates._shared import (
     month_ru as _month_ru,  # noqa: F401
+)
+from .templates._shared import (
+    render_comment_cell as _render_comment_cell,
 )
 from .templates._shared import (
     truncate_text as _truncate_text,
@@ -137,7 +140,7 @@ def _render_weekly_md(
         lines.append(
             f"| {key} | {_md_escape_cell(_truncate_text(title, 50))} | "
             f"{format_seconds_to_human(secs)} | "
-            f"{_md_escape_cell(_truncate_text(comment, 80))} |"
+            f"{_render_comment_cell(comment)} |"
         )
     lines.append(f"| | | **{format_seconds_to_human(total_seconds)}** | |")
     lines.append("")
@@ -176,7 +179,7 @@ def _render_weekly_json(
         title = issue_titles.get(key, config.section_map.get(key, key))
         task_total = sum(_extract_seconds(w) for w in grouped[key])
         worklog_entries = []
-        for comment, secs in group_worklogs_by_comment(grouped[key]):
+        for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
             worklog_entries.append(
                 {
                     "comment": comment,
@@ -202,7 +205,7 @@ def _render_weekly_json(
         title = issue_titles.get(key, key)
         task_total = sum(_extract_seconds(w) for w in grouped[key])
         worklog_entries = []
-        for comment, secs in group_worklogs_by_comment(grouped[key]):
+        for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
             worklog_entries.append(
                 {
                     "comment": comment,

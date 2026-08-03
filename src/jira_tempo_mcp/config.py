@@ -2,6 +2,12 @@
 
 Uses pydantic for validation. Secrets are masked in repr so accidental
 print(config) does not leak credentials.
+
+Diagnostics: if a required variable (JIRA_BASE_URL, JIRA_USER, JIRA_PAT) is
+missing after all sources are loaded, ``load_config`` raises
+:class:`ConfigError` with backend-specific remediation instructions. The
+exception message never contains the secret value itself — only the variable
+name.
 """
 
 from __future__ import annotations
@@ -17,6 +23,45 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 _ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 if _ENV_PATH.exists():
     load_dotenv(_ENV_PATH)
+
+
+class ConfigError(ValueError):
+    """Raised when a required configuration value is missing.
+
+    Inherits from ``ValueError`` so existing ``except ValueError`` handlers
+    and pydantic-aware test suites (``pytest.raises((RuntimeError, ValueError))``)
+    keep working. The message lists backend-specific remediation steps and
+    never includes secret values.
+    """
+
+
+# Required env vars validated explicitly before pydantic — gives the user a
+# backend-specific remediation message instead of pydantic's generic
+# "field required".
+_REQUIRED_ENV_VARS: tuple[tuple[str, str], ...] = (
+    ("JIRA_BASE_URL", "Base URL of your Jira instance"),
+    ("JIRA_USER", "Jira username (login)"),
+    ("JIRA_PAT", "Jira Personal Access Token (PAT)"),
+)
+
+
+def _missing_var_message(var_name: str, description: str) -> str:
+    """Build a backend-specific remediation message for a missing env var.
+
+    The message intentionally never echoes the secret value (which is empty
+    anyway at this point) — only the variable name and description.
+    """
+    return (
+        f"{var_name} ({description}) не найден в окружении. "
+        "Проверьте источник (в порядке приоритета):\n"
+        "  • VS Code MCP: укажите envFile в mcp.json → "
+        "~/.config/Code/User/.env.local (см. docs/mcp-integration.ru.md)\n"
+        "  • CLI: создайте .env в корне репо (cp .env.example .env)\n"
+        "  • Docker: передайте --env-file при запуске\n"
+        "Запустите `python install.py --non-interactive --register-only` "
+        "для автоматической настройки."
+    )
+
 
 # --- Default section mapping for weekly reports ---
 # Maps issue keys to report section titles. Can be overridden via
@@ -256,10 +301,26 @@ def _load_bool(env_var: str, default: bool) -> bool:
 
 
 def load_config() -> Config:
-    """Load configuration from environment. Raises if required vars are missing."""
+    """Load configuration from environment. Raises if required vars are missing.
+
+    Raises :class:`ConfigError` (subclass of :class:`ValueError`) with a
+    backend-specific remediation message if any required env var
+    (JIRA_BASE_URL, JIRA_USER, JIRA_PAT) is missing or empty after
+    ``load_dotenv`` has run. The message never contains secret values.
+    """
     base_url = os.getenv("JIRA_BASE_URL", "").strip()
     user = os.getenv("JIRA_USER", "").strip()
     pat = os.getenv("JIRA_PAT", "").strip()
+
+    # Explicit diagnostics BEFORE pydantic — gives the user a precise,
+    # backend-specific remediation message instead of pydantic's generic
+    # "field required". Iterate in declared order so the first missing
+    # required var is reported (pydantic would also report the first one).
+    for var_name, description in _REQUIRED_ENV_VARS:
+        value = os.getenv(var_name, "").strip()
+        if not value:
+            raise ConfigError(_missing_var_message(var_name, description))
+
     tz = os.getenv("JIRA_TIMEZONE", "Europe/Moscow").strip()
     tempo_token = os.getenv("TEMPO_API_TOKEN", "").strip() or None
     log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper()

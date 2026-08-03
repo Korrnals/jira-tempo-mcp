@@ -5,7 +5,61 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_No unreleased changes._
+
+## [0.3.1] — 2026-08-03
+
+### Added
+
+- **Non-interactive installer mode** (`install.py --non-interactive`).
+  Enables setup from CI, scripts, and agents without a TTY. CLI flags
+  (`--jira-base-url`, `--jira-user`, `--jira-pat`, `--jira-timezone`,
+  `--log-level`) and env-var fallbacks replace interactive prompts.
+  `--register-only` skips venv/pip and only writes `~/.config/Code/User/.env.local`
+  + registers the MCP server in VS Code `mcp.json`. `--skip-vscode` skips
+  VS Code registration. Missing required values exit 1 with a clear stderr
+  message instead of raising `KeyError`.
+- **`ConfigError` diagnostics for missing required env vars** (`config.py`).
+  When `JIRA_BASE_URL`, `JIRA_USER`, or `JIRA_PAT` is empty after
+  `load_dotenv()`, `load_config()` raises `ConfigError(ValueError)` with
+  backend-specific remediation instructions (VS Code `envFile`, CLI `.env`,
+  Docker `--env-file`). The message never contains the secret value —
+  only the variable name. Replaces pydantic's generic "field required".
+- **26 new tests** (19 for `install.py` non-interactive mode, 7 for
+  `ConfigError` diagnostics). 245 → 271 total.
+
+### Fixed
+
+- **Broken bullet rendering in worklog reports (all types, all formats).**
+  Multi-line worklog comments were collapsed into a single line and templates
+  prepended their own marker, producing duplicated markers (`+ + …`) and merged
+  actions. Fixed across TXT, Markdown, and JSON for weekly, team, weekly-summary
+  and tasks reports:
+  - New pure helpers in `templates/_shared.py`: `strip_bullet_marker`,
+    `split_comment_lines`, `render_comment_lines` (TXT), `render_comment_cell`
+    (MD `<br>`-joined cells), and `group_worklogs_by_comment_raw` (separates the
+    normalized grouping key from the raw render payload so newlines survive).
+  - Each action now renders as its own bullet with a single unified marker; the
+    human-readable time suffix is attached to the last sub-item only.
+  - Markdown cells stay table-safe (escaped pipes, `<br>` line breaks); JSON now
+    round-trips the raw multi-line comment faithfully.
+  - Grouping and time summation are unchanged.
+  - 26 new regression tests (219 → 245).
+
+- **Pagination in `client.py`** for `search_worklogs` / `list_user_tasks` / `search_issues` / `list_users` via a new `_paginated_get` helper. Jira REST responses with >100 items were silently truncated (single-page `maxResults`); now pages through `startAt` / `total`. Covered by new `tests/test_client_pagination.py`.
+- **`JiraTempoError` attributes** `status_code` / `response_body` declared on the class — removed 3 unjustified `# type: ignore[attr-defined]`; mypy tracks them natively.
+- **Bare `except` narrowed to `except ValueError`** in `_request` JSON-parse fallback (catches `json.JSONDecodeError`; no longer swallows `KeyboardInterrupt` / `SystemExit`).
+- **Stale tool descriptions corrected** — `generate_weekly_report` / `generate_team_report` referenced a `<DDMMYY>` filename format, but the actual output uses ISO `<YYYY-MM-DD>`.
+- **Version sync** — `__init__.py` `__version__` was `0.3.0` while pyproject was `0.3.1`; `cli --version` printed the wrong number.
+- **`test_all_tools.py` internal refs removed** (internal hostname, real username) — parameterized, safe for public visibility.
+- **LICENSE file added (MIT)** + MIT classifier in pyproject.
+- **Local CI scaffold** — `Makefile` + `scripts/local-ci.sh` provide `make ci` / `test` / `lint` / `typecheck` / `build` (GitHub Actions intentionally disabled; local CI is the canonical gate).
+- **README badges + Development section** — removed GitHub Actions status badges (Actions disabled); added a Development section documenting `make` targets.
+
 ## [0.3.0] — 2026-06-23
+
 
 ### Added
 

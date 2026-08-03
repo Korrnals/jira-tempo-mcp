@@ -389,3 +389,83 @@ class TestTeamReportJSON:
         assert data["date_to"] == "2026-06-19"
         assert data["grand_total_seconds"] == 10800
         assert len(data["per_user"]) == 2
+
+
+# --- Multi-line comment regression (hotfix) ---
+
+
+class TestTeamReportMultilineComments:
+    """Team TXT splits multi-line comments; JSON preserves them; grouping intact."""
+
+    def test_team_txt_template_splits_and_no_double_marker(self) -> None:
+        from jira_tempo_mcp.templates.builtin.team_report import TeamReportTemplate
+
+        config = _make_config()
+        multiline = "+ разработка\n+ корректировка\n+ деплой"
+        tpl = TeamReportTemplate()
+        text = tpl.render(
+            [],
+            config,
+            monday=date(2026, 6, 15),
+            friday=date(2026, 6, 19),
+            issue_titles={"PROJECT-100": "Section A"},
+            users=[("alice", "Alice")],
+            per_user_worklogs={"alice": [_make_worklog("PROJECT-100", 14400, 15, multiline)]},
+        )
+        assert "+ +" not in text
+        assert "      + разработка" in text
+        assert "      + корректировка" in text
+        assert "      + деплой" in text
+        # Time on the last sub-item only.
+        assert text.count("\u2014 4h") == 1
+        assert "      + деплой \u2014 4h" in text
+
+    def test_team_json_preserves_raw_and_sums(self) -> None:
+        import json as _json
+
+        from jira_tempo_mcp.team_report import _render_team_json
+
+        config = _make_config()
+        multiline = "+ a\n+ b"
+        worklogs_by_user = {
+            "alice": [
+                _make_worklog("PROJECT-100", 3600, 15, multiline),
+                _make_worklog("PROJECT-100", 1800, 16, multiline),
+            ]
+        }
+        out = _render_team_json(
+            worklogs_by_user,
+            config,
+            date(2026, 6, 15),
+            date(2026, 6, 19),
+            {"PROJECT-100": "Section A"},
+            [("alice", "Alice")],
+        )
+        data = _json.loads(out)
+        issue = data["per_user"][0]["issues"][0]
+        assert len(issue["worklogs"]) == 1
+        entry = issue["worklogs"][0]
+        assert entry["seconds"] == 5400
+        assert entry["comment"] == multiline
+        assert "\n" in entry["comment"]
+
+    async def test_team_md_multiline_cell_table_safe(self, tmp_path: Path) -> None:
+        multiline = "+ разработка\n+ корректировка"
+        user_worklogs = {"alice": [_make_worklog("PROJECT-100", 7200, 15, multiline)]}
+        config = _make_config()
+        mock_client = _make_mock_client(user_worklogs)
+        result = await generate_team_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            users=["alice"],
+            date_from="2026-06-15",
+            date_to="2026-06-19",
+            output_dir=tmp_path,
+            fmt="md",
+        )
+        content = result.file_path.read_text(encoding="utf-8")
+        rows = [ln for ln in content.splitlines() if ln.startswith("| PROJECT-100 |")]
+        assert rows
+        assert "+ +" not in content
+        assert "<br>" in rows[0]
+        assert rows[0].count("|") == 5

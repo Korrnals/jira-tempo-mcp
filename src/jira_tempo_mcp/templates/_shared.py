@@ -151,6 +151,137 @@ def group_worklogs_by_comment(
     return sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
+def group_worklogs_by_comment_raw(
+    worklogs: list[dict[str, Any]],
+) -> list[tuple[str, int]]:
+    """Group worklogs by normalized comment but return the RAW comment.
+
+    Grouping/summation is identical to :func:`group_worklogs_by_comment` —
+    worklogs whose comments are equal after normalization are merged and their
+    ``timeSpentSeconds`` are summed. The difference is the returned comment:
+    this function yields the *first-seen original* comment text (with its
+    newlines and bullet structure preserved) instead of the flattened,
+    whitespace-collapsed grouping key.
+
+    This separates two concerns that used to be conflated:
+    - the *grouping key* (normalized, single-line) drives summation;
+    - the *render/serialization payload* (raw, multi-line) preserves the
+      structure that the TXT/MD/JSON render paths need.
+
+    Returns a list of ``(raw_comment, total_seconds)`` tuples sorted by
+    ``total_seconds`` descending (ties broken alphabetically by the normalized
+    key for deterministic output).
+    """
+    totals: dict[str, int] = {}
+    raw_repr: dict[str, str] = {}
+    for wl in worklogs:
+        raw = extract_comment(wl)
+        key = normalize_comment(raw)
+        totals[key] = totals.get(key, 0) + extract_seconds(wl)
+        if key not in raw_repr:
+            raw_repr[key] = raw
+    ordered = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [(raw_repr[key], secs) for key, secs in ordered]
+
+
+# Leading bullet markers recognised at the start of a comment line. Covers
+# ASCII (+, -, *), the unicode bullet (•), en/em dashes (–, —), and numbered
+# markers (``1.`` / ``1)``). The marker must be followed by whitespace or the
+# end of the line so that hyphenated words ("re-deploy") are never mangled.
+_BULLET_MARKER_RE = re.compile(r"^[\t ]*(?:[-+*\u2022\u2013\u2014]|\d+[.)])(?=[\t ]|$)[\t ]*")
+
+
+def strip_bullet_marker(line: str) -> str:
+    """Strip leading bullet marker(s) from a single line.
+
+    Removes any leading ``+``, ``-``, ``*``, ``•``, ``–``, ``—`` or numbered
+    (``1.`` / ``1)``) marker, together with the surrounding whitespace. Applied
+    repeatedly so a doubly-marked source line (``"+ + text"``) collapses to a
+    single clean ``"text"``. Returns the line unchanged (minus outer
+    whitespace) when no marker is present.
+    """
+    if not line:
+        return ""
+    text = line
+    while True:
+        stripped = _BULLET_MARKER_RE.sub("", text, count=1)
+        if stripped == text:
+            break
+        text = stripped
+    return text.strip()
+
+
+def split_comment_lines(comment: str | None) -> list[str]:
+    """Split a worklog comment into clean, marker-free action items.
+
+    Each physical line of the comment becomes one item, with its leading bullet
+    marker stripped (see :func:`strip_bullet_marker`). Empty lines are dropped.
+    A single-line comment yields a one-element list; an empty/blank comment
+    yields an empty list.
+
+    This is the single source of truth for turning a (possibly multi-line)
+    comment into render-ready sub-items, so no render site re-implements bullet
+    parsing or accidentally re-adds a marker.
+    """
+    if not comment:
+        return []
+    normalized = str(comment).replace("\r\n", "\n").replace("\r", "\n")
+    items: list[str] = []
+    for raw_line in normalized.split("\n"):
+        cleaned = strip_bullet_marker(raw_line)
+        if cleaned:
+            items.append(cleaned)
+    return items
+
+
+def render_comment_lines(
+    comment: str | None,
+    *,
+    indent: str,
+    marker: str,
+    time_human: str | None = None,
+) -> list[str]:
+    """Render a comment as one or more plain-text bullet lines.
+
+    Splits ``comment`` into action items (see :func:`split_comment_lines`),
+    prefixes each with ``indent`` + ``marker`` + space, and attaches the
+    ``time_human`` suffix (``" — {time}"``) to the LAST item only so a grouped
+    multi-line comment reports its summed time exactly once.
+
+    Returns an empty list for empty comments — callers decide how to render the
+    "no comment" case (e.g. ``"{time} отработано"``).
+    """
+    parts = split_comment_lines(comment)
+    if not parts:
+        return []
+    last = len(parts) - 1
+    lines: list[str] = []
+    for i, part in enumerate(parts):
+        if i == last and time_human:
+            lines.append(f"{indent}{marker} {part} \u2014 {time_human}")
+        else:
+            lines.append(f"{indent}{marker} {part}")
+    return lines
+
+
+def render_comment_cell(comment: str | None, *, marker: str = "\u2022", max_len: int = 80) -> str:
+    """Render a comment as a single, table-safe Markdown cell string.
+
+    Single-action comments render as the plain (truncated, pipe-escaped) text.
+    Multi-action comments render each item on its own visual line using ``<br>``
+    (which keeps the surrounding Markdown table parseable — no raw newlines or
+    unescaped pipes leak into the cell) prefixed by a unified ``marker``.
+
+    Empty comments render as an em-dash, matching :func:`md_escape_cell`.
+    """
+    parts = split_comment_lines(comment)
+    if not parts:
+        return "\u2014"
+    if len(parts) == 1:
+        return md_escape_cell(truncate_text(parts[0], max_len))
+    return "<br>".join(f"{marker} {md_escape_cell(truncate_text(p, max_len))}" for p in parts)
+
+
 def truncate_text(text: str, max_len: int) -> str:
     """Truncate text to max_len chars, appending the ellipsis if truncated.
 
@@ -184,10 +315,15 @@ __all__ = [
     "format_date",
     "format_date_short",
     "group_worklogs_by_comment",
+    "group_worklogs_by_comment_raw",
     "md_escape_cell",
     "month_ru",
     "normalize_comment",
     "parse_tempo_date",
+    "render_comment_cell",
+    "render_comment_lines",
+    "split_comment_lines",
+    "strip_bullet_marker",
     "truncate_text",
     "week_range",
 ]

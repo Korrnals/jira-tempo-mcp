@@ -16,8 +16,9 @@ from .._shared import (
     extract_issue_key,
     extract_seconds,
     format_date,
-    group_worklogs_by_comment,
+    group_worklogs_by_comment_raw,
     month_ru,
+    render_comment_lines,
     week_range,
 )
 
@@ -82,11 +83,14 @@ class DefaultTemplate:
                 continue
             title = issue_titles.get(key, config.section_map.get(key, key))
             lines.append(f"{section_num}. {title} [{key}]")
-            for comment, secs in group_worklogs_by_comment(grouped[key]):
+            for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
+                human = format_seconds_to_human(secs)
                 if comment:
-                    lines.append(f"\t+ {comment} — {format_seconds_to_human(secs)}")
+                    lines.extend(
+                        render_comment_lines(comment, indent="\t", marker="+", time_human=human)
+                    )
                 else:
-                    lines.append(f"\t+ {format_seconds_to_human(secs)} отработано")
+                    lines.append(f"\t+ {human} отработано")
             lines.append("")
             used_keys.add(key)
             section_num += 1
@@ -103,11 +107,14 @@ class DefaultTemplate:
         for key in remaining:
             title = issue_titles.get(key, key)
             lines.append(f'{section_num}. [{key}] {key} - "{title}"')
-            for comment, secs in group_worklogs_by_comment(grouped[key]):
+            for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
+                human = format_seconds_to_human(secs)
                 if comment:
-                    lines.append(f"\t+ {comment} — {format_seconds_to_human(secs)}")
+                    lines.extend(
+                        render_comment_lines(comment, indent="\t", marker="+", time_human=human)
+                    )
                 else:
-                    lines.append(f"\t+ {format_seconds_to_human(secs)} отработано")
+                    lines.append(f"\t+ {human} отработано")
             lines.append("")
             section_num += 1
 
