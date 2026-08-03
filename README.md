@@ -2,8 +2,6 @@
 
 ![banner](docs/assets/banner.svg)
 
-[![CI](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/ci.yml)
-[![Release](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/release.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#license)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/Korrnals/jira-tempo-mcp/pkgs/container/jira-tempo-mcp)
@@ -200,6 +198,21 @@ Full reference: [docs/cli.md](docs/cli.md).
 - **🐳 Docker** — multi-stage build, non-root user, secrets never baked in.
 
 Full model: [docs/architecture.md#security](docs/architecture.md#security).
+
+## 🛠️ Development
+
+The canonical quality gate for this repo is the local `make` suite — GitHub
+Actions are intentionally disabled here, so `make ci` is what every change
+must pass before merge. It runs linting, type-checking, tests, and the build in
+one command.
+
+```sh
+make ci         # full quality gate — lint + typecheck + test + build
+make lint       # ruff
+make typecheck  # mypy
+make test       # pytest
+make build      # python -m build (sdist + wheel)
+```
 
 ---
 

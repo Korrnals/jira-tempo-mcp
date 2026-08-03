@@ -2,8 +2,6 @@
 
 ![banner](docs/assets/banner.svg)
 
-[![CI](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/ci.yml)
-[![Release](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/Korrnals/jira-tempo-mcp/actions/workflows/release.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](#лицензия)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/Korrnals/jira-tempo-mcp/pkgs/container/jira-tempo-mcp)
@@ -200,6 +198,21 @@ jira-tempo-mcp --version        # показать версию
   не вшиваются в образ.
 
 Полная модель: [docs/architecture.ru.md#безопасность](docs/architecture.ru.md#безопасность).
+
+## 🛠️ Разработка
+
+Канонический quality gate для этого репозитория — локальный набор `make`.
+GitHub Actions в этом репозитории намеренно отключены, поэтому `make ci` —
+это то, что каждое изменение должно пройти перед мержем: линтер, тайпчекер,
+тесты и сборку одной командой.
+
+```sh
+make ci         # полный quality gate — lint + typecheck + test + build
+make lint       # ruff
+make typecheck  # mypy
+make test       # pytest
+make build      # python -m build (sdist + wheel)
+```
 
 ---
 
