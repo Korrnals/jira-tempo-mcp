@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.3.3] — 2026-08-03
+
+### Added
+
+- **`docker-compose.yml`** — single-service compose for running the MCP server in a container, image pinned to the release tag (e.g. `:0.3.3`), secrets via `.env` file (gitignored). Use `docker compose up -d` to run as a managed service or `docker compose run --rm -T jira-tempo-mcp` to drive the server via stdio.
+- **README Quick start Docker block expanded** — two options: `docker run --env-file .env ghcr.io/korrnals/jira-tempo-mcp:<version>` (one-liner) and `docker compose up -d` (managed). Image is published to ghcr for every release with version-pinned + `:latest` tags.
+- **Tests for installer agent code paths** (`tests/test_install_agent.py`, 6 cases) — cover `install_copilot_agent` / `uninstall_copilot_agent`, `--no-agent` / `--skip-vscode` skip logic, file copy to correct install destinations, missing-source non-blocking skip, uninstall removes only JTM files (foreign agents/skills untouched), idempotent uninstall. Total suite: 280 → 286.
+
+### Changed
+
+- **`JTM_AGENT.md` fallback scenario** — added mention of read-only tools (`get_worklog`, `list_favorite_issues`, `list_user_tasks`, `search_users`) available in manual composition fallback. Write operations (`create_worklog`, `delete_worklog`) explicitly out of scope (agent is read-only on Jira).
+
+### Fixed
+
+- **README Quick start Docker block** previously used `:latest` tag — now pins to the versioned release tag for reproducibility, with `:latest` documented as the tracking option.
+
 ## [0.3.2] — 2026-08-03
 
 ### Added

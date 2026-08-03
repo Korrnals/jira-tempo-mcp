@@ -95,8 +95,18 @@ The full uninstall removes the VS Code `mcp.json` entry, the Copilot Chat agent 
 **Docker:**
 
 ```bash
-docker run -i --rm -e JIRA_PAT="$JIRA_PAT" ghcr.io/korrnals/jira-tempo-mcp:latest
+# Option A — docker run with an .env file (chmod 600, gitignored):
+cp .env.example .env  # fill in JIRA_BASE_URL, JIRA_USER, JIRA_PAT
+docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.3.2
+
+# Option B — docker compose (uses docker-compose.yml at repo root):
+docker compose up -d
+docker compose logs -f jira-tempo-mcp
+# drive the server via stdio:
+docker compose run --rm -T jira-tempo-mcp
 ```
+
+The image is published to ghcr for every release: `ghcr.io/korrnals/jira-tempo-mcp:<version>` and `:latest`. Pin to a version tag (e.g. `:0.3.2`) for reproducibility; use `:latest` to track the newest release.
 
 > ⚠️ **Warning:** The install script URL works once the repository is public.
 > Until then, clone manually and run `python install.py`.
