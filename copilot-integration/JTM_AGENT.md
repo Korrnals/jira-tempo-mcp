@@ -79,9 +79,10 @@ When falling back:
 1. Call `list_worklogs(date_from, date_to)` for raw worklogs.
 2. Call `get_issue(issue_key)` for each unique issue to enrich metadata.
 3. If a JQL filter is needed, call `list_issues_by_jql(jql, max_results)`.
-4. Compose the report manually, preserving the structure of the closest built-in template.
-5. Save the file to the same `REPORT_OUTPUT_DIR` the generators use, or the user-specified path.
-6. **State explicitly in the response** that manual composition was used, and why no generator fit.
+4. The agent MAY also use these read-only tools to enrich the report: `get_worklog` (single worklog detail), `list_favorite_issues` (user's favorite issues), `list_user_tasks` (assigned tasks for a user), `search_users` (find user accounts by query). Write operations (`create_worklog`, `delete_worklog`) are out of scope — this agent is read-only on Jira.
+5. Compose the report manually, preserving the structure of the closest built-in template.
+6. Save the file to the same `REPORT_OUTPUT_DIR` the generators use, or the user-specified path.
+7. **State explicitly in the response** that manual composition was used, and why no generator fit.
 
 ## Clarifying questions
 
