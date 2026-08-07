@@ -19,6 +19,7 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 | 🌐 API (MCP-инструменты) | [api.ru.md](api.ru.md) | `list_worklogs`, `create_worklog`, `generate_weekly_report`, … |
 | 🏗️ Архитектура | [architecture.ru.md](architecture.ru.md) | слои, поток данных, модель безопасности |
 | 📝 Отчёты | [reports.ru.md](reports.ru.md) | еженедельный отчёт, section mapping, стабильный порядок |
+| 🎨 Шаблоны | [templates.ru.md](templates.ru.md) | свои шаблоны отчётов (Jinja2 + Python), справочник по контексту |
 | 🐳 Развёртывание | [deployment.ru.md](deployment.ru.md) | Docker, CI/CD, процесс релиза |
 | 🐛 Решение проблем | [troubleshooting.ru.md](troubleshooting.ru.md) | частые ошибки и их исправление |
 

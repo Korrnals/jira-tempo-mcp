@@ -195,6 +195,9 @@ Pass the `template` parameter to `generate_weekly_report` or
 Place template files in `REPORT_TEMPLATE_DIR` (default:
 `~/.config/jira-tempo-mcp/templates/`). Two formats are supported:
 
+> 📖 For the full author reference (complete context table, worklog fields,
+> Python protocol, security model), see [templates.md](templates.md).
+
 #### 📜 Jinja2 templates (`.j2`) — safe by default
 
 Loaded into a `SandboxedEnvironment`. The template context includes:

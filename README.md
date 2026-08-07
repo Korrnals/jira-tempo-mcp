@@ -20,6 +20,7 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 | [Installation](docs/installation.md) | Setup and installation guide |
 | [Configuration](docs/configuration.md) | Environment variables reference |
 | [Reports](docs/reports.md) | Report formats (txt, md, json) and templates |
+| [Templates](docs/templates.md) | Custom report templates reference (Jinja2 + Python) |
 | [Architecture](docs/architecture.md) | Project architecture and design decisions |
 | [CLI](docs/cli.md) | Command-line interface reference |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |

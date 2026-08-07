@@ -20,6 +20,7 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 | [Установка](docs/installation.ru.md) | Установка и настройка |
 | [Конфигурация](docs/configuration.ru.md) | Переменные окружения |
 | [Отчёты](docs/reports.ru.md) | Форматы отчётов (txt, md, json) и шаблоны |
+| [Шаблоны](docs/templates.ru.md) | Справочник по своим шаблонам отчётов (Jinja2 + Python) |
 | [Архитектура](docs/architecture.ru.md) | Архитектура проекта и проектные решения |
 | [CLI](docs/cli.ru.md) | Командная строка |
 | [Решение проблем](docs/troubleshooting.ru.md) | Частые проблемы и решения |
