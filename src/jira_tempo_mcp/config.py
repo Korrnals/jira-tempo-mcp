@@ -249,7 +249,12 @@ class Config(BaseModel):
         description="Opt-in flag to load .py templates (code execution risk).",
     )
 
-    def __repr__(self) -> str:  # pragma: no cover - safety guard
+    def __repr__(self) -> str:
+        """Masked repr — secrets (jira_pat, tempo_api_token) never appear.
+
+        Covered by tests/test_config.py::TestConfigValidation::test_repr_* to
+        guard against regressions that would leak a secret via repr/logging.
+        """
         return (
             f"Config(jira_base_url={self.jira_base_url!r}, "
             f"jira_user={self.jira_user!r}, "

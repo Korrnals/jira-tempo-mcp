@@ -59,10 +59,12 @@ class TestConfigValidation:
         assert c.tempo_token == "tempo_tok"
 
     def test_repr_masks_pat(self) -> None:
-        c = Config(jira_base_url="https://x", jira_user="u", jira_pat="secret123")
+        c = Config(jira_base_url="https://x", jira_user="u", jira_pat="test-pat-123")
         repr_str = repr(c)
-        assert "secret123" not in repr_str
+        assert "test-pat-123" not in repr_str
         assert "***" in repr_str
+        # The field name must remain visible so logs show which secret was redacted.
+        assert "jira_pat" in repr_str
 
     def test_repr_masks_tempo_token(self) -> None:
         c = Config(
