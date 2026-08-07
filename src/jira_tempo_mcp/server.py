@@ -475,8 +475,14 @@ def _user_friendly_error(exc: Exception) -> str:
         return f"Invalid input: {exc}"
     if isinstance(exc, KeyError):
         return f"Missing required argument: {exc}"
-    # For unexpected errors, show class name only in DEBUG, generic message otherwise.
-    return f"Unexpected error: {exc.__class__.__name__}"
+    # Unexpected errors are NOT input-validation problems — they are likely
+    # bugs in the MCP server. Signal this explicitly so the user does not
+    # mistake an internal failure for bad input and retry the same call.
+    return (
+        f"[unexpected] {exc.__class__.__name__}: this is likely a bug in the "
+        f"MCP server, not invalid input. Enable DEBUG logging (LOG_LEVEL=DEBUG) "
+        f"for the full traceback."
+    )
 
 
 def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) -> Path:
