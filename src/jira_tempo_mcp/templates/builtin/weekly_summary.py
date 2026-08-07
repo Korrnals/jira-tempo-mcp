@@ -21,6 +21,8 @@ class WeeklySummaryTemplate:
     description: str = (
         "Compact weekly summary: total hours, top 5 issues by time, no per-issue detail lines."
     )
+    kind: str = "builtin"
+    engine: str = "Python"
 
     def render(
         self,

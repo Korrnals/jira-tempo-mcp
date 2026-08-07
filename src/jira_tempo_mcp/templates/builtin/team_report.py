@@ -30,6 +30,8 @@ class TeamReportTemplate:
         "Team report: per-user sections with issue breakdown plus an "
         "aggregate summary (per-user totals, grand total, top 5 issues)."
     )
+    kind: str = "builtin"
+    engine: str = "Python"
 
     def render(
         self,

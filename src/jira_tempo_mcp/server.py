@@ -835,7 +835,12 @@ async def _handle_list_report_templates(
         return "No report templates available."
     lines = [f"Report templates ({len(templates)}):"]
     for tpl in templates:
-        lines.append(f"- {tpl.name}: {tpl.description}")
+        # Provenance metadata: builtin vs custom, Jinja2 vs Python.
+        # getattr fallback guards user-supplied TEMPLATE objects that may
+        # not set kind/engine (the loader adapters always do).
+        kind = getattr(tpl, "kind", "custom")
+        engine = getattr(tpl, "engine", "unknown")
+        lines.append(f"- {tpl.name} ({kind}, {engine}): {tpl.description}")
     return "\n".join(lines)
 
 

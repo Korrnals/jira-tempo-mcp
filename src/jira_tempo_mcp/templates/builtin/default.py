@@ -31,6 +31,8 @@ class DefaultTemplate:
         "Weekly report grouped by issue with stable sections, non-issue "
         "sections, and remaining issues sorted by total time."
     )
+    kind: str = "builtin"
+    engine: str = "Python"
 
     def render(
         self,
