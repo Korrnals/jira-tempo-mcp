@@ -22,7 +22,7 @@ from typing import Any
 import httpx
 import pytest
 
-from jira_tempo_mcp.client import JiraTempoClient, JiraTempoError
+from jira_tempo_mcp.client import JiraTempoClient, JiraTempoError, _redact_body
 from jira_tempo_mcp.config import Config
 from jira_tempo_mcp.server import _validate_output_dir
 
@@ -291,6 +291,57 @@ def test_py_template_warning_logged(tmp_path: Path, caplog: Any) -> None:
         "executes arbitrary code" in rec.getMessage() or "ensure this file is trusted" in rec.getMessage()
         for rec in caplog.records
     ), "expected code-execution warning for .py template"
+
+
+# --- helpers -----------------------------------------------------------------
+
+
+class TestRedactBody:
+    """Tests for client._redact_body — masks token-shaped substrings in an API
+    error response body before it reaches logs or exception messages."""
+
+    def test_redacts_github_classic_pat(self) -> None:
+        body = '{"error": "auth failed for ghp_abc123DEF456ghi789jkl"}'
+        out = _redact_body(body)
+        assert "ghp_abc123DEF456ghi789jkl" not in out
+        assert "***REDACTED***" in out
+
+    def test_redacts_github_fine_grained_pat(self) -> None:
+        body = "token github_pat_11ABCDEFG0aBcDeFgHiJkLmNoP"
+        out = _redact_body(body)
+        assert "github_pat_11ABCDEFG0aBcDeFgHiJkLmNoP" not in out
+        assert "***REDACTED***" in out
+
+    def test_redacts_vault_token(self) -> None:
+        body = "permission denied: hvs.AAAA1234abcd5678"
+        out = _redact_body(body)
+        assert "hvs.AAAA1234abcd5678" not in out
+        assert "***REDACTED***" in out
+
+    def test_redacts_stripe_sk_token(self) -> None:
+        body = "invalid key sk_live_0123456789abcdef"
+        out = _redact_body(body)
+        assert "sk_live_0123456789abcdef" not in out
+        assert "***REDACTED***" in out
+
+    def test_redacts_slack_token(self) -> None:
+        body = "xoxb-1234567890-abcdefghij"
+        out = _redact_body(body)
+        assert "xoxb-1234567890-abcdefghij" not in out
+        assert "***REDACTED***" in out
+
+    def test_redacts_bearer_authorization(self) -> None:
+        body = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.token.sig"
+        out = _redact_body(body)
+        assert "Bearer eyJhbGciOiJIUzI1NiJ9.token.sig" not in out
+        assert "***REDACTED***" in out
+
+    def test_leaves_plain_body_untouched(self) -> None:
+        body = "issue does not exist or you lack permission"
+        assert _redact_body(body) == body
+
+    def test_empty_string_passthrough(self) -> None:
+        assert _redact_body("") == ""
 
 
 # --- helpers -----------------------------------------------------------------

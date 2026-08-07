@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -69,6 +70,29 @@ def _redact(url: str) -> str:
         host = rest.split("@", 1)[1]
         return f"{scheme}://***@{host}"
     return url
+
+
+# Secret patterns that may appear in API error response bodies. Matches are
+# replaced with ``***REDACTED***`` before the body reaches logs or exception
+# messages. Covers GitHub tokens (ghp_/gho_/ghs_/ghu_/github_pat_), Vault
+# (hvs.), Stripe/Anthropic/OpenAI (sk-), Slack (xox[bpoa]-), and Authorization
+# header echoes (Bearer <token>).
+_SECRET_BODY_RE = re.compile(
+    r"(?:gh[pous]_|github_pat_)[A-Za-z0-9_]{8,}"
+    r"|hvs\.[A-Za-z0-9._-]{8,}"
+    r"|sk[-_][A-Za-z0-9_-]{15,}"
+    r"|xox[bpoa]-[A-Za-z0-9-]{10,}"
+    r"|Bearer\s+[A-Za-z0-9._\-]+"
+)
+
+
+def _redact_body(text: str) -> str:
+    """Mask token-shaped substrings in an API response body before logging.
+
+    Pairs with :func:`_redact` (which strips URL credentials): ``_redact``
+    handles the request URL, ``_redact_body`` handles the response body.
+    """
+    return _SECRET_BODY_RE.sub("***REDACTED***", text)
 
 
 class JiraTempoClient:
@@ -177,8 +201,11 @@ class JiraTempoClient:
                 continue
 
             if resp.status_code >= 400:
-                # m6: truncate to 200 chars to reduce log noise and potential token leakage.
-                body = resp.text[:200] if resp.text else ""
+                # Truncate to 200 chars and redact token-shaped substrings so
+                # error logs / exception messages never leak a secret echoed by
+                # the API in the response body.
+                raw_body = resp.text[:200] if resp.text else ""
+                body = _redact_body(raw_body)
                 logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
                 err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
                 err.status_code = resp.status_code
