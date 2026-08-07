@@ -551,13 +551,17 @@ class JiraTempoClient:
         # 4. Non-default user: Jira REST API user search — returns a list
         #    of matching users, each with a ``key`` field (e.g.
         #    ``JIRAUSER40101``) which Tempo accepts as a worker key.
+        #    Paginated for consistency with search_users(): /user/search can
+        #    return a bare list with no envelope, so without paging a large
+        #    user directory could silently truncate before the exact match.
         search_url = f"{self._config.jira_api_base}/user/search"
         try:
-            results = await self._request(
-                "GET",
+            results = await self._paginated_get(
                 search_url,
-                self._jira_headers(),
-                params={"username": target},
+                {"username": target},
+                results_key="values",
+                page_size=100,
+                max_results=1000,
             )
         except JiraTempoError as exc:
             raise WorkerKeyResolutionError(
