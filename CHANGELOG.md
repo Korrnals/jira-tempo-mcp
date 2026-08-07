@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.3.5] — 2026-08-08
+
+### Fixed
+
+- **`report_output_dir` field description corrected** (`config.py`) — the Field description claimed an empty value falls back to `./reports`, but `load_config()` actually substitutes `_DEFAULT_REPORT_DIR` (`~/.mcp/jira-tempo-mcp/reports/`) and never passes an empty string. Updated the description to match the real fallback path. No behavior change — the default value and resolution logic are untouched.
+- **Four config tests isolated from the host `.env.local`** (`tests/test_config.py`) — the affected tests read the real `_env_local_candidates`, so a machine with a custom `.env.local` could leak its paths into test outcomes. Each test now patches `_env_local_candidates` to temp dotenv files, making the suite deterministic regardless of the host configuration.
+- **RU configuration heading grammar fixed** (`docs/configuration.ru.md`) — corrected a singular/plural mismatch in a section heading.
+
 ## [0.3.4] — 2026-08-07
 
 ### Added
