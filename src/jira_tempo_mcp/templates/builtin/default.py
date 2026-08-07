@@ -108,7 +108,10 @@ class DefaultTemplate:
         remaining.sort(key=lambda k: sum(extract_seconds(w) for w in grouped[k]), reverse=True)
         for key in remaining:
             title = issue_titles.get(key, key)
-            lines.append(f'{section_num}. [{key}] {key} - "{title}"')
+            # Header for non-stable sections: the key already appears in the
+            # leading [KEY] bracket, so the bare second occurrence was a
+            # duplicate (and collided with the title when they matched).
+            lines.append(f'{section_num}. [{key}] - "{title}"')
             for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
                 human = format_seconds_to_human(secs)
                 if comment:
