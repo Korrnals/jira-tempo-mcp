@@ -164,25 +164,6 @@ async def _fetch_all_users(
     return results
 
 
-def _resolve_issue_titles(
-    worklogs_by_user: dict[str, list[dict[str, Any]]],
-    config: Config,
-    client: JiraTempoClient,
-) -> dict[str, str]:
-    """Synchronously collect issue titles — caller should await get_issue instead.
-
-    This helper is kept for completeness but the async version below is used
-    in practice. Returns only titles already present in ``config.section_map``.
-    """
-    titles: dict[str, str] = {}
-    for worklogs in worklogs_by_user.values():
-        for wl in worklogs:
-            key = extract_issue_key(wl)
-            if key and key not in titles and key in config.section_map:
-                titles[key] = config.section_map[key]
-    return titles
-
-
 async def _resolve_issue_titles_async(
     worklogs_by_user: dict[str, list[dict[str, Any]]],
     config: Config,
@@ -555,7 +536,8 @@ async def generate_team_report(
     output_dir.mkdir(parents=True, exist_ok=True)
     # BUG-5: include users hash to prevent silent overwrite with different user sets.
     # UX-8: ISO dates in filename for clarity across years.
-    users_hash = hashlib.md5(",".join(sorted(users)).encode()).hexdigest()[:6]
+    # sha256 (not md5) — md5 triggers security scanners and offers no benefit here.
+    users_hash = hashlib.sha256(",".join(sorted(users)).encode("utf-8")).hexdigest()[:6]
     filename = f"team_{monday.isoformat()}_{friday.isoformat()}_{users_hash}.{fmt}"
     out_path = output_dir / filename
     write_report_file(out_path, report_text)
