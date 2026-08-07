@@ -192,10 +192,14 @@ def _render_weekly_json(
 
     # 2. Remaining issues sorted by total time desc.
     remaining = [k for k in grouped if k not in used_keys]
-    remaining.sort(key=lambda k: sum(_extract_seconds(w) for w in grouped[k]), reverse=True)
+    # Cache each key's time total once: the sort key and the record below both
+    # need it, so computing it in the sort lambda AND again in the loop would
+    # sum extract_seconds over the same worklogs twice.
+    totals = {k: sum(_extract_seconds(w) for w in grouped[k]) for k in remaining}
+    remaining.sort(key=lambda k: totals[k], reverse=True)
     for key in remaining:
         title = issue_titles.get(key, key)
-        task_total = sum(_extract_seconds(w) for w in grouped[key])
+        task_total = totals[key]
         worklog_entries = []
         for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
             worklog_entries.append(
