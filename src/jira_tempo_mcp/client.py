@@ -670,6 +670,16 @@ class JiraTempoClient:
                 cats = ", ".join(f'"{c}"' for c in unique_cats)
                 jql += f" AND statusCategory IN ({cats})"
             else:
+                # At least one status_filter value has no entry in
+                # _RU_STATUS_TO_CATEGORY, so statusCategory filtering cannot be
+                # used. Log so the operator can see which statuses were not
+                # covered and extend the mapping if needed.
+                unmapped = [s for s in status_filter if _RU_STATUS_TO_CATEGORY.get(s) is None]
+                logger.info(
+                    "status_filter fallback to 'status IN (...)' — "
+                    "unmapped status values: %s",
+                    unmapped,
+                )
                 statuses = ", ".join(f'"{s}"' for s in status_filter)
                 jql += f" AND status IN ({statuses})"
         jql += " ORDER BY updated DESC"
