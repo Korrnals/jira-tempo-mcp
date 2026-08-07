@@ -24,6 +24,7 @@ import pytz
 
 from .client import JiraTempoClient, JiraTempoError
 from .config import Config
+from .report_common import resolve_report_base_dir, sort_worklogs_by_issue, write_report_file
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
     extract_comment as _extract_comment,  # noqa: F401 — re-exported for tests
@@ -120,12 +121,7 @@ def _render_weekly_md(
         return "\n".join(lines)
 
     # Sort worklogs: by issue key asc, then by seconds desc within issue.
-    def _sort_key(wl: dict[str, Any]) -> tuple[str, int]:
-        k = _extract_issue_key(wl) or ""
-        s = _extract_seconds(wl)
-        return (k, -s)
-
-    sorted_worklogs = sorted(flat, key=_sort_key)
+    sorted_worklogs = sort_worklogs_by_issue(flat)
 
     # --- Worklogs table ---
     lines.append(
@@ -357,8 +353,7 @@ async def generate_weekly_report(
 
     # --- Determine output path ---
     if output_dir is None:
-        base = config.report_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
-        output_dir = Path(base) / str(monday.year) / _month_ru(monday.month) / "weekly"
+        output_dir = resolve_report_base_dir(config) / str(monday.year) / _month_ru(monday.month) / "weekly"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # UX-8: ISO dates in filename for clarity across years.
@@ -368,7 +363,7 @@ async def generate_weekly_report(
     filename_prefix = username if username else config.report_filename_header
     filename = f"{filename_prefix}_{monday.isoformat()}_{friday.isoformat()}.{fmt}"
     out_path = output_dir / filename
-    out_path.write_text(report_text, encoding="utf-8")
+    write_report_file(out_path, report_text)
     total_seconds = sum(_extract_seconds(w) for w in filtered)
     logger.info("Report written to %s (%d seconds total, fmt=%s)", out_path, total_seconds, fmt)
     return str(out_path)

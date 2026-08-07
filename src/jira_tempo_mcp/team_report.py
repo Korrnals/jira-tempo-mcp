@@ -29,6 +29,11 @@ import pytz
 
 from .client import JiraTempoClient, JiraTempoError
 from .config import Config
+from .report_common import (
+    resolve_report_base_dir,
+    sort_worklogs_by_issue,
+    write_report_file,
+)
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
     extract_comment,
@@ -308,14 +313,7 @@ def _render_team_md(
             continue
 
         # Sort worklogs: by issue key asc, then by seconds desc within issue.
-        def _sort_key(wl: dict[str, Any]) -> tuple[str, int]:
-            k = extract_issue_key(wl) or ""
-            s = wl.get("timeSpentSeconds", 0)
-            if not isinstance(s, int):
-                s = 0
-            return (k, -s)
-
-        sorted_worklogs = sorted(flat, key=_sort_key)
+        sorted_worklogs = sort_worklogs_by_issue(flat)
 
         lines.append(
             "| \u041a\u043b\u044e\u0447 | \u0417\u0430\u0434\u0430\u0447\u0430 | \u0427\u0430\u0441\u044b | \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 |"
@@ -553,15 +551,14 @@ async def generate_team_report(
 
     # --- Output path ---
     if output_dir is None:
-        base = config.team_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
-        output_dir = Path(base) / str(monday.year) / month_ru(monday.month) / "team"
+        output_dir = resolve_report_base_dir(config, team=True) / str(monday.year) / month_ru(monday.month) / "team"
     output_dir.mkdir(parents=True, exist_ok=True)
     # BUG-5: include users hash to prevent silent overwrite with different user sets.
     # UX-8: ISO dates in filename for clarity across years.
     users_hash = hashlib.md5(",".join(sorted(users)).encode()).hexdigest()[:6]
     filename = f"team_{monday.isoformat()}_{friday.isoformat()}_{users_hash}.{fmt}"
     out_path = output_dir / filename
-    out_path.write_text(report_text, encoding="utf-8")
+    write_report_file(out_path, report_text)
 
     # --- Summary ---
     per_user_totals: dict[str, int] = {}

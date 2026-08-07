@@ -31,6 +31,7 @@ import pytz
 
 from .client import JiraTempoClient, JiraTempoError
 from .config import Config
+from .report_common import resolve_report_base_dir, write_report_file
 from .templates._shared import format_date, md_escape_cell, month_ru, truncate_text
 
 logger = logging.getLogger(__name__)
@@ -639,9 +640,8 @@ async def generate_tasks_report(
 
     # --- Output path ---
     if output_dir is None:
-        base = config.report_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
         subdir = "tasks" if len(users) == 1 else "tasks-team"
-        output_dir = Path(base) / str(now.year) / month_ru(now.month) / subdir
+        output_dir = resolve_report_base_dir(config) / str(now.year) / month_ru(now.month) / subdir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     ext = fmt
@@ -652,7 +652,7 @@ async def generate_tasks_report(
         prefix = users[0]
         filename = f"tasks_{prefix}_{now.strftime('%Y-%m-%d')}.{ext}"
     out_path = output_dir / filename
-    out_path.write_text(report_text, encoding="utf-8")
+    write_report_file(out_path, report_text)
 
     logger.info("Tasks report written: %s (%d tasks, fmt=%s)", out_path, total_tasks, fmt)
 
