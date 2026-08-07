@@ -170,7 +170,7 @@ class Config(BaseModel):
     # Report configuration (M3, M4 — externalized from report.py).
     report_output_dir: str = Field(
         default="",
-        description="Base directory for weekly reports. Empty = ./reports.",
+        description="Base directory for weekly reports. Empty = falls back to `~/.mcp/jira-tempo-mcp/reports/` via `load_config()`.",
     )
     author_display_name: str = Field(
         default="",
