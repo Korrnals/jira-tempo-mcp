@@ -21,10 +21,22 @@ class ReportTemplate(Protocol):
     Implementations may be Python classes (opt-in via
     ``REPORT_TEMPLATE_ALLOW_PY``) or Jinja2 ``.j2`` files loaded into a
     sandboxed environment.
+
+    ``kind`` and ``engine`` are optional metadata surfaced by
+    ``list_report_templates`` to help users distinguish builtin vs custom
+    and Jinja2 vs Python templates. Builtin classes and the loader
+    adapters always set them; user-supplied ``TEMPLATE`` objects are
+    wrapped by :class:`jira_tempo_mcp.templates.loader.PythonTemplate`
+    which sets them automatically.
     """
 
     name: str
     description: str
+    # Optional provenance metadata (always present on builtin + loader
+    # adapters; user TEMPLATE classes may omit them, in which case the
+    # registry/list handler falls back via getattr).
+    kind: str
+    engine: str
 
     def render(
         self,

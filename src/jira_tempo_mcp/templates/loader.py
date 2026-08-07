@@ -45,6 +45,10 @@ except ImportError:  # pragma: no cover - exercised only without jinja2
 class JinjaTemplate:
     """Adapter wrapping a Jinja2 template as a :class:`ReportTemplate`."""
 
+    # Provenance metadata surfaced by list_report_templates.
+    kind: str = "custom"
+    engine: str = "Jinja2"
+
     def __init__(self, name: str, description: str, env: Any, source_path: Path) -> None:
         self.name = name
         self.description = description
@@ -73,6 +77,10 @@ class JinjaTemplate:
 
 class PythonTemplate:
     """Adapter wrapping a user-supplied Python module as a ReportTemplate."""
+
+    # Provenance metadata surfaced by list_report_templates.
+    kind: str = "custom"
+    engine: str = "Python"
 
     def __init__(self, template: ReportTemplate, source_path: Path) -> None:
         self._template = template
