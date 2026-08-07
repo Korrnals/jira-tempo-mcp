@@ -45,6 +45,13 @@ jira-tempo-mcp = "jira_tempo_mcp.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Ship install.py as package data in the wheel. install.py lives at the project
+# root (used by editable installs); build_helpers.py copies it into the package
+# dir at build time so wheel installs can resolve it via
+# importlib.resources.files(__package__) / "install.py" (see cli._run_install_script).
+[tool.setuptools.package-data]
+jira_tempo_mcp = ["install.py"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
