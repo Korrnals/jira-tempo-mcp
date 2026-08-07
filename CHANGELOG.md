@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.4.0] — 2026-08-08
+
+### Added
+
+- **`preview_report_template` MCP tool** (`server.py`, `templates/`) — a read-only tool that renders any report template (builtin or custom) against deterministic mock Tempo worklogs without calling Jira/Tempo or writing a file. Three preset `sample_data` profiles (`default` realistic 7-worklog week, `minimal` single worklog, `empty` no worklogs) exercise full and empty-state rendering. The preview uses a fixed week (2026-06-15..19) for deterministic cross-run output, letting users explore templates before running a real report.
+- **Template kind/engine provenance in `list_report_templates`** (`server.py`, `templates/loader.py`) — every builtin template (default, weekly_summary, team_report) and loader adapter (JinjaTemplate, PythonTemplate) now declares a `kind` (builtin/custom) and `engine` (Jinja2/Python) attribute. The listing surfaces them, e.g. `- default (builtin, Python): ...`, so users distinguish builtin from custom and Jinja2 from Python at a glance. A `getattr` fallback guards user-supplied `TEMPLATE` objects that may not set these.
+- **Custom templates reference** (`docs/templates.md` + `docs/templates.ru.md`) — the author reference for custom report templates: full Jinja2 context table, worklog fields, the Python `ReportTemplate` protocol, the security model (SandboxedEnvironment), and the author workflow. Cross-linked from `docs/reports.md`/`.ru.md` and indexed in the READMEs + `docs/README`.
+- **Ready-to-copy template examples** (`examples/templates/standup.j2` + `examples/templates/detailed.j2`) — a compact stand-up summary (total hours, top-3 by time) and a per-issue breakdown with comments and tracked time. Both render against the real sandboxed context.
+- **"Custom templates" README section** (`README.md` + `README.ru.md`) — quickstart in 3 steps, the `preview_report_template` workflow, per-OS template directories, the two engines (Jinja2 recommended/sandboxed, Python opt-in), and cross-references to the full reference. EN and RU mirror content; identifiers stay in backticks.
+- **"Template tools" section in MCP-integration docs** (`docs/mcp-integration.md` + `docs/mcp-integration.ru.md`) — documents the three template-related MCP tools (`list_report_templates`, `preview_report_template`, `generate_weekly_report` `template` parameter), the `preview_report_template` contract, and a recommended list → preview → generate workflow.
+
+### Fixed
+
+- **App version in MCP `serverInfo`** (`server.py`) — `Server()` was constructed with only a name, so MCP clients saw the SDK version (`SERVER_VERSION`) instead of the app version. The MCP SDK `Server` constructor accepts a `version` keyword, so `__version__` is now passed explicitly, letting clients (and operators) detect which jira-tempo-mcp release is running.
+
 ## [0.3.5] — 2026-08-08
 
 ### Fixed
