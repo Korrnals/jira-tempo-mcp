@@ -900,7 +900,7 @@ _PREVIEW_ISSUE_TITLES: dict[str, str] = {
 
 
 def _make_sample_worklog(
-    key: str,
+    key: str | None,
     seconds: int,
     day: int,
     comment: str = "",
@@ -908,6 +908,9 @@ def _make_sample_worklog(
     """Build a single mock Tempo worklog on the preview week.
 
     ``day`` is the day-of-month within June 2026 (15..19 = Mon..Fri).
+    ``key`` is the issue key, or ``None`` for a worklog with no linked
+    issue (exercises the no-task path where ``extract_issue_key`` returns
+    ``None`` and templates skip the worklog).
     """
     wl: dict[str, Any] = {
         "issueKey": key,
@@ -926,7 +929,8 @@ def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
 
     Profiles:
       * ``default`` — realistic week: 4 issues across Mon..Fri, varied
-        durations, one non-issue (standup) worklog.
+        durations, plus one no-task (standup) worklog with ``issueKey=None``
+        that exercises the no-task fallback path.
       * ``minimal`` — a single 1h worklog.
       * ``empty`` — no worklogs (exercises empty-state rendering).
     """
@@ -944,7 +948,10 @@ def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
         _make_sample_worklog("DEVOPS-103", 3600, 17, "Fix flaky integration test suite."),
         _make_sample_worklog("DEVOPS-103", 2700, 18, "Fix flaky integration test suite."),
         _make_sample_worklog("OPS-200", 1800, 15, "On-call rotation handover."),
-        _make_sample_worklog("Standup", 1800, 16, "Daily standup."),
+        # No-task worklog (standup): issueKey=None exercises the no-task
+        # fallback path — extract_issue_key returns None and templates skip
+        # this worklog rather than crashing or inventing a section.
+        _make_sample_worklog(None, 1800, 16, "Daily standup."),
     ]
 
 

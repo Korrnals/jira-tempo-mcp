@@ -87,7 +87,8 @@ class TestPreviewReportTemplate:
         )
         assert isinstance(result, str)
         assert len(result.strip()) > 0
-        # The default profile includes several DEVOPS-* issues and a Standup.
+        # The default profile includes several DEVOPS-* issues plus OPS-200;
+        # the standup entry has issueKey=None and is skipped by the template.
         assert "DEVOPS-101" in result
 
     async def test_default_profile_contains_time(self) -> None:
