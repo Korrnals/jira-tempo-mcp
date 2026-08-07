@@ -594,10 +594,12 @@ class JiraTempoClient:
         jql += " ORDER BY updated DESC"
 
         url = f"{self._config.jira_api_base}/search"
-        # Paginate via startAt/total so users with >100 assigned issues
-        # are not silently truncated (BUG: single-page maxResults). Here
-        # ``max_results`` is the per-request page size, not a total cap —
-        # all assigned tasks are returned.
+        # Paginate via startAt/total so users with >page-size assigned issues
+        # are not silently truncated. ``max_results`` is now the TOTAL cap across
+        # pages; the per-request page size is bounded to 100 (the Jira /search
+        # server ceiling) so an unbounded pagination loop cannot pull thousands
+        # of issues. Mirrors search_issues() cap semantics. (#2)
+        capped_page = min(max_results, 100)
         issues = await self._paginated_get(
             url,
             {
@@ -605,7 +607,8 @@ class JiraTempoClient:
                 "fields": "summary,status,duedate,comment,priority,issuetype,project,created,updated",
             },
             results_key="issues",
-            page_size=max_results,
+            page_size=capped_page,
+            max_results=max_results,
         )
 
         tasks: list[dict[str, Any]] = []
