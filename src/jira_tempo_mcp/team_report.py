@@ -534,8 +534,16 @@ async def generate_team_report(
     if output_dir is None:
         output_dir = resolve_report_base_dir(config, team=True) / str(monday.year) / month_ru(monday.month) / "team"
     output_dir.mkdir(parents=True, exist_ok=True)
-    # BUG-5: include users hash to prevent silent overwrite with different user sets.
-    # UX-8: ISO dates in filename for clarity across years.
+
+    # --- Filename construction (deterministic / idempotent) ---
+    # The filename is a pure function of (week, sorted user set, format), so
+    # regenerating a team report for the SAME week + users OVERWRITES the
+    # previous file. This is intentional — it keeps canonical paths stable and
+    # avoids duplicate accumulation on re-runs. To force distinct files, change
+    # the user set or the output_dir.
+    # BUG-5: the 6-char sha256(users) suffix ensures different user sets get
+    # distinct files (no silent overwrite when users change).
+    # UX-8: ISO dates in the filename for clarity across years.
     # sha256 (not md5) — md5 triggers security scanners and offers no benefit here.
     users_hash = hashlib.sha256(",".join(sorted(users)).encode("utf-8")).hexdigest()[:6]
     filename = f"team_{monday.isoformat()}_{friday.isoformat()}_{users_hash}.{fmt}"
