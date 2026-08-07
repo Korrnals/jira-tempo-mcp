@@ -516,9 +516,19 @@ def _user_friendly_error(exc: Exception) -> str:
 
 
 def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) -> Path:
-    """Validate an output_dir argument against path traversal.
+    """Validate an ``output_dir`` argument against path traversal.
 
-    team=True uses the team output root, otherwise the weekly report root.
+    Resolves ``raw_dir`` and checks that the result lies **inside** the
+    allowed report root: ``config.team_output_dir`` when ``team=True``,
+    ``config.report_output_dir`` otherwise, falling back to
+    ``~/.mcp/jira-tempo-mcp/reports``. Any path that resolves outside the
+    root (e.g. ``../../etc``, absolute ``/tmp`` escapes, symlink chains) is
+    rejected with a ``ValueError``.
+
+    This containment check is the defence against an MCP caller writing
+    reports (or overwriting files) in arbitrary locations on the host.
+    The traversal-rejection path is covered by
+    ``tests/test_security.py``.
     """
     resolved = Path(raw_dir).resolve()
     root = (config.team_output_dir if team else config.report_output_dir) or str(
