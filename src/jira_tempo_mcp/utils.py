@@ -15,9 +15,37 @@ _DURATION_RE = re.compile(r"(\d+)\s*([wdhm])")
 
 
 def parse_duration_to_seconds(time_spent: str) -> int:
-    """Parse a human duration string like '1h 30m', '2h', '45m', '1d 2h' to seconds.
+    """Parse a human duration string to whole seconds.
 
-    Supports: w (weeks=5d), d (days=8h), h (hours), m (minutes).
+    Supported units (work-time semantics, not calendar time):
+
+    ===========  ===========  =========================
+    Unit         Meaning      Example
+    ===========  ===========  =========================
+    ``w``        week (5d)    ``1w``  = 5 × 8h
+    ``d``        day (8h)     ``1d``  = 8h
+    ``h``        hour         ``1h``  = 3600s
+    ``m``        minute       ``45m`` = 2700s
+    ===========  ===========  =========================
+
+    Accepted formats (tokens may be space- or glue-separated, any order):
+
+    - ``1h``              → 3600
+    - ``1h 30m``          → 5400
+    - ``1h30m``           → 5400
+    - ``1d 2h``           → 36000
+    - ``2w``              → 288000
+    - ``45m``             → 2700
+
+    Constraints:
+
+    - Only **integers** are parsed. ``1.5h`` is *not* accepted (the regex
+      matches ``\\d+`` before each unit, so ``1.5`` parses as ``1`` and ``.5``
+      is left unmatched, yielding ``3600`` — pass integers only).
+    - No negative durations.
+    - Case-insensitive.
+    - A string with no valid token (e.g. ``"foo"``) raises ``ValueError``.
+
     Raises ValueError if the string contains no valid duration tokens.
     """
     total = 0
