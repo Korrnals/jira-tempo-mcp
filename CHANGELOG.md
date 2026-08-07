@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.3.4] — 2026-08-07
+
+### Added
+
+- **Tests for the dotenv priority chain + silent mkdir** (`tests/test_config.py`, 8 cases) — `TestResilientConfigLoading` (6 cases) covers the full priority chain: process env > `.env.local` > repo `.env` > defaults, idempotent re-application, and `MCP_ENV_FILE` override; `TestGenerateWeeklyReportSilentMkdir` (2 cases) covers silent nested `year/month/weekly` dir creation. Tests use temp dotenv files + `_env_local_candidates` patching so the real machine's `.env.local` never leaks into outcomes. Suite: 286 → 294, no regressions.
+- **Agent ↔ MCP contract section** in RU and EN MCP-integration docs — MCP tools are the only sanctioned channel; direct Python/CLI calls from an agent chat are an anti-pattern; on MCP unavailability the agent retries with backoff and escalates a diagnosis, never delegating command execution to the user. RU/EN mirrors stay in sync.
+
+### Changed
+
+- **Config source priority chain documented** in RU and EN configuration docs — `process env > MCP-host .env.local > repo .env`, plus the `MCP_ENV_FILE` override and the default `REPORT_OUTPUT_DIR` (`~/.mcp/jira-tempo-mcp/reports`) with silent year/month/weekly subdirectory creation.
+
+### Fixed
+
+- **Resilient dotenv priority chain** (`config.py`) — direct terminal invocations of the Python module did not read the MCP-host `.env.local` (`~/.config/Code/User/.env.local`), so `REPORT_OUTPUT_DIR` set there was ignored and weekly reports fell back to the default path, forcing manual copies (problem 1, mnemos `735034da`). Added `_apply_dotenv_files()` which loads, with `override=False` (process env always wins), the MCP-host `.env.local` first then the repo `.env`, giving the documented chain: process env → `.env.local` → repo `.env` → defaults. The `.env.local` path is resolved via `MCP_ENV_FILE` override or the standard VS Code user-level locations (Linux/macOS/Windows).
+
 ## [0.3.3] — 2026-08-03
 
 ### Added
