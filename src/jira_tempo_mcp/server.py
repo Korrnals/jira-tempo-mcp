@@ -465,6 +465,36 @@ def _validate_date(date_str: str, field_name: str) -> date:
         ) from None
 
 
+# Matches a numeric timezone offset WITHOUT a colon at end of string,
+# e.g. "...+0300" or "...-0500". Used to normalise such offsets so that
+# datetime.fromisoformat accepts them (it requires "+03:00").
+_TZ_OFFSET_NO_COLON_RE = re.compile(r"([+-]\d{2})(\d{2})$")
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    """Parse an ISO-8601 datetime tolerantly.
+
+    Handles variants that ``datetime.fromisoformat`` rejects on Python 3.11:
+    a numeric offset without a colon (``+0300``) and a trailing ``Z``.
+    Microseconds (``.000``) are already accepted on 3.11+.
+
+    Raises :class:`ValueError` with an actionable message if the value
+    cannot be parsed by any known shape.
+    """
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    # Insert the colon a numeric offset lacks: "+0300" -> "+03:00".
+    normalized = _TZ_OFFSET_NO_COLON_RE.sub(r"\1:\2", normalized)
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(
+            f"Could not parse date_started {value!r}: expected ISO-8601 "
+            f"(e.g. '2026-06-19T10:00:00+03:00'). Details: {exc}"
+        ) from exc
+
+
 def _user_friendly_error(exc: Exception) -> str:
     """Map known exception types to user-friendly messages (m11)."""
     if isinstance(exc, WorkerKeyResolutionError):
@@ -634,8 +664,10 @@ async def _handle_create_worklog(
     seconds = parse_duration_to_seconds(time_spent)
     date_started = arguments.get("date_started") or iso_now(config.timezone)
     # Bug 1: Tempo API expects YYYY-MM-DD, not full ISO datetime.
+    # Tolerant parse: handles "+0300" (no colon), trailing Z, and microseconds —
+    # all shapes Jira/MCP clients send in practice (finding #22).
     if "T" in date_started:
-        dt = datetime.fromisoformat(date_started.replace("Z", "+00:00"))
+        dt = _parse_iso_datetime(date_started)
         date_started = dt.strftime("%Y-%m-%d")
     comment = arguments.get("comment", "")
     # Bug 2: resolve worker key when author_account_id not provided.
