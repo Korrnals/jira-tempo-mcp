@@ -296,8 +296,17 @@ class Config(BaseModel):
     def team_users_resolved(self) -> list[str]:
         """Default users for team/tasks reports.
 
-        Returns report_team_users if non-empty, else falls back to [jira_user]
-        so a team report with no users and no env still works for the current user.
+        Returns ``report_team_users`` when non-empty, else falls back to
+        ``[jira_user]`` so a team report with no users and no env still works
+        for the current user.
+
+        .. note::
+
+            An **unset or empty** ``report_team_users`` always resolves to
+            ``[jira_user]`` — it never returns an empty list. To generate a
+            report for zero users, filter downstream (pass an explicit empty
+            ``users=`` argument through to the report generator) rather than
+            relying on this property to surface an empty set.
         """
         return list(self.report_team_users) if self.report_team_users else [self.jira_user]
 
