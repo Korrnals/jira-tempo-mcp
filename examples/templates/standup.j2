@@ -1,0 +1,37 @@
+{# =================================================================
+   standup.j2 — compact stand-up weekly summary
+
+   Copies into ~/.config/jira-tempo-mcp/templates/ to use it:
+     generate_weekly_report(template="standup")
+
+   Context variables used (see docs/templates.md):
+     - worklogs        : list of Tempo worklog dicts (timeSpentSeconds, issueKey, ...)
+     - monday, friday  : date objects for the target week
+     - issue_titles    : {issue_key: human summary}
+     - config          : Config object (config.report_author_header)
+     - format_seconds  : int seconds -> "1ч 30м"
+     - format_date     : date -> "DD.MM.YYYY"
+   Output: total hours + top-3 issues by tracked time (one-liner style).
+   ================================================================= #}
+[{{ config.report_author_header }}] Стендап за неделю ({{ format_date(monday) }} – {{ format_date(friday) }})
+
+Всего: {{ format_seconds(worklogs | map(attribute='timeSpentSeconds') | sum) }}
+Worklog-ов: {{ worklogs | length }}
+
+{# Group worklogs by issueKey, sum each group's seconds, sort desc.
+   `namespace` is the idiomatic Jinja2 way to accumulate across a loop
+   (loop-local `set` would not persist). Sandbox-safe. #}
+{% set ns = namespace(rows=[]) %}
+{% for key, items in (worklogs | selectattr('issueKey') | groupby('issueKey')) %}
+  {% set secs = items | map(attribute='timeSpentSeconds') | sum %}
+  {% set ns.rows = ns.rows + [(key, secs)] %}
+{% endfor %}
+{% set top = ns.rows | sort(attribute=1, reverse=true) %}
+{% if top %}
+Топ-3 по времени:
+{% for key, secs in top[:3] %}
+  - {{ key }} ({{ issue_titles.get(key, key) }}): {{ format_seconds(secs) }}
+{% endfor %}
+{% else %}
+(нет отработанных задач)
+{% endif %}

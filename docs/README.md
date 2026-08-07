@@ -19,6 +19,7 @@ Track time, list worklogs, and generate weekly reports from your AI agent
 | 🌐 API (MCP tools) | [api.md](api.md) | `list_worklogs`, `create_worklog`, `generate_weekly_report`, … |
 | 🏗️ Architecture | [architecture.md](architecture.md) | layers, data flow, security model |
 | 📝 Reports | [reports.md](reports.md) | weekly report, section mapping, stable order |
+| 🎨 Templates | [templates.md](templates.md) | custom report templates (Jinja2 + Python), context reference |
 | 🐳 Deployment | [deployment.md](deployment.md) | Docker, CI/CD, release workflow |
 | 🐛 Troubleshooting | [troubleshooting.md](troubleshooting.md) | common errors and fixes |
 

@@ -196,6 +196,9 @@ team_<DDMMYY>-<DDMMYY>.txt
 Поместите файлы шаблонов в `REPORT_TEMPLATE_DIR` (по умолчанию
 `~/.config/jira-tempo-mcp/templates/`). Поддерживаются два формата:
 
+> 📖 Полный справочник для авторов (полная таблица контекста, поля worklog,
+> протокол Python, модель безопасности) — в [templates.ru.md](templates.ru.md).
+
 #### 📜 Jinja2-шаблоны (`.j2`) — безопасны по умолчанию
 
 Загружаются в `SandboxedEnvironment`. Контекст шаблона включает:

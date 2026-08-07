@@ -1,0 +1,41 @@
+{# =================================================================
+   detailed.j2 — detailed weekly report with per-issue breakdown
+
+   Copies into ~/.config/jira-tempo-mcp/templates/ to use it:
+     generate_weekly_report(template="detailed")
+
+   Context variables used (see docs/templates.md):
+     - worklogs           : list of Tempo worklog dicts
+       fields read: timeSpentSeconds, issueKey, comment, started
+     - monday, friday     : date objects for the target week
+     - issue_titles       : {issue_key: human summary}
+     - config             : Config object
+     - format_seconds     : int seconds -> "1h 30m"
+     - format_date        : date -> "DD.MM.YYYY"
+   Output: header + grand total, then each issue with its comments and
+   tracked time, issues sorted by total time descending.
+   ================================================================= #}
+{{ config.report_author_header }} — Детальный отчёт за неделю
+Период: {{ format_date(monday) }} – {{ format_date(friday) }}
+Всего: {{ format_seconds(worklogs | map(attribute='timeSpentSeconds') | sum) }}
+Задач: {{ worklogs | selectattr('issueKey') | map(attribute='issueKey') | unique | list | length }}
+
+{% set ns = namespace(rows=[]) %}
+{% for key, items in (worklogs | selectattr('issueKey') | groupby('issueKey')) %}
+{% set secs = items | map(attribute='timeSpentSeconds') | sum %}
+{% set ns.rows = ns.rows + [(key, secs, items)] %}
+{% endfor %}
+{% set sorted = ns.rows | sort(attribute=1, reverse=true) %}
+{% if not sorted %}(нет отработанных задач){% endif %}
+{% for key, secs, items in sorted %}
+
+== {{ key }} — {{ issue_titles.get(key, key) }} ==
+Итого по задаче: {{ format_seconds(secs) }}
+{% for wl in items %}
+{% set c = wl.comment %}
+{% set comment = c.content if (c is mapping and c.content is defined) else (c if c else '') %}
+{% if comment %}+ {{ format_seconds(wl.timeSpentSeconds) }} — {{ comment | trim }}
+{% else %}+ {{ format_seconds(wl.timeSpentSeconds) }} — (без комментария)
+{% endif %}
+{% endfor %}
+{% endfor %}
