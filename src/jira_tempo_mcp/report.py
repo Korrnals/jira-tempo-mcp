@@ -42,9 +42,6 @@ from .templates._shared import (
     format_date as _format_date,  # noqa: F401
 )
 from .templates._shared import (
-    format_date_short as _format_date_short,  # noqa: F401
-)
-from .templates._shared import (
     group_worklogs_by_comment_raw,
     parse_tempo_date,
     week_range,
@@ -68,7 +65,6 @@ logger = logging.getLogger(__name__)
 # Backward-compatible aliases (tests import these private names).
 _week_range = week_range
 _format_date = _format_date
-_format_date_short = _format_date_short
 _month_ru = _month_ru
 _parse_tempo_date = parse_tempo_date
 
@@ -377,7 +373,6 @@ __all__ = [
     "_extract_seconds",
     "_extract_worker",
     "_format_date",
-    "_format_date_short",
     "_month_ru",
     "_parse_tempo_date",
     "_week_range",

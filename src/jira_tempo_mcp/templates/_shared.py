@@ -25,11 +25,6 @@ def format_date(d: date) -> str:
     return d.strftime("%d.%m.%Y")
 
 
-def format_date_short(d: date) -> str:
-    """Format a date as DDMMYY (filename style)."""
-    return d.strftime("%d%m%y")
-
-
 def month_ru(month: int) -> str:
     """Map month number to Russian lowercase month name (for folder name)."""
     names = [
@@ -313,7 +308,6 @@ __all__ = [
     "extract_seconds",
     "extract_worker",
     "format_date",
-    "format_date_short",
     "group_worklogs_by_comment",
     "group_worklogs_by_comment_raw",
     "md_escape_cell",

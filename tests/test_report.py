@@ -10,7 +10,6 @@ from jira_tempo_mcp.report import (
     _extract_seconds,
     _extract_worker,
     _format_date,
-    _format_date_short,
     _month_ru,
     _parse_tempo_date,
     _week_range,
@@ -55,18 +54,12 @@ class TestWeekRange:
         assert friday == date(2027, 1, 1)
 
 
-# --- _format_date / _format_date_short ---
+# --- _format_date ---
 
 
 class TestFormatDate:
     def test_format_date(self) -> None:
         assert _format_date(date(2026, 6, 15)) == "15.06.2026"
-
-    def test_format_date_short(self) -> None:
-        assert _format_date_short(date(2026, 6, 15)) == "150626"
-
-    def test_format_date_short_single_digit(self) -> None:
-        assert _format_date_short(date(2026, 1, 5)) == "050126"
 
 
 # --- _month_ru ---
