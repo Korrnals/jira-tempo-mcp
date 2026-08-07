@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 
+import pytz
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -313,6 +314,26 @@ class Config(BaseModel):
         if upper not in allowed:
             raise ValueError(f"log_level must be one of {allowed}, got {v!r}")
         return upper
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, v: str) -> str:
+        """Validate ``timezone`` via pytz at config load time (not runtime).
+
+        Without this an invalid zone (e.g. ``Europe/Moskow`` typo) would crash
+        the first time ``datetime.now(pytz.timezone(tz))`` runs, far from the
+        configuration source. Validating at load yields a clear, actionable
+        error at startup instead.
+        """
+        try:
+            pytz.timezone(v)
+        except pytz.UnknownTimeZoneError as exc:
+            raise ValueError(
+                f"Unknown timezone {v!r}. Use an IANA/pytz zone name like "
+                "'Europe/Moscow', 'UTC', or 'America/New_York'. "
+                "List: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
+            ) from exc
+        return v
 
 
 def _load_section_map() -> dict[str, str]:
