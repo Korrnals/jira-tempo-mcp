@@ -45,12 +45,14 @@ jira-tempo-mcp = "jira_tempo_mcp.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# Ship install.py as package data in the wheel. install.py lives at the project
-# root (used by editable installs); build_helpers.py copies it into the package
-# dir at build time so wheel installs can resolve it via
-# importlib.resources.files(__package__) / "install.py" (see cli._run_install_script).
-[tool.setuptools.package-data]
-jira_tempo_mcp = ["install.py"]
+# NOTE: install.py stays at the project root. It is included in the sdist via
+# MANIFEST.in (which also ships .env.example-equivalents and copilot-integration/
+# data install.py needs at runtime). install.py is NOT shipped in the wheel:
+# it reads PROJECT_ROOT = Path(__file__).resolve().parent and expects the repo
+# checkout (.env.example, copilot-integration/, pyproject.toml, .venv/), so
+# shipping it alone in a wheel would not make `jira-tempo-mcp install` work.
+# A custom build_py cmdclass was attempted (commit 83340d6) but broke isolated
+# PEP 517 builds; see commit history for the regression + revert.
 
 [tool.ruff]
 line-length = 100
