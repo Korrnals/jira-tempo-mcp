@@ -20,19 +20,19 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..config import Config
-from ..utils import format_seconds_to_human
-from . import ReportTemplate, TemplateRegistry, builtin_registry
-from ._shared import format_date
-
-logger = logging.getLogger(__name__)
-
 # Jinja2 is a required dependency (pyproject [project.dependencies]), so the
 # import is unconditional. .j2 templates are a documented core feature; the
 # previous optional-import fallback was unreachable in practice and
 # contradicted the declared dependency.
 from jinja2 import FileSystemLoader, TemplateNotFound
 from jinja2.sandbox import SandboxedEnvironment
+
+from ..config import Config
+from ..utils import format_seconds_to_human
+from . import ReportTemplate, TemplateRegistry, builtin_registry
+from ._shared import format_date
+
+logger = logging.getLogger(__name__)
 
 
 class JinjaTemplate:
