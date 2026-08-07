@@ -260,6 +260,39 @@ TOOLS: list[Tool] = [
         inputSchema={"type": "object", "properties": {}, "required": []},
     ),
     Tool(
+        name="preview_report_template",
+        description=(
+            "Preview a report template rendered with sample data. "
+            "Useful for exploring templates before generating a real report. "
+            "Returns the rendered text without writing a file. "
+            "Does NOT call Jira/Tempo — uses built-in mock worklogs."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "template_name": {
+                    "type": "string",
+                    "description": (
+                        "Name of the template to preview "
+                        "(use list_report_templates to see available names)."
+                    ),
+                },
+                "sample_data": {
+                    "type": "string",
+                    "enum": ["default", "minimal", "empty"],
+                    "description": (
+                        "Preset sample-data profile: 'default' = realistic worklogs "
+                        "(several issues, varied times), 'minimal' = a single worklog, "
+                        "'empty' = no worklogs (tests empty-state rendering). "
+                        "Defaults to 'default'."
+                    ),
+                    "default": "default",
+                },
+            },
+            "required": ["template_name"],
+        },
+    ),
+    Tool(
         name="search_users",
         description=(
             "Search Jira users by name, surname, username, or email fragment. "
@@ -845,6 +878,112 @@ async def _handle_list_report_templates(
     return "\n".join(lines)
 
 
+# --- Preview tool: sample data (mock worklogs, no Jira/Tempo calls) ---
+
+# A fixed preview week so rendered output is deterministic across runs
+# and timezones (the week does not depend on "today").
+_PREVIEW_MONDAY = date(2026, 6, 15)
+_PREVIEW_FRIDAY = date(2026, 6, 19)
+
+# Mock worker key shared by every sample worklog.
+_PREVIEW_WORKER = "preview-user"
+
+# Issue titles for the default/minimal profiles. Keys that map to a
+# section in REPORT_SECTION_MAP are intentionally absent here so the
+# template's "unknown title -> key" fallback path is exercised too.
+_PREVIEW_ISSUE_TITLES: dict[str, str] = {
+    "DEVOPS-101": "Refactor Helm release workflow",
+    "DEVOPS-102": "Migrate Valkey chart to v0.9",
+    "DEVOPS-103": "Fix flaky integration test suite",
+    "OPS-200": "On-call rotation handover",
+}
+
+
+def _make_sample_worklog(
+    key: str,
+    seconds: int,
+    day: int,
+    comment: str = "",
+) -> dict[str, Any]:
+    """Build a single mock Tempo worklog on the preview week.
+
+    ``day`` is the day-of-month within June 2026 (15..19 = Mon..Fri).
+    """
+    wl: dict[str, Any] = {
+        "issueKey": key,
+        "timeSpentSeconds": seconds,
+        "startDate": f"2026-06-{day:02d}",
+        "started": f"2026-06-{day:02d} 10:00:00.000",
+        "authorAccountId": _PREVIEW_WORKER,
+    }
+    if comment:
+        wl["comment"] = comment
+    return wl
+
+
+def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
+    """Return mock Tempo worklogs for a preview-data profile.
+
+    Profiles:
+      * ``default`` — realistic week: 4 issues across Mon..Fri, varied
+        durations, one non-issue (standup) worklog.
+      * ``minimal`` — a single 1h worklog.
+      * ``empty`` — no worklogs (exercises empty-state rendering).
+    """
+    if profile == "empty":
+        return []
+    if profile == "minimal":
+        return [
+            _make_sample_worklog("DEVOPS-101", 3600, 15, "Kicked off the refactor."),
+        ]
+    # default — realistic multi-issue week.
+    return [
+        _make_sample_worklog("DEVOPS-101", 7200, 15, "Refactor Helm release workflow."),
+        _make_sample_worklog("DEVOPS-101", 5400, 16, "Refactor Helm release workflow."),
+        _make_sample_worklog("DEVOPS-102", 9000, 16, "Migrate Valkey chart to v0.9."),
+        _make_sample_worklog("DEVOPS-103", 3600, 17, "Fix flaky integration test suite."),
+        _make_sample_worklog("DEVOPS-103", 2700, 18, "Fix flaky integration test suite."),
+        _make_sample_worklog("OPS-200", 1800, 15, "On-call rotation handover."),
+        _make_sample_worklog("Standup", 1800, 16, "Daily standup."),
+    ]
+
+
+async def _handle_preview_report_template(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    # client is intentionally unused: preview never calls Jira/Tempo.
+    del client
+
+    template_name = arguments.get("template_name")
+    if not isinstance(template_name, str) or not template_name.strip():
+        raise ValueError("'template_name' must be a non-empty string.")
+
+    profile = arguments.get("sample_data", "default")
+    if profile not in ("default", "minimal", "empty"):
+        raise ValueError(f"'sample_data' must be one of default, minimal, empty — got {profile!r}.")
+
+    registry = build_registry(config)
+    template = registry.get(template_name)
+    if template is None:
+        raise ValueError(
+            f"Unknown template {template_name!r}. "
+            f"Available: {', '.join(registry.names()) or '(none)'}."
+        )
+
+    worklogs = _sample_worklogs(profile)
+    rendered = template.render(
+        worklogs,
+        config,
+        monday=_PREVIEW_MONDAY,
+        friday=_PREVIEW_FRIDAY,
+        issue_titles=dict(_PREVIEW_ISSUE_TITLES),
+        author=config.report_author_header,
+    )
+    # Guarantee a non-empty string even for empty-state templates that
+    # render to "" (rare, but keeps the tool contract honest).
+    return rendered or "(template rendered an empty string for this profile)"
+
+
 async def _handle_search_users(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
@@ -1001,6 +1140,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "generate_weekly_report": _handle_generate_report,
     "generate_team_report": _handle_generate_team_report,
     "list_report_templates": _handle_list_report_templates,
+    "preview_report_template": _handle_preview_report_template,
     "search_users": _handle_search_users,
     "list_user_tasks": _handle_list_user_tasks,
     "list_issues_by_jql": _handle_list_issues_by_jql,
