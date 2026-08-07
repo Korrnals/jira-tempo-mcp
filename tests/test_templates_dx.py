@@ -162,10 +162,18 @@ class TestPreviewReportTemplate:
             config,
             cast(JiraTempoClient, _make_mock_client()),
         )
-        # team_report expects per_user_worklogs/users kwargs which the preview
-        # handler does not supply; it should still render its header structure
-        # without crashing (the body may be empty).
+        # Since the preview handler passes per_user_worklogs+users, team_report
+        # renders a per-user section (header "Preview User") with issue keys and
+        # nonzero durations, plus an aggregate summary. The no-task standup
+        # worklog (issueKey=None) is skipped by the template, not rendered.
         assert isinstance(result, str)
+        assert len(result.strip()) > 0
+        assert "DEVOPS-101" in result, (
+            "team_report preview should render an issue key from mock worklogs"
+        )
+        assert any(token in result for token in ("h", "m", "ч", "м")), (
+            "team_report preview should contain a nonzero human-readable duration"
+        )
 
     async def test_invalid_sample_data_raises(self) -> None:
         config = _make_config()
