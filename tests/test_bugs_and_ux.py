@@ -165,8 +165,8 @@ class TestBug2CreateWorklogAttributes:
 
         async def _create_worklog(**kwargs: Any) -> dict[str, Any]:
             err = JiraTempoError("API error 400 from url: ...")
-            err.status_code = 400  # type: ignore[attr-defined]
-            err.response_body = {  # type: ignore[attr-defined]
+            err.status_code = 400
+            err.response_body = {
                 "errors": {"_Специализация_": "Work attribute 'Специализация' is required"}
             }
             raise err

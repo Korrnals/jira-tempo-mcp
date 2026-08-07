@@ -27,11 +27,29 @@ def _retry_backoff_seconds(attempt: int) -> float:
 
 
 class JiraTempoError(Exception):
-    """Raised on API errors. Message never contains tokens or full URLs with auth."""
+    """Raised on API errors. Message never contains tokens or full URLs with auth.
 
-    # HTTP status + body of the failing response, populated by _request().
-    status_code: int | None = None
-    response_body: Any = None
+    Optional ``status_code`` (HTTP status of the failing response) and
+    ``response_body`` (parsed JSON or raw text) are populated by the request
+    path when an HTTP response is available. They are real instance
+    attributes declared via an explicit ``__init__`` rather than class-level
+    annotations, so there is no ambiguity about whether they exist on a given
+    instance (previously they were class-level annotations silently
+    inherited by subclasses and required ``# type: ignore[attr-defined]`` at
+    call sites). ``str(exc)`` remains the message alone, so existing code that
+    does ``if "429" in str(exc)`` keeps working.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        response_body: Any = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_body = response_body
 
 
 class WorkerKeyResolutionError(JiraTempoError):
@@ -207,15 +225,17 @@ class JiraTempoClient:
                 raw_body = resp.text[:200] if resp.text else ""
                 body = _redact_body(raw_body)
                 logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
-                err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
-                err.status_code = resp.status_code
                 try:
-                    err.response_body = resp.json()
+                    parsed_body: Any = resp.json()
                 except ValueError:
                     # Malformed JSON body (json.JSONDecodeError is a subclass
                     # of ValueError) — fall back to raw response text.
-                    err.response_body = resp.text
-                raise err
+                    parsed_body = resp.text
+                raise JiraTempoError(
+                    f"API error {resp.status_code} from {_redact(url)}: {body}",
+                    status_code=resp.status_code,
+                    response_body=parsed_body,
+                )
 
             if resp.status_code == 204 or not resp.text:
                 return None
