@@ -994,11 +994,11 @@ def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
 
 
 async def _handle_preview_report_template(
-    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+    arguments: dict[str, Any], config: Config, _client: JiraTempoClient
 ) -> str:
-    # client is intentionally unused: preview never calls Jira/Tempo.
-    del client
-
+    # _client is intentionally unused: preview never calls Jira/Tempo. The
+    # leading underscore documents intent; the dispatch table in
+    # _TOOL_HANDLERS passes it positionally, so renaming is safe.
     template_name = arguments.get("template_name")
     if not isinstance(template_name, str) or not template_name.strip():
         raise ValueError("'template_name' must be a non-empty string.")
