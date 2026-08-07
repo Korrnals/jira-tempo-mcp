@@ -230,6 +230,46 @@ discipline.
 
 ---
 
+## 🧰 Template tools
+
+Three MCP tools cover template discovery, preview, and generation:
+
+| Tool | Purpose | Calls Jira/Tempo? |
+| --- | --- | --- |
+| `list_report_templates` | List all available templates (builtin + custom), with engine type (`Jinja2`/`Python`) and source (`builtin`/`custom`) | No |
+| `preview_report_template` | Render a template on built-in mock worklogs; see output without writing a file | No |
+| `generate_weekly_report` | Generate a real report, selecting a template via the `template` parameter | Yes |
+
+### `preview_report_template` — explore before generating
+
+Preview renders a template on built-in sample worklogs, so you can iterate on
+layout without spending a Jira/Tempo call. It returns the rendered text as a
+string and writes nothing to disk.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| `template_name` | ✅ | Name of the template to preview (the `.j2` file stem, e.g. `standup`). Use `list_report_templates` to see valid names. |
+| `sample_data` | — | Preset sample-data profile. **Default:** `default`. |
+
+`sample_data` profiles:
+
+| Value | Worklogs used |
+| --- | --- |
+| `default` | Several realistic worklogs with varied times |
+| `minimal` | A single worklog |
+| `empty` | No worklogs — tests empty-state rendering |
+
+```
+preview_report_template(template_name="standup", sample_data="minimal")
+```
+
+> 💡 **Workflow:** `list_report_templates` → `preview_report_template` (tune
+> the layout on mock data) → `generate_weekly_report(template="standup")`
+> (produce the real report). See [templates.md](templates.md) for the full
+> author reference.
+
+---
+
 ## ➡️ Next steps
 
 - 🌐 [api.md](api.md) — MCP tools reference
