@@ -225,6 +225,15 @@ def resolve_template(config: Config, registry: TemplateRegistry) -> ReportTempla
                         "REPORT_TEMPLATE_PATH points to .py but REPORT_TEMPLATE_ALLOW_PY=0"
                     )
                 else:
+                    # Code-execution warning — mirrors discover_custom_templates.
+                    # A .py template runs arbitrary Python via importlib; the user
+                    # must trust the file. This is opt-in (REPORT_TEMPLATE_ALLOW_PY=1)
+                    # and the threat model is documented separately by Tech Writer.
+                    logger.warning(
+                        "Loading Python template %s via REPORT_TEMPLATE_PATH — "
+                        "this executes arbitrary code; ensure the file is trusted",
+                        path,
+                    )
                     tpl = _load_python_template(path)
                     if tpl is not None:
                         return tpl
