@@ -44,6 +44,9 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 | `generate_weekly_report` | Generate a weekly report (txt/md/json) from Tempo worklogs |
 | `generate_team_report` | Generate a team report (txt/md/json) for multiple Jira users |
 | `generate_tasks_report` | Generate a tasks report (md/txt/json) grouped by status |
+| `list_issues_by_jql` | Search Jira issues by a JQL query (read-only, max 100) |
+| `get_current_user` | Get info about the authenticated user (PAT owner) |
+| `preview_report_template` | Preview a report template rendered with sample data |
 | `list_report_templates` | List available report templates (builtin + custom) |
 
 Since v0.2.0 the server supports **team reports** (per-user aggregation with
@@ -98,7 +101,7 @@ The full uninstall removes the VS Code `mcp.json` entry, the Copilot Chat agent 
 ```bash
 # Option A — docker run with an .env file (chmod 600, gitignored):
 cp .env.example .env  # fill in JIRA_BASE_URL, JIRA_USER, JIRA_PAT
-docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.3.2
+docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.4.0
 
 # Option B — docker compose (uses docker-compose.yml at repo root):
 docker compose up -d
@@ -107,7 +110,7 @@ docker compose logs -f jira-tempo-mcp
 docker compose run --rm -T jira-tempo-mcp
 ```
 
-The image is published to ghcr for every release: `ghcr.io/korrnals/jira-tempo-mcp:<version>` and `:latest`. Pin to a version tag (e.g. `:0.3.2`) for reproducibility; use `:latest` to track the newest release.
+The image is published to ghcr for every release: `ghcr.io/korrnals/jira-tempo-mcp:<version>` and `:latest`. Pin to a version tag (e.g. `:0.4.0`) for reproducibility; use `:latest` to track the newest release.
 
 > ⚠️ **Warning:** The install script URL works once the repository is public.
 > Until then, clone manually and run `python install.py`.

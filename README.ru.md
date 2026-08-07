@@ -44,7 +44,10 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 | `generate_weekly_report` | Сгенерировать еженедельный отчёт (txt/md/json) из worklog'ов Tempo |
 | `generate_team_report` | Сгенерировать командный отчёт (txt/md/json) для нескольких пользователей |
 | `generate_tasks_report` | Сгенерировать отчёт по задачам (md/txt/json) с группировкой по статусам |
-| `list_report_templates` | Показать доступные шаблоны отчётов (встроенные + кастомные) |
+| `list_issues_by_jql` | Поиск задач Jira по JQL-запросу (только чтение, до 100) |
+| `get_current_user` | Информация об аутентифицированном пользователе (владельце PAT) |
+| `preview_report_template` | Предпросмотр шаблона отчёта на образцовых данных |
+| `list_report_templates` | Показать доступные шаблоны отчётов (встроенные + пользовательские) |
 
 Начиная с v0.2.0 сервер поддерживает **командные отчёты** (агрегация по
 пользователям с rate-limiting) и **кастомные шаблоны отчётов** (Jinja2-песочница
@@ -97,7 +100,7 @@ python install.py --uninstall-agent
 ```bash
 # Опция A — docker run с .env-файлом (chmod 600, добавлен в .gitignore):
 cp .env.example .env  # впишите JIRA_BASE_URL, JIRA_USER, JIRA_PAT
-docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.3.2
+docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.4.0
 
 # Опция B — docker compose (использует docker-compose.yml в корне репо):
 docker compose up -d
@@ -106,7 +109,7 @@ docker compose logs -f jira-tempo-mcp
 docker compose run --rm -T jira-tempo-mcp
 ```
 
-Образ публикуется в ghcr для каждого релиза: `ghcr.io/korrnals/jira-tempo-mcp:<version>` и `:latest`. Пиньте к тегу версии (например `:0.3.2`) для воспроизводимости; `:latest` отслеживает новейший релиз.
+Образ публикуется в ghcr для каждого релиза: `ghcr.io/korrnals/jira-tempo-mcp:<version>` и `:latest`. Пиньте к тегу версии (например `:0.4.0`) для воспроизводимости; `:latest` отслеживает новейший релиз.
 
 > ⚠️ **Внимание:** URL установочного скрипта заработает, когда репозиторий
 > станет публичным. До этого — клонируйте вручную и запустите `python install.py`.
