@@ -28,7 +28,7 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `REPORT_OUTPUT_DIR` | no | `./reports` | Base directory for weekly report files |
+| `REPORT_OUTPUT_DIR` | no | `~/.mcp/jira-tempo-mcp/reports/` | Base directory for report files; nested `year/month/weekly/` subdirectories are created silently |
 | `REPORT_AUTHOR_NAME` | no | `JIRA_USER` | Author display name in the report header |
 | `REPORT_SECTION_MAP` | no | empty | JSON dict mapping issue keys to section titles |
 | `REPORT_SECTION_MAP_FILE` | no | empty | Path to a JSON file with the section mapping |
@@ -58,6 +58,38 @@ See [reports.md](reports.md) for details on the report-related variables.
 
 See [reports.md#custom-templates](reports.md#custom-templates) for details on
 custom templates.
+
+### 🛠️ Dotenv source (optional)
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `MCP_ENV_FILE` | no | empty | Explicit absolute path to `.env.local`; overrides the standard VS Code locations |
+
+---
+
+## 🔗 Configuration source priority
+
+The server assembles configuration from several sources. Priority (highest
+to lowest) determines which value wins on conflict:
+
+| # | Source | When it applies |
+| --- | --- | --- |
+| 1 | **Process environment variables** | Always win — set by MCP-host, systemd, CI/CD, or shell |
+| 2 | **MCP-host `.env.local`** | First existing file: `MCP_ENV_FILE` → `~/.config/Code/User/.env.local` (Linux) → `~/Library/Application Support/Code/User/.env.local` (macOS) → `%APPDATA%/Code/User/.env.local` (Windows) |
+| 3 | **`.env` in the repo root** | The `.env` file next to `pyproject.toml`; convenient for CLI development |
+| 4 | **Hardcoded defaults** | Defined in `config.py` (e.g. `~/.mcp/jira-tempo-mcp/reports/`) |
+
+> 💡 **How it works:** all dotenv files are loaded via
+> `load_dotenv(override=False)` — process variables already set are **not**
+> overwritten. Files are applied in the order `.env.local` → repo `.env`,
+> so for keys absent from the process environment, the first file to load
+> (`.env.local`) wins.
+
+> ⚠️ **Scenario this solves:** when calling Python directly from a terminal
+> (outside the MCP-host), variables from `.env.local` **were previously not
+> picked up** — reports fell into the default directory, requiring manual
+> copying. Now a terminal invocation reads the same `.env.local` as the
+> MCP server.
 
 ---
 
