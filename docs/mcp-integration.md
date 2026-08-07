@@ -175,6 +175,61 @@ See [troubleshooting.md](troubleshooting.md) for the full list.
 
 ---
 
+## 🤝 Agent ↔ MCP contract
+
+This section fixes how AI agents (Copilot, GCW agents, etc.) should interact
+with `jira-tempo-mcp`. The contract is mandatory: violating either side leads
+to reports landing in the wrong directory, duplicated work, and delegating to
+the user tasks the agent could have solved itself.
+
+### ✅ The only sanctioned channel — MCP tools
+
+The agent interacts with the server **only** through MCP tools
+(`generate_weekly_report`, `get_tempo_worklogs`, `get_jira_issue`, etc.),
+invoked from Copilot / MCP-client chat. In this mode the VS Code MCP-host
+injects variables from `.env.local` into the server's process environment,
+and reports are written to the canonical directory automatically.
+
+### 🚫 Direct Python/CLI calls from a terminal — anti-pattern
+
+Running the module directly (e.g. `python -m jira_tempo_mcp.cli ...` or
+scripts from `src/`) **from an agent's chat** is an anti-pattern. Reasons:
+
+- the agent duplicates logic already encapsulated in MCP tools;
+- outside the MCP-host, variables from `.env.local` were historically not
+  picked up (see [configuration.md § Configuration source priority](configuration.md) —
+  a terminal call now reads `.env.local` too, but the MCP channel remains
+  preferred);
+- terminal output may contain secrets — higher PAT-leak risk.
+
+A direct call is justified **only** when a human debugs the server itself,
+not when an agent does routine work.
+
+### 🔁 Retry strategy when MCP is unavailable
+
+If an MCP tool is unavailable or returned a network error (`ConnectError`,
+timeout, 5xx), the agent **does not** fall back to the terminal and **does
+not** ask the user to run a script by hand. Strategy:
+
+| Attempt | Action | Delay |
+| --- | --- | --- |
+| 1 | Retry the same MCP tool | — |
+| 2 | Retry after a pause | ~5 s (backoff) |
+| 3 | Retry after a pause | ~15 s (backoff) |
+| 4+ | Escalate to the user with a diagnosis, not a command | — |
+
+Escalating to the user is a **diagnosis** ("the `jira-tempo` MCP server has
+not responded after 3 attempts; check whether the server is running in the
+MCP panel"), not an **instruction** to run a command ("run `python ...` in
+the terminal"). Delegating command execution to the user violates scope
+discipline.
+
+> 💡 **For HTTP 429** (Tempo rate-limit) a retry is already built into the
+> server (`TEMPO_MAX_RETRIES`, exponential backoff) — the agent does not need
+> to retry; it is enough to wait for the tool's response.
+
+---
+
 ## ➡️ Next steps
 
 - 🌐 [api.md](api.md) — MCP tools reference
