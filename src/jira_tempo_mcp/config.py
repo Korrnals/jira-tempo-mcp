@@ -19,10 +19,73 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Load .env from project root (one level up from src/).
+# Repo-local .env (one level up from src/). Lowest-priority dotenv source.
 _ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
-if _ENV_PATH.exists():
-    load_dotenv(_ENV_PATH)
+
+
+# MCP-host `.env.local` candidate paths, checked in order. The first existing
+# file is loaded. ``MCP_ENV_FILE`` (explicit absolute path) wins; otherwise the
+# standard VS Code user-level locations are searched so that direct terminal
+# invocations of the Python module read the same secrets the MCP host injects.
+# NOTE: distrobox expands ``Path.home()`` to the user's real $HOME
+# (/var/home/<user>/.distrobox/<box>/home/...), matching where VS Code writes
+# the file — verified 2026-08-07.
+def _env_local_candidates() -> list[Path]:
+    """Return candidate ``.env.local`` paths in priority order.
+
+    Order: explicit ``MCP_ENV_FILE`` override first, then standard VS Code
+    user-level locations (Linux, macOS, Windows). Only paths that exist are
+    useful at call time, but the full ordered list is returned so callers can
+    log/report which locations were searched.
+    """
+    home = Path.home()
+    explicit = os.getenv("MCP_ENV_FILE", "").strip()
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+    # Standard VS Code user-level .env.local locations.
+    candidates.extend(
+        [
+            home / ".config" / "Code" / "User" / ".env.local",  # Linux
+            home / "Library" / "Application Support" / "Code" / "User" / ".env.local",  # macOS
+            home / "AppData" / "Roaming" / "Code" / "User" / ".env.local",  # Windows
+        ]
+    )
+    return candidates
+
+
+def _apply_dotenv_files() -> None:
+    """Apply dotenv sources with a documented priority chain.
+
+    Priority (highest first, because ``load_dotenv(override=False)`` never
+    overwrites a value already in ``os.environ``):
+
+    1. **Process environment** — always wins.
+    2. **MCP-host ``.env.local``** — the first existing candidate from
+       :func:`_env_local_candidates` (or ``MCP_ENV_FILE`` override).
+    3. **Repo-local ``.env``** — ``.env`` at the repository root.
+
+    Within dotenv files, the FIRST file to define a key wins (because
+    ``override=False`` keeps the value already set). We load ``.env.local``
+    before the repo ``.env`` so the MCP-host file takes priority over the
+    repo file for keys absent from the process environment.
+
+    This is idempotent: calling it again only fills keys still missing from
+    ``os.environ``, so re-invocation during tests or hot-reload is safe.
+    """
+    # 1. MCP-host .env.local (explicit override or standard VS Code location).
+    for candidate in _env_local_candidates():
+        if candidate.is_file():
+            load_dotenv(candidate, override=False)
+            break
+    # 2. Repo-local .env — never overrides .env.local or process env.
+    if _ENV_PATH.is_file():
+        load_dotenv(_ENV_PATH, override=False)
+
+
+# Apply dotenv sources at import time so module-level os.getenv calls in
+# load_config() see the merged environment. Idempotent and safe to re-run.
+_apply_dotenv_files()
 
 
 class ConfigError(ValueError):
