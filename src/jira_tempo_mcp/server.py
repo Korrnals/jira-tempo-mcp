@@ -978,6 +978,12 @@ async def _handle_preview_report_template(
         friday=_PREVIEW_FRIDAY,
         issue_titles=dict(_PREVIEW_ISSUE_TITLES),
         author=config.report_author_header,
+        # team_report consumes per-user groupings (per_user_worklogs +
+        # users) instead of the flat worklogs list. default / weekly_summary
+        # accept **kwargs and ignore these keys, so passing them is safe for
+        # every builtin template and makes the team_report preview meaningful.
+        per_user_worklogs={_PREVIEW_WORKER: worklogs},
+        users=[(_PREVIEW_WORKER, "Preview User")],
     )
     # Guarantee a non-empty string even for empty-state templates that
     # render to "" (rare, but keeps the tool contract honest).
