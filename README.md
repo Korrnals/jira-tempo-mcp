@@ -304,6 +304,77 @@ See `JTM_AGENT.md` for the full 7-type report matrix, parameter semantics, and w
 
 ---
 
+## 🎨 Custom templates
+
+Since v0.2.0 `jira-tempo-mcp` supports **custom report templates**. Drop a
+`.j2` file in a directory and it becomes selectable by name — no code change,
+no restart beyond reloading the MCP server config.
+
+### Quickstart (3 steps)
+
+1. **Create the template directory:**
+
+   ```bash
+   mkdir -p ~/.config/jira-tempo-mcp/templates/
+   ```
+
+2. **Add a `.j2` template.** Copy the ready-made example from this repo as a
+   starting point:
+
+   ```bash
+   cp examples/templates/standup.j2 ~/.config/jira-tempo-mcp/templates/
+   ```
+
+3. **Generate a report with it** via the MCP tools:
+
+   - `list_report_templates` — see available templates (builtin + custom, with
+     type `Jinja2`/`Python`).
+   - `generate_weekly_report(template="standup")` — generate with the chosen
+     template.
+
+### Preview before generating
+
+The `preview_report_template` tool renders a template on built-in **mock
+worklogs** — no Jira/Tempo call, no file written. Three sample-data profiles
+are available:
+
+| `sample_data` | What it shows |
+| --- | --- |
+| `default` | Several realistic worklogs with varied times (default) |
+| `minimal` | A single worklog |
+| `empty` | No worklogs — tests empty-state rendering |
+
+```
+preview_report_template(template_name="standup", sample_data="default")
+```
+
+<details>
+<summary><b>Where templates live & engine details</b></summary>
+
+Template directories per OS:
+
+| OS | Default path |
+| --- | --- |
+| Linux | `~/.config/jira-tempo-mcp/templates/` |
+| macOS | `~/Library/Application Support/jira-tempo-mcp/templates/` |
+| Windows | `%APPDATA%\jira-tempo-mcp\templates\` |
+
+Two engines are supported:
+
+- **Jinja2** (`.j2`) — recommended. Runs in a `SandboxedEnvironment` (safe:
+  unsafe constructs like `{{ config.__class__ }}` are blocked).
+- **Python** (`.py`) — **opt-in only** via `REPORT_TEMPLATE_ALLOW_PY=1`. Runs
+  arbitrary code — load only trusted files.
+
+</details>
+
+📖 **Full author reference** (context variables, worklog fields, Jinja2
+filters, Python protocol, security model): [docs/templates.md](docs/templates.md).
+For builtin template examples and the rendered-output gallery, see
+[docs/reports.md](docs/reports.md#-custom-templates).
+
+---
+
 ##  License
 
 MIT

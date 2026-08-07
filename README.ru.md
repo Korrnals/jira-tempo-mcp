@@ -304,6 +304,79 @@ make build      # python -m build (sdist + wheel)
 
 ---
 
+## 🎨 Пользовательские шаблоны
+
+Начиная с v0.2.0 `jira-tempo-mcp` поддерживает **пользовательские шаблоны
+отчётов**. Положите файл `.j2` в директорию — и он становится доступным по
+имени: без изменения кода, без перезапуска (достаточно перезагрузить
+конфигурацию MCP-сервера).
+
+### Быстрый старт (3 шага)
+
+1. **Создайте директорию шаблонов:**
+
+   ```bash
+   mkdir -p ~/.config/jira-tempo-mcp/templates/
+   ```
+
+2. **Добавьте шаблон `.j2`.** Скопируйте готовый пример из этого репозитория
+   как отправную точку:
+
+   ```bash
+   cp examples/templates/standup.j2 ~/.config/jira-tempo-mcp/templates/
+   ```
+
+3. **Сгенерируйте отчёт с ним** через MCP-инструменты:
+
+   - `list_report_templates` — показать доступные шаблоны (встроенные +
+     пользовательские, с типом `Jinja2`/`Python`).
+   - `generate_weekly_report(template="standup")` — сгенерировать выбранным
+     шаблоном.
+
+### Предпросмотр перед генерацией
+
+Инструмент `preview_report_template` рендерит шаблон на встроенных
+**тестовых worklog'ах** — без вызова Jira/Tempo, без создания файла. Доступны
+три профиля демонстрационных данных:
+
+| `sample_data` | Что показывает |
+| --- | --- |
+| `default` | Несколько реалистичных worklog'ов с разным временем (по умолчанию) |
+| `minimal` | Один worklog |
+| `empty` | Нет worklog'ов — проверка отрисовки пустого состояния |
+
+```
+preview_report_template(template_name="standup", sample_data="default")
+```
+
+<details>
+<summary><b>Где хранятся шаблоны и детали движков</b></summary>
+
+Директории шаблонов по ОС:
+
+| ОС | Путь по умолчанию |
+| --- | --- |
+| Linux | `~/.config/jira-tempo-mcp/templates/` |
+| macOS | `~/Library/Application Support/jira-tempo-mcp/templates/` |
+| Windows | `%APPDATA%\jira-tempo-mcp\templates\` |
+
+Поддерживаются два движка:
+
+- **Jinja2** (`.j2`) — рекомендуется. Запускается в `SandboxedEnvironment`
+  (безопасно: опасные конструкции вроде `{{ config.__class__ }}` блокируются).
+- **Python** (`.py`) — **только по явному включению** через
+  `REPORT_TEMPLATE_ALLOW_PY=1`. Выполняет произвольный код — загружайте только
+  доверенные файлы.
+
+</details>
+
+📖 **Полный справочник для авторов** (переменные контекста, поля worklog,
+фильтры Jinja2, протокол Python, модель безопасности):
+[docs/templates.ru.md](docs/templates.ru.md). Примеры встроенных шаблонов и
+галерея вывода — в [docs/reports.ru.md](docs/reports.ru.md#-кастомные-шаблоны).
+
+---
+
 ##  Лицензия
 
 MIT
