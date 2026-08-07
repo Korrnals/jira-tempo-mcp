@@ -285,7 +285,10 @@ class TestResilientConfigLoading:
                 "REPORT_OUTPUT_DIR": str(tmp_path / "reports"),
             },
         )
-        with patch.dict(os.environ, {}, clear=True):
+        with (
+            patch("jira_tempo_mcp.config._env_local_candidates", return_value=[env_local]),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             os.environ["MCP_ENV_FILE"] = str(env_local)
             _apply_dotenv_files()
             c = load_config()
@@ -308,7 +311,10 @@ class TestResilientConfigLoading:
             "REPORT_OUTPUT_DIR": str(tmp_path / "process"),
             "MCP_ENV_FILE": str(env_local),
         }
-        with patch.dict(os.environ, process_env, clear=True):
+        with (
+            patch("jira_tempo_mcp.config._env_local_candidates", return_value=[env_local]),
+            patch.dict(os.environ, process_env, clear=True),
+        ):
             _apply_dotenv_files()
             c = load_config()
         assert c.jira_base_url == "https://from-process.test"
@@ -339,6 +345,7 @@ class TestResilientConfigLoading:
         )
         with (
             patch("jira_tempo_mcp.config._ENV_PATH", repo_env),
+            patch("jira_tempo_mcp.config._env_local_candidates", return_value=[env_local]),
             patch.dict(os.environ, {}, clear=True),
         ):
             os.environ["MCP_ENV_FILE"] = str(env_local)
@@ -379,7 +386,10 @@ class TestResilientConfigLoading:
             tmp_path / ".env.local",
             {"JIRA_BASE_URL": "https://idempotent.test", "JIRA_USER": "u", "JIRA_PAT": "t"},
         )
-        with patch.dict(os.environ, {}, clear=True):
+        with (
+            patch("jira_tempo_mcp.config._env_local_candidates", return_value=[env_local]),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             os.environ["MCP_ENV_FILE"] = str(env_local)
             _apply_dotenv_files()
             _apply_dotenv_files()
