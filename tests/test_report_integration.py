@@ -464,3 +464,52 @@ class TestGenerateWeeklyReportUsernameOverride:
 
         data = _json.loads(Path(result).read_text(encoding="utf-8"))
         assert data["author"] == "otheruser"
+
+
+class TestGenerateWeeklyReportSilentMkdir:
+    """Problem 3 — output directories are created silently (no manual mkdir -p).
+
+    When ``output_dir`` is not passed, ``generate_weekly_report`` derives the
+    path from ``config.report_output_dir`` and builds the nested
+    ``<root>/<year>/<month-ru>/weekly`` structure. The deeply-nested dirs must
+    be created automatically via ``mkdir(parents=True, exist_ok=True)`` — this
+    is the canonical-path fix that makes direct terminal Python calls work
+    once ``config.report_output_dir`` is correctly populated from
+    ``.env.local`` (problem 1).
+    """
+
+    async def test_silent_mkdir_from_config_output_dir(self, tmp_path: Path) -> None:
+        """Nested year/month/weekly dirs auto-created from config.report_output_dir."""
+        # Point report_output_dir at a non-existent nested path (no mkdir run yet).
+        config = _make_config(report_output_dir=str(tmp_path / "canonical" / "reports"))
+        mock_client = _make_mock_client([_make_worklog("PROJECT-100", 3600, 15, "Stand")])
+
+        # Do NOT pass output_dir — force the function to derive it from config.
+        result = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client),
+            config,
+            target_date=TARGET_DATE,
+        )
+
+        # Expected canonical layout: <root>/2026/июнь/weekly/<filename>
+        expected_dir = tmp_path / "canonical" / "reports" / "2026" / "июнь" / "weekly"
+        expected_path = expected_dir / EXPECTED_FILENAME
+        assert result == str(expected_path)
+        # The nested directory tree was created silently.
+        assert expected_dir.is_dir()
+        assert expected_path.is_file()
+
+    async def test_silent_mkdir_idempotent_on_existing_dir(self, tmp_path: Path) -> None:
+        """Re-running into an already-created dir does not raise (exist_ok)."""
+        config = _make_config(report_output_dir=str(tmp_path / "reports"))
+        mock_client = _make_mock_client([_make_worklog("PROJECT-100", 3600, 15, "Stand")])
+
+        result1 = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client), config, target_date=TARGET_DATE
+        )
+        # Second run into the same (now-existing) nested dir must succeed.
+        result2 = await generate_weekly_report(
+            cast(JiraTempoClient, mock_client), config, target_date=TARGET_DATE
+        )
+        assert result1 == result2
+        assert Path(result2).is_file()

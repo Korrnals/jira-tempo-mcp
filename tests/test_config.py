@@ -10,7 +10,13 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from jira_tempo_mcp.config import DEFAULT_SECTION_MAP, Config, load_config
+from jira_tempo_mcp.config import (
+    DEFAULT_SECTION_MAP,
+    Config,
+    _apply_dotenv_files,
+    _env_local_candidates,
+    load_config,
+)
 
 
 class TestConfigValidation:
@@ -247,3 +253,142 @@ class TestReportTeamUsers:
             c = load_config()
         assert c.report_team_users == []
         assert c.team_users_resolved == ["tester"]
+
+
+class TestResilientConfigLoading:
+    """Tests for the dotenv priority chain (problem 1 — resilient config-loading).
+
+    Priority (highest first): process env → MCP-host ``.env.local`` → repo
+    ``.env`` → defaults. These tests exercise :func:`_apply_dotenv_files`
+    against temp dotenv files so the real machine's ``.env.local`` never
+    leaks into test outcomes.
+    """
+
+    def _write_env_file(self, path: Path, values: dict[str, str]) -> Path:
+        """Write a KEY=value dotenv file (content is test fixture only)."""
+        path.write_text("\n".join(f"{k}={v}" for k, v in values.items()) + "\n")
+        return path
+
+    def test_env_local_read_when_process_env_missing(self, tmp_path: Path) -> None:
+        """Problem 1: ``.env.local`` is read so direct terminal Python calls work.
+
+        When ``MCP_ENV_FILE`` points to a ``.env.local`` and the process env
+        lacks a key, that key must be loaded from the file. This is the exact
+        scenario that broke weekly-report generation on 2026-08-07.
+        """
+        env_local = self._write_env_file(
+            tmp_path / ".env.local",
+            {
+                "JIRA_BASE_URL": "https://from-env-local.test",
+                "JIRA_USER": "localuser",
+                "JIRA_PAT": "tok-from-local",
+                "REPORT_OUTPUT_DIR": str(tmp_path / "reports"),
+            },
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ["MCP_ENV_FILE"] = str(env_local)
+            _apply_dotenv_files()
+            c = load_config()
+        assert c.jira_base_url == "https://from-env-local.test"
+        assert c.report_output_dir == str(tmp_path / "reports")
+
+    def test_process_env_wins_over_env_local(self, tmp_path: Path) -> None:
+        """Process env has highest priority (load_dotenv override=False)."""
+        env_local = self._write_env_file(
+            tmp_path / ".env.local",
+            {
+                "JIRA_BASE_URL": "https://from-env-local.test",
+                "REPORT_OUTPUT_DIR": str(tmp_path / "local"),
+            },
+        )
+        process_env = {
+            "JIRA_BASE_URL": "https://from-process.test",
+            "JIRA_USER": "procuser",
+            "JIRA_PAT": "proc-tok",
+            "REPORT_OUTPUT_DIR": str(tmp_path / "process"),
+            "MCP_ENV_FILE": str(env_local),
+        }
+        with patch.dict(os.environ, process_env, clear=True):
+            _apply_dotenv_files()
+            c = load_config()
+        assert c.jira_base_url == "https://from-process.test"
+        assert c.report_output_dir == str(tmp_path / "process")
+
+    def test_env_local_wins_over_repo_env(self, tmp_path: Path) -> None:
+        """``.env.local`` takes priority over the repo ``.env`` for unset keys.
+
+        Keys absent from the process env resolve from ``.env.local`` first,
+        then the repo ``.env``. We patch ``_ENV_PATH`` to a temp repo env so
+        no real repo file interferes.
+        """
+        env_local = self._write_env_file(
+            tmp_path / ".env.local",
+            {
+                "JIRA_BASE_URL": "https://local-wins.test",
+                "JIRA_USER": "localuser",
+                "JIRA_PAT": "local-tok",
+                "REPORT_OUTPUT_DIR": str(tmp_path / "from-local"),
+            },
+        )
+        repo_env = self._write_env_file(
+            tmp_path / ".env",
+            {
+                "JIRA_BASE_URL": "https://repo-loses.test",
+                "REPORT_OUTPUT_DIR": str(tmp_path / "from-repo"),
+            },
+        )
+        with (
+            patch("jira_tempo_mcp.config._ENV_PATH", repo_env),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            os.environ["MCP_ENV_FILE"] = str(env_local)
+            _apply_dotenv_files()
+            c = load_config()
+        assert c.jira_base_url == "https://local-wins.test"
+        assert c.report_output_dir == str(tmp_path / "from-local")
+
+    def test_repo_env_used_when_no_env_local(self, tmp_path: Path) -> None:
+        """Repo ``.env`` is the fallback when no ``.env.local`` exists.
+
+        We patch ``_env_local_candidates`` to return an empty list so the
+        real machine's VS Code ``.env.local`` does not interfere with this
+        test — modelling the scenario where no MCP-host env file is present.
+        """
+        repo_env = self._write_env_file(
+            tmp_path / ".env",
+            {
+                "JIRA_BASE_URL": "https://from-repo.test",
+                "JIRA_USER": "repouser",
+                "JIRA_PAT": "repo-tok",
+                "REPORT_OUTPUT_DIR": str(tmp_path / "repo-reports"),
+            },
+        )
+        with (
+            patch("jira_tempo_mcp.config._ENV_PATH", repo_env),
+            patch("jira_tempo_mcp.config._env_local_candidates", return_value=[]),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            _apply_dotenv_files()
+            c = load_config()
+        assert c.jira_base_url == "https://from-repo.test"
+        assert c.report_output_dir == str(tmp_path / "repo-reports")
+
+    def test_apply_dotenv_files_is_idempotent(self, tmp_path: Path) -> None:
+        """Re-applying dotenv sources does not duplicate or error."""
+        env_local = self._write_env_file(
+            tmp_path / ".env.local",
+            {"JIRA_BASE_URL": "https://idempotent.test", "JIRA_USER": "u", "JIRA_PAT": "t"},
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ["MCP_ENV_FILE"] = str(env_local)
+            _apply_dotenv_files()
+            _apply_dotenv_files()
+            assert os.getenv("JIRA_BASE_URL") == "https://idempotent.test"
+
+    def test_env_local_candidates_explicit_override(self, tmp_path: Path) -> None:
+        """``MCP_ENV_FILE`` override is listed first in candidates."""
+        explicit = tmp_path / "custom.env"
+        explicit.write_text("KEY=val\n")
+        with patch.dict(os.environ, {"MCP_ENV_FILE": str(explicit)}, clear=True):
+            candidates = _env_local_candidates()
+        assert candidates[0] == explicit
