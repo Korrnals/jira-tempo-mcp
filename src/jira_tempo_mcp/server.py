@@ -22,6 +22,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from . import __version__
 from .client import (
     FavoritesEndpointUnavailableError,
     JiraTempoClient,
@@ -1010,7 +1011,9 @@ _TOOL_HANDLERS: dict[str, Any] = {
 
 async def serve(config: Config) -> None:
     """Run the MCP server over stdio."""
-    server = Server("jira-tempo-mcp")
+    # Pass the app version so MCP clients see it in serverInfo (the SDK
+    # otherwise surfaces only SERVER_VERSION, i.e. the MCP SDK release).
+    server = Server("jira-tempo-mcp", version=__version__)
 
     # mypy: MCP SDK decorators are untyped — suppress until upstream adds hints.
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]  # MCP SDK decorators are untyped upstream
