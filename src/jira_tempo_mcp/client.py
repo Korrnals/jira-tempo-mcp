@@ -6,6 +6,7 @@ logged. Errors are redacted before propagation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -14,6 +15,14 @@ import httpx
 from .config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_backoff_seconds(attempt: int) -> float:
+    """Exponential backoff (seconds) for HTTP retries.
+
+    Sequence for attempts 0,1,2,...: 0.5, 1.0, 2.0, 4.0 — capped at 30s.
+    """
+    return float(min(0.5 * (2 ** attempt), 30.0))
 
 
 class JiraTempoError(Exception):
@@ -118,32 +127,77 @@ class JiraTempoClient:
         json: Any | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        try:
-            resp = await self._client.request(
-                method, url, headers=headers, json=json, params=params
-            )
-        except httpx.RequestError as exc:
-            raise JiraTempoError(
-                f"Network error contacting Jira/Tempo: {exc.__class__.__name__}"
-            ) from exc
-
-        if resp.status_code >= 400:
-            # m6: truncate to 200 chars to reduce log noise and potential token leakage.
-            body = resp.text[:200] if resp.text else ""
-            logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
-            err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
-            err.status_code = resp.status_code
+        # Retry transient failures on idempotent GET only (finding #11).
+        # Non-GET methods never retry: a network error on POST is ambiguous
+        # (the request may have reached the server) and retrying could create
+        # duplicates (e.g. worklogs). Default http_max_retries=0 keeps the
+        # original fail-fast behaviour.
+        max_retries = self._config.http_max_retries
+        idempotent = method.upper() == "GET"
+        for attempt in range(max_retries + 1):
             try:
-                err.response_body = resp.json()
-            except ValueError:
-                # Malformed JSON body (json.JSONDecodeError is a subclass
-                # of ValueError) — fall back to raw response text.
-                err.response_body = resp.text
-            raise err
+                resp = await self._client.request(
+                    method, url, headers=headers, json=json, params=params
+                )
+            except httpx.RequestError as exc:
+                if idempotent and attempt < max_retries:
+                    delay = _retry_backoff_seconds(attempt)
+                    logger.warning(
+                        "Network error %s on %s %s (attempt %d/%d) — retrying in %.2fs",
+                        exc.__class__.__name__,
+                        method,
+                        _redact(url),
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise JiraTempoError(
+                    f"Network error contacting Jira/Tempo: {exc.__class__.__name__}"
+                ) from exc
 
-        if resp.status_code == 204 or not resp.text:
-            return None
-        return resp.json()
+            # Retry idempotent GET on HTTP 5xx before entering the error path.
+            if (
+                500 <= resp.status_code <= 599
+                and idempotent
+                and attempt < max_retries
+            ):
+                delay = _retry_backoff_seconds(attempt)
+                logger.warning(
+                    "HTTP %d from %s %s (attempt %d/%d) — retrying in %.2fs",
+                    resp.status_code,
+                    method,
+                    _redact(url),
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            if resp.status_code >= 400:
+                # m6: truncate to 200 chars to reduce log noise and potential token leakage.
+                body = resp.text[:200] if resp.text else ""
+                logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
+                err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
+                err.status_code = resp.status_code
+                try:
+                    err.response_body = resp.json()
+                except ValueError:
+                    # Malformed JSON body (json.JSONDecodeError is a subclass
+                    # of ValueError) — fall back to raw response text.
+                    err.response_body = resp.text
+                raise err
+
+            if resp.status_code == 204 or not resp.text:
+                return None
+            return resp.json()
+
+        # Unreachable: the loop body always returns, raises, or continues
+        # until the last attempt falls through to the error path above.
+        # Kept for type-checkers; flagged so coverage does not expect it.
+        raise JiraTempoError("retry loop exited without a result")  # pragma: no cover
 
     # --- paginated GET (Jira REST startAt/total) ---
 

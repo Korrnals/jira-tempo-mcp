@@ -196,6 +196,15 @@ class Config(BaseModel):
     # HTTP timeout (m5 — configurable).
     http_timeout: float = Field(default=30.0, gt=0)
 
+    # HTTP retries for transient server/network errors (v0.4.1 — finding #11).
+    # Applied at the low-level _request() layer to idempotent GET requests only.
+    # Default 0 preserves the original fail-fast behaviour (backwards compatible).
+    http_max_retries: int = Field(
+        default=0,
+        ge=0,
+        description="Max retry attempts for idempotent GET on HTTP 5xx / network errors (exponential backoff). 0 = fail fast (backwards compatible).",
+    )
+
     # --- Team report rate-limiting (v0.2.0) ---
     tempo_max_concurrent_requests: int = Field(
         default=3,
@@ -394,6 +403,8 @@ def load_config() -> Config:
     stable_order = _load_json_list("REPORT_STABLE_ORDER")
     non_issue_sections = _load_json_list("REPORT_NON_ISSUE_SECTIONS")
     http_timeout_str = os.getenv("JIRA_HTTP_TIMEOUT", "30.0").strip()
+    # v0.4.1 — low-level HTTP retries for idempotent GET on 5xx / network errors.
+    http_max_retries = _load_int("JIRA_HTTP_MAX_RETRIES", 0)
 
     # v0.2.0 — team report rate-limiting + templates.
     tempo_max_concurrent = _load_int("TEMPO_MAX_CONCURRENT_REQUESTS", 3)
@@ -426,6 +437,7 @@ def load_config() -> Config:
         stable_order=stable_order,
         non_issue_sections=non_issue_sections,
         http_timeout=http_timeout,
+        http_max_retries=http_max_retries,
         tempo_max_concurrent_requests=tempo_max_concurrent,
         tempo_request_delay_ms=tempo_request_delay_ms,
         tempo_max_retries=tempo_max_retries,
