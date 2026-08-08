@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.4.3] — 2026-08-08
+
+### Fixed
+
+- `jira-tempo-mcp install` now shows clear guidance when invoked outside a git clone (wheel/Docker). Previously failed with terse "install.py not found". install.py is a dev-setup script requiring the repo tree (`.env.example`, `copilot-integration/`, `pyproject.toml`); it is intentionally NOT shipped in the wheel.
+- Added tests covering the install-guidance message for non-clone installs.
+
+### Docs
+
+- `installation.md` / `installation.ru.md`: clarified that `jira-tempo-mcp install` requires git clone (editable install); Docker runs without install.
+
 ## [0.4.2] — 2026-08-08
 
 ### Documentation
