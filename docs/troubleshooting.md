@@ -84,7 +84,8 @@ in VS Code secret storage. See
 ## ❌ `JIRA_BASE_URL or JIRA_PAT missing`
 
 **🩺 Symptom:** the server exits immediately with
-`JIRA_BASE_URL or JIRA_PAT missing` (pydantic validation error).
+`JIRA_BASE_URL or JIRA_PAT missing` (`ConfigError` with backend-specific
+remediation).
 
 **🔍 Cause:** the required env vars are not visible to the server process.
 

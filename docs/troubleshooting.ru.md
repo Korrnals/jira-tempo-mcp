@@ -84,7 +84,8 @@ HTTP-серверов.
 ## ❌ `JIRA_BASE_URL or JIRA_PAT missing`
 
 **🩺 Симптом:** сервер сразу завершается с
-`JIRA_BASE_URL or JIRA_PAT missing` (ошибка валидации pydantic).
+`JIRA_BASE_URL or JIRA_PAT missing` (`ConfigError` с backend-специфичными
+рекомендациями).
 
 **🔍 Причина:** обязательные переменные окружения не видны процессу сервера.
 
