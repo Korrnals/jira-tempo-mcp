@@ -77,11 +77,11 @@ JIRA_PAT (Jira Personal Access Token (PAT)) не найден в окружен�
 | --- | --- | --- | --- |
 | `REPORT_TEMPLATE` | нет | `default` | Имя шаблона для `generate_weekly_report` |
 | `REPORT_TEMPLATE_PATH` | нет | пусто | Явный путь к файлу шаблона (переопределяет `REPORT_TEMPLATE`) |
-| `REPORT_TEMPLATE_DIR` | нет | `~/.config/jira-tempo-mcp/templates/` | Директория для кастомных шаблонов |
+| `REPORT_TEMPLATE_DIR` | нет | `~/.config/jira-tempo-mcp/templates/` | Директория для пользовательских шаблонов |
 | `REPORT_TEMPLATE_ALLOW_PY` | нет | `false` | Opt-in для загрузки `.py`-шаблонов (риск выполнения кода) |
 
-Подробнее о кастомных шаблонах — в
-[reports.ru.md#кастомные-шаблоны](reports.ru.md#кастомные-шаблоны).
+Подробнее о пользовательских шаблонах — в
+[reports.ru.md#пользовательские-шаблоны](reports.ru.md#-пользовательские-шаблоны).
 
 ### 🛠️ Источники dotenv (опционально)
 

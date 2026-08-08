@@ -175,7 +175,7 @@ team_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 
 ---
 
-## 🎨 Кастомные шаблоны
+## 🎨 Пользовательские шаблоны
 
 Начиная с v0.2.0 рендеринг отчётов делегируется шаблонам. Встроенные
 шаблоны:
@@ -191,7 +191,7 @@ team_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 Передайте параметр `template` в `generate_weekly_report` или
 `generate_team_report`, либо установите переменную `REPORT_TEMPLATE`.
 
-### ➕ Добавление кастомных шаблонов
+### ➕ Добавление пользовательских шаблонов
 
 Поместите файлы шаблонов в `REPORT_TEMPLATE_DIR` (по умолчанию
 `~/.config/jira-tempo-mcp/templates/`). Поддерживаются два формата:
@@ -223,7 +223,7 @@ team_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 ```python
 class MyTemplate:
     name = "my_template"
-    description = "Мой кастомный шаблон"
+    description = "Мой пользовательский шаблон"
 
     def render(self, worklogs, config, **kwargs):
         return f"Получено {len(worklogs)} worklog'ов"
@@ -238,7 +238,7 @@ TEMPLATE = MyTemplate()
 ### 📋 Список доступных шаблонов
 
 Используйте инструмент `list_report_templates` чтобы увидеть все
-встроенные и кастомные шаблоны.
+встроенные и пользовательские шаблоны.
 
 ---
 
