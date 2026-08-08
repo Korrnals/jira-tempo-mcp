@@ -185,7 +185,7 @@ VS Code MCP-host загружает этот файл и подставляет 
 ### ✅ Единственный санкционированный канал — MCP-инструменты
 
 Агент взаимодействует с сервером **только** через MCP-инструменты
-(`generate_weekly_report`, `get_tempo_worklogs`, `get_jira_issue` и т.д.),
+(`generate_weekly_report`, `list_worklogs`, `get_issue` и т.д.),
 вызываемые из чата Copilot / MCP-клиента. В этом режиме VS Code MCP-host
 инжектит переменные из `.env.local` в окружение процесса сервера, и отчёты
 пишутся в canonical-директорию автоматически.

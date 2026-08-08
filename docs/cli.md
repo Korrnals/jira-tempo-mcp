@@ -50,6 +50,30 @@ python install.py
 
 See [installation.md](installation.md) for the full walkthrough.
 
+### 🔧 Installer flags
+
+The installer (`install.py`) accepts these flags — useful in CI, headless
+setups, or when re-running only part of the setup:
+
+| Flag | Effect |
+| --- | --- |
+| `-n` / `--non-interactive` / `--yes` | Run without prompts; take values from flags / env vars / defaults |
+| `--register-only` | Skip venv/pip — only write `.env.local` and register in `mcp.json` |
+| `--no-agent` | Skip the Copilot Chat agent installation (agent installs by default) |
+| `--uninstall-agent` | Remove only the Copilot Chat agent + skill + `JTM_AGENT.md`, then exit |
+| `--skip-vscode` | Skip VS Code `mcp.json` registration (only write `.env.local`) |
+| `--jira-base-url` | Override `JIRA_BASE_URL` (default: env var) |
+| `--jira-user` | Override `JIRA_USER` (default: env var) |
+| `--jira-pat` | Override `JIRA_PAT` (default: env var) |
+| `--jira-timezone` | Override `JIRA_TIMEZONE` (default: `Europe/Moscow`) |
+| `--log-level` | Override `LOG_LEVEL` (default: `INFO`) |
+
+Example — register only, non-interactive:
+
+```bash
+python install.py --non-interactive --register-only
+```
+
 ---
 
 ## 🗑️ `uninstall`
@@ -74,7 +98,7 @@ jira-tempo-mcp uninstall
 
 ```bash
 jira-tempo-mcp --version
-# jira-tempo-mcp 0.1.0
+# jira-tempo-mcp 0.4.1
 
 jira-tempo-mcp --help
 # prints the usage block shown above

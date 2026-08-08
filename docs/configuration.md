@@ -56,7 +56,7 @@ See [reports.md](reports.md) for details on the report-related variables.
 | `REPORT_TEMPLATE_DIR` | no | `~/.config/jira-tempo-mcp/templates/` | Directory scanned for custom templates |
 | `REPORT_TEMPLATE_ALLOW_PY` | no | `false` | Opt-in to load `.py` templates (code execution risk) |
 
-See [reports.md#custom-templates](reports.md#custom-templates) for details on
+See [reports.md#custom-templates](reports.md#-custom-templates) for details on
 custom templates.
 
 ### 🛠️ Dotenv source (optional)
@@ -193,7 +193,7 @@ REPORT_FILENAME_PREFIX=your-username
 - API error bodies are truncated to 200 characters to reduce noise and
   potential token leakage.
 
-See [architecture.md](architecture.md#security) for the full security model.
+See [architecture.md](architecture.md#-security) for the full security model.
 
 ---
 

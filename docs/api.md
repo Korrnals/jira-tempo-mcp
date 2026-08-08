@@ -1,6 +1,6 @@
 # 🌐 API — MCP tools
 
-The server exposes 9 tools over the Model Context Protocol. Each tool is
+The server exposes 15 tools over the Model Context Protocol. Each tool is
 defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 (`_TOOL_HANDLERS`).
 
@@ -8,17 +8,23 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 
 ## 🌐 Tool index
 
-| Tool | Purpose |
-| --- | --- |
-| [`list_worklogs`](#list_worklogs) | List Tempo worklogs for a date range or single day |
-| [`get_worklog`](#get_worklog) | Get a single worklog by Tempo ID |
-| [`create_worklog`](#create_worklog) | Track time on a Jira issue |
-| [`delete_worklog`](#delete_worklog) | Delete a worklog by ID |
-| [`get_issue`](#get_issue) | Get Jira issue metadata |
-| [`list_favorite_issues`](#list_favorite_issues) | List favorite issues for the current user |
-| [`generate_weekly_report`](#generate_weekly_report) | Generate a weekly `.txt` report |
-| [`generate_team_report`](#generate_team_report) | Generate a team report for multiple users |
-| [`list_report_templates`](#list_report_templates) | List available report templates |
+| Tool | Group | Purpose |
+| --- | --- | --- |
+| [`list_worklogs`](#-list_worklogs) | Worklogs | List worklogs for a date range or single day |
+| [`get_worklog`](#-get_worklog) | Worklogs | Get a single worklog by Tempo ID |
+| [`create_worklog`](#-create_worklog) | Worklogs | Track time on a Jira issue |
+| [`delete_worklog`](#-delete_worklog) | Worklogs | Delete a worklog by ID |
+| [`get_issue`](#-get_issue) | Issues | Get Jira issue metadata (8 fields) |
+| [`list_favorite_issues`](#-list_favorite_issues) | Issues | List favorite issues for the current user |
+| [`list_issues_by_jql`](#-list_issues_by_jql) | Issues | Search issues by JQL query |
+| [`get_current_user`](#-get_current_user) | Users | Get authenticated user info |
+| [`search_users`](#-search_users) | Users | Search Jira users by name or email |
+| [`list_user_tasks`](#-list_user_tasks) | Users | Get tasks assigned to a user |
+| [`generate_weekly_report`](#-generate_weekly_report) | Reports | Generate a weekly report (`txt`/`md`/`json`) |
+| [`generate_team_report`](#-generate_team_report) | Reports | Generate a team report for multiple users |
+| [`generate_tasks_report`](#-generate_tasks_report) | Reports | Generate a tasks report grouped by status |
+| [`list_report_templates`](#-list_report_templates) | Reports | List available report templates |
+| [`preview_report_template`](#-preview_report_template) | Reports | Preview a template with sample data |
 
 ---
 
@@ -100,8 +106,9 @@ the token owner unless `author_account_id` is given.
 | `issue_key` | string | yes | Jira issue key (e.g. `PROJECT-100`) |
 | `time_spent` | string | yes | Human duration: `1h 30m`, `2h`, `45m`, `1d 2h` |
 | `comment` | string | no | Optional worklog comment |
-| `date_started` | string | no | ISO 8601 datetime with tz. Defaults to now. |
+| `date_started` | string | no | Date in `YYYY-MM-DD` format (e.g. `2026-06-19`). Full ISO datetimes are also accepted and normalized to a date. Defaults to today. |
 | `author_account_id` | string | no | Optional Tempo worker key. Defaults to token owner. |
+| `attributes` | object | no | Optional Tempo work attributes (e.g. `{"_Специализация_": "Devops", "_Форматработы_": "Удаленно"}`). **Required on some installations** — if you get `VALIDATION_FAILED`, provide them. |
 
 > 💡 **Tip:** Duration units: `w` (week = 5d), `d` (day = 8h), `h` (hour), `m` (minute).
 
@@ -114,15 +121,26 @@ the token owner unless `author_account_id` is given.
     "issue_key": "PROJECT-100",
     "time_spent": "1h 30m",
     "comment": "Implemented login flow",
-    "date_started": "2026-06-19T10:00:00+03:00"
+    "date_started": "2026-06-19",
+    "attributes": { "_Специализация_": "Devops", "_Форматработы_": "Удаленно" }
   }
 }
 ```
 
-**Returns:**
+**Returns:** the confirmation line plus the full worklog details:
 
 ```text
-Tracked 1h 30m on PROJECT-100 at 2026-06-19T10:00:00+03:00. Worklog ID: 12345. Comment: Implemented login flow
+Tracked 1h 30m on PROJECT-100 at 2026-06-19. Worklog ID: 12345. Comment: Implemented login flow
+---
+Worklog details:
+Worklog 12345:
+  Time spent: 1h 30m (5400s)
+  Issue: PROJECT-100 — Implemented login flow
+  Comment: Implemented login flow
+  Started: 2026-06-19
+  Attributes:
+    Специализация: Devops
+    Форматработы: Удаленно
 ```
 
 ---
@@ -157,7 +175,8 @@ Deleted worklog 12345.
 
 ## 📋 `get_issue`
 
-Get Jira issue metadata: summary, status, project.
+Get Jira issue metadata: summary, status, project, priority, assignee, due
+date, issue type, and components (8 fields).
 
 **Parameters:**
 
@@ -180,6 +199,11 @@ Get Jira issue metadata: summary, status, project.
 PROJECT-100: Implement login flow
 Status: In Progress
 Project: Web Platform
+Priority: High
+Assignee: Ivan Golikhin
+Due date: 2026-06-20
+Issue type: Task
+Components: Backend, API
 ```
 
 ---
@@ -212,31 +236,36 @@ Favorite issues (3):
 
 ## 📝 `generate_weekly_report`
 
-Generate a weekly work report from Tempo worklogs and save it as a `.txt`
-file. Groups worklogs by issue, maps known issues to stable sections, and
-writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
+Generate a weekly work report from Tempo worklogs and save it as a file.
+Groups worklogs by issue, maps known issues to stable sections, and writes
+`<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.<fmt>` to the configured output
+directory. Since v0.3.0 the `format` parameter selects output: `txt`
+(default), `md` (Markdown), or `json` (structured JSON).
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target_date` | string | no | Any date within the target week (ISO `YYYY-MM-DD`). Defaults to today. |
-| `output_dir` | string | no | Output directory. Defaults to `REPORT_OUTPUT_DIR` env or `./reports`. Must be inside the allowed root. |
-| `template` | string | no | Template name (e.g. `default`, `weekly_summary`). Defaults to `REPORT_TEMPLATE` env or `default`. Use `list_report_templates` to see available templates. |
+| `output_dir` | string | no | Output directory. Defaults to `REPORT_OUTPUT_DIR` env or `~/.mcp/jira-tempo-mcp/reports/`. Must be inside the allowed root. |
+| `template` | string | no | Template name (e.g. `default`, `weekly_summary`). Defaults to `REPORT_TEMPLATE` env or `default`. Use `list_report_templates` to see available templates. Only used when `format='txt'`. |
+| `format` | string | no | Output format: `txt` (plain text, default), `md` (Markdown), `json` (structured JSON). File extension matches the format. |
+| `username` | string | no | Optional Jira username to generate the report for (instead of the configured `JIRA_USER`). If provided, worklogs are filtered to this user. |
 
 **Example call:**
 
 ```json
 {
   "name": "generate_weekly_report",
-  "arguments": { "target_date": "2026-06-19" }
+  "arguments": { "target_date": "2026-06-19", "format": "md" }
 }
 ```
 
 **Returns:**
 
 ```text
-Weekly report generated: /path/to/reports/your-username_160620-200620.txt
+Weekly report generated: /home/user/.mcp/jira-tempo-mcp/reports/golikhin_2026-06-15_2026-06-19.md
+Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 ```
 
 > 💡 **Tip:** See [reports.md](reports.md) for report customization (section mapping,
@@ -249,18 +278,21 @@ Weekly report generated: /path/to/reports/your-username_160620-200620.txt
 Generate a team work report from Tempo worklogs for multiple Jira users.
 Fetches worklogs per user with bounded concurrency (rate-limit safe), renders
 per-user sections plus an aggregate summary, and writes
-`team_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
+`team_<YYYY-MM-DD>_<YYYY-MM-DD>_<users_hash>.<fmt>` to the configured output
+directory. Since v0.3.0 the `format` parameter selects output: `txt`
+(default), `md` (Markdown), or `json`.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 | --- | --- | --- | --- |
-| `users` | array<string> | yes | Jira usernames to include (non-empty) |
+| `users` | array<string> | no | Jira usernames to include. If not provided, uses `REPORT_TEAM_USERS` env var or the current user. |
 | `date_from` | string | no | Start date (ISO `YYYY-MM-DD`). Defaults to Monday of the current week. |
 | `date_to` | string | no | End date (ISO `YYYY-MM-DD`). Defaults to Friday of the current week. |
 | `section_map` | object | no | Optional override for `REPORT_SECTION_MAP` (issue key → section title) |
-| `template` | string | no | Template name. Defaults to `team_report`. |
+| `template` | string | no | Template name. Defaults to `team_report`. Only used when `format='txt'`. |
 | `output_dir` | string | no | Output directory. Defaults to `REPORT_TEAM_OUTPUT_DIR` or `REPORT_OUTPUT_DIR`. Must be inside the allowed root. |
+| `format` | string | no | Output format: `txt` (plain text, default), `md` (Markdown), `json` (structured JSON). File extension matches the format. |
 
 > 🛡️ **Rate-limiting:** concurrent Tempo requests are bounded by
 > `TEMPO_MAX_CONCURRENT_REQUESTS` (default 3). A configurable delay
@@ -276,7 +308,8 @@ per-user sections plus an aggregate summary, and writes
   "arguments": {
     "users": ["alice", "bob", "carol"],
     "date_from": "2026-06-15",
-    "date_to": "2026-06-19"
+    "date_to": "2026-06-19",
+    "format": "md"
   }
 }
 ```
@@ -284,15 +317,43 @@ per-user sections plus an aggregate summary, and writes
 **Returns:**
 
 ```text
-Team report written: /path/to/reports/team_150626-190626.txt
-Grand total: 24h across 3 users.
-Per-user totals:
-  - alice: 10h
-  - bob: 8h
-  - carol: 6h
-Top issues:
-  - PROJECT-100 (Implement login flow): 12h
-  - PROJECT-101 (Code review process): 5h
+Team report: 3 users, 24h total. Written to /home/user/.mcp/jira-tempo-mcp/reports/team_2026-06-15_2026-06-19_a1b2c3.md
+Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
+```
+
+---
+
+## 📊 `generate_tasks_report`
+
+Generate a report of user tasks grouped by status and save it as a file.
+For a single user: all tasks with full details (summary, due date,
+priority, comments). For multiple users: only active tasks (status category
+"In Progress"), grouped by user then status. Since v0.3.0 the `format`
+parameter selects output: `md` (Markdown, default), `txt`, or `json`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `users` | array<string> | no | Jira usernames to include. If not provided, uses `REPORT_TEAM_USERS` env var or the current user. |
+| `active_only` | boolean | no | Only include active tasks. Forced `true` for multiple users. Defaults to `false`. |
+| `output_dir` | string | no | Output directory. Defaults to `REPORT_OUTPUT_DIR` env or `~/.mcp/jira-tempo-mcp/reports/`. Must be inside the allowed root. |
+| `format` | string | no | Output format: `md` (Markdown, default), `txt` (plain text), `json` (structured JSON). File extension matches the format. |
+
+**Example call:**
+
+```json
+{
+  "name": "generate_tasks_report",
+  "arguments": { "users": ["golikhin"], "format": "md" }
+}
+```
+
+**Returns:**
+
+```text
+Tasks report for 1 user(s) written to /home/user/.mcp/jira-tempo-mcp/reports/tasks_golikhin_2026-06-19.md
+Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 ```
 
 ---
@@ -300,8 +361,8 @@ Top issues:
 ## 🎨 `list_report_templates`
 
 List available report templates (builtin + custom). Returns each template's
-name and description. Custom templates are discovered from
-`REPORT_TEMPLATE_DIR`.
+name, provenance kind (`builtin` or `custom`), engine (`Jinja2` or `Python`),
+and description. Custom templates are discovered from `REPORT_TEMPLATE_DIR`.
 
 **Parameters:** none.
 
@@ -318,14 +379,184 @@ name and description. Custom templates are discovered from
 
 ```text
 Report templates (4):
-- default: Weekly report grouped by issue with stable sections...
-- team_report: Team report: per-user sections with issue breakdown...
-- weekly_summary: Compact weekly summary: total hours, top 5 issues...
-- custom: My custom Jinja2 template
+- default (builtin, Jinja2): Weekly report grouped by issue with stable sections
+- team_report (builtin, Jinja2): Team report: per-user sections with issue breakdown
+- weekly_summary (builtin, Jinja2): Compact weekly summary: total hours, top 5 issues
+- my_custom (custom, Jinja2): My custom Jinja2 template
 ```
 
-> 💡 **Tip:** See [reports.md#custom-templates](reports.md#custom-templates) for how to
+> 💡 **Tip:** See [reports.md#custom-templates](reports.md#-custom-templates) for how to
 > add custom templates.
+
+---
+
+## 👁️ `preview_report_template`
+
+Preview a report template rendered with **sample data** — no Jira/Tempo
+calls are made. Useful for exploring templates before generating a real
+report. Returns the rendered text without writing a file.
+
+> 🆕 **New in v0.4.0.** This tool does not call Jira or Tempo — it uses
+> built-in mock worklogs so you can preview any template offline.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `template_name` | string | yes | Template name (use `list_report_templates` to see available names) |
+| `sample_data` | string | no | Sample-data profile: `default` (realistic week, several issues), `minimal` (single worklog), `empty` (no worklogs — tests empty-state rendering). Defaults to `default`. |
+
+**Example call:**
+
+```json
+{
+  "name": "preview_report_template",
+  "arguments": { "template_name": "default", "sample_data": "minimal" }
+}
+```
+
+**Returns:** the rendered template text:
+
+```text
+Weekly report: 2026-06-15 — 2026-06-19
+Worker: preview-user
+Total: 1h
+
+Sections:
+  DEVOPS-101 (Refactor Helm release workflow): 1h
+    2026-06-15 — 1h — Kicked off the refactor.
+```
+
+---
+
+## 👤 `get_current_user`
+
+Get information about the authenticated user (PAT owner). Returns username,
+display name, email, key, and active status. Useful for verifying which
+account the server is running as.
+
+**Parameters:** none.
+
+**Example call:**
+
+```json
+{
+  "name": "get_current_user",
+  "arguments": {}
+}
+```
+
+**Returns:**
+
+```text
+Current user:
+  Username: golikhin
+  Display name: Ivan Golikhin
+  Email: i.golikhin@example.com
+  Key: golikhin
+  Active: True
+```
+
+---
+
+## 🔎 `search_users`
+
+Search Jira users by name, surname, username, or email fragment. Returns a
+list of matching users with name, key, display name, email, and active
+status.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `query` | string | yes | Search query — name, surname, or username fragment |
+| `max_results` | integer | no | Max number of users to return. Defaults to `10`. |
+
+**Example call:**
+
+```json
+{
+  "name": "search_users",
+  "arguments": { "query": "golikhin", "max_results": 5 }
+}
+```
+
+**Returns:**
+
+```text
+Users matching 'golikhin' (1):
+- golikhin (golikhin): Ivan Golikhin <i.golikhin@example.com> [active]
+```
+
+---
+
+## 📋 `list_user_tasks`
+
+Get tasks assigned to a Jira user. Returns up to 100 tasks ordered by last
+updated, each with status, due date, summary, priority, issue type, project,
+and the last 2 comments.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `username` | string | yes | Jira username (e.g. `golikhin`) |
+| `status_filter` | array<string> | no | Optional list of status names to filter by |
+| `max_results` | integer | no | Max number of tasks to return. Defaults to `100`. |
+
+**Example call:**
+
+```json
+{
+  "name": "list_user_tasks",
+  "arguments": { "username": "golikhin", "status_filter": ["In Progress", "Open"] }
+}
+```
+
+**Returns:**
+
+```text
+Tasks for golikhin (2):
+- [DEVOPS-101] Refactor Helm release workflow | In Progress | priority=High | due=2026-06-20 | comments=2
+    💬 tech-lead: Looks good, please add tests.
+- [DEVOPS-102] Migrate Valkey chart | Open | priority=Medium | due=— | comments=0
+```
+
+---
+
+## 🔍 `list_issues_by_jql`
+
+Search Jira issues by a JQL query (read-only). Returns a formatted list of
+issues with key, summary, status, priority, due date, and assignee. Max 100
+results.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `jql` | string | yes | JQL query string (e.g. `project = DEVOPS AND assignee = golikhin ORDER BY updated DESC`) |
+| `fields` | string | no | Comma-separated field names to return. Defaults to `summary,status,priority,duedate,assignee,issuetype,project,created,updated`. |
+| `max_results` | integer | no | Max results. Defaults to `50`. Capped at `100`. |
+
+**Example call:**
+
+```json
+{
+  "name": "list_issues_by_jql",
+  "arguments": {
+    "jql": "project = DEVOPS AND assignee = golikhin ORDER BY updated DESC",
+    "max_results": 5
+  }
+}
+```
+
+**Returns:**
+
+```text
+Issues matching JQL (2):
+- [DEVOPS-101] Refactor Helm release workflow | In Progress | priority=High | due=2026-06-20 | assignee=golikhin
+- [DEVOPS-102] Migrate Valkey chart | Open | priority=Medium | due=— | assignee=golikhin
+```
 
 ---
 

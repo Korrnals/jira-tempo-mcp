@@ -132,6 +132,15 @@ jira-tempo-mcp install --non-interactive --register-only   # эквивален�
 
 ## 📥 Путь 2 — pip (опубликованный пакет)
 
+> ⚠️ **Пока недоступно.** Пакет **не опубликован в PyPI**, пока GitHub Actions
+> отключены, а job `pypi-publish` защищён `if: false` (см.
+> [deployment.ru.md](deployment.ru.md)). `pip install jira-tempo-mcp`
+> завершится ошибкой 404. Пока публикация в PyPI не включена, используйте
+> **интерактивный установщик** (Путь 1), **установку из исходников** (Путь 3)
+> или **Docker** (Путь 4).
+
+Команда ниже — целевой сценарий после публикации пакета:
+
 ```bash
 pip install jira-tempo-mcp
 jira-tempo-mcp serve

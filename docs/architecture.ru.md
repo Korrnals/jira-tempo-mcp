@@ -9,7 +9,7 @@
 
 ```mermaid
 flowchart TD
-    S[server.py<br/>MCP-сервер + 7 инструментов + валидация] --> C[client.py<br/>HTTP-клиент Jira + Tempo]
+    S[server.py<br/>MCP-сервер + 15 инструментов + валидация] --> C[client.py<br/>HTTP-клиент Jira + Tempo]
     S --> R[report.py<br/>Генератор еженедельного отчёта]
     S --> U[utils.py<br/>Разбор длительности, форматирование, tz]
     S --> CFG[config.py<br/>Загрузка env, модель Config, секреты замаскированы]
@@ -73,6 +73,14 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "get_issue": _handle_get_issue,
     "list_favorite_issues": _handle_list_favorites,
     "generate_weekly_report": _handle_generate_report,
+    "generate_team_report": _handle_generate_team_report,
+    "list_report_templates": _handle_list_templates,
+    "preview_report_template": _handle_preview_template,
+    "search_users": _handle_search_users,
+    "list_user_tasks": _handle_list_user_tasks,
+    "list_issues_by_jql": _handle_list_issues_by_jql,
+    "get_current_user": _handle_get_current_user,
+    "generate_tasks_report": _handle_generate_tasks_report,
 }
 ```
 
@@ -124,22 +132,37 @@ _TOOL_HANDLERS: dict[str, Any] = {
 
 ## 🧪 Тестирование
 
-Тесты лежат в `tests/` и запускаются под `pytest` с `asyncio_mode = "auto"`:
+Тесты лежат в `tests/` (15 файлов) и запускаются под `pytest` с
+`asyncio_mode = "auto"`:
 
 | Файл | Покрывает |
 | --- | --- |
 | `test_config.py` | валидация `Config`, загрузка env, маскировка секретов |
+| `test_config_diagnostics.py` | сообщения `ConfigError`, backend-специфичные рекомендации |
 | `test_utils.py` | разбор длительности, форматирование, помощники часового пояса |
 | `test_report.py` | логика генерации отчёта (unit) |
 | `test_report_integration.py` | end-to-end отчёт с замоканным клиентом |
+| `test_team_report.py` | агрегация командного отчёта, конкурентность, повтор 429 |
+| `test_tasks_report.py` | генерация отчёта по задачам |
+| `test_templates.py` | реестр шаблонов, встроенные шаблоны |
+| `test_templates_dx.py` | помощники developer experience (DX) для шаблонов |
+| `test_client_pagination.py` | пагинация клиента, обработка курсора |
+| `test_security.py` | маскировка секретов, редукция, защита от path traversal |
+| `test_bugs_and_ux.py` | регрессионные баги и edge-cases UX |
+| `test_install.py` | поток установщика (интерактивный) |
+| `test_install_noninteractive.py` | путь `--non-interactive` установщика |
+| `test_install_agent.py` | установка/удаление агента Copilot Chat |
 
-CI прогоняет `ruff check` + `ruff format --check` + `mypy src/` + `pytest tests/ -v`
-на Python 3.12. См. [deployment.ru.md](deployment.ru.md#cicd).
+Канонический CI-порог — `make ci`: прогоняет `ruff check` + `ruff format
+--check` + `mypy src/` + `pytest tests/ -v` на Python 3.12, повторяя то, что
+запускал бы GitHub Actions `ci.yml`. **GitHub Actions отключены в этом
+окружении** (billing заблокирован), поэтому зелёный `make ci` — сигнал для
+merge/релиза. См. [deployment.ru.md](deployment.ru.md#-cicd).
 
 ---
 
 ## ➡️ Дальнейшие шаги
 
-- 🌐 [api.ru.md](api.ru.md) — 7 MCP-инструментов
+- 🌐 [api.ru.md](api.ru.md) — 15 MCP-инструментов
 - 🐳 [deployment.ru.md](deployment.ru.md) — Docker, CI/CD, релизы
 - ⚙️ [configuration.ru.md](configuration.ru.md) — переменные окружения и обработка секретов

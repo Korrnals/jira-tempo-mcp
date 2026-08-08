@@ -9,7 +9,7 @@ flow in one direction.
 
 ```mermaid
 flowchart TD
-    S[server.py<br/>MCP server + 9 tools + input validation] --> C[client.py<br/>Jira + Tempo HTTP client]
+    S[server.py<br/>MCP server + 15 tools + input validation] --> C[client.py<br/>Jira + Tempo HTTP client]
     S --> R[report.py<br/>Weekly report generator]
     S --> TR[team_report.py<br/>Team report + rate-limiting]
     S --> T[templates/<br/>Report template system]
@@ -81,6 +81,14 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "get_issue": _handle_get_issue,
     "list_favorite_issues": _handle_list_favorites,
     "generate_weekly_report": _handle_generate_report,
+    "generate_team_report": _handle_generate_team_report,
+    "list_report_templates": _handle_list_templates,
+    "preview_report_template": _handle_preview_template,
+    "search_users": _handle_search_users,
+    "list_user_tasks": _handle_list_user_tasks,
+    "list_issues_by_jql": _handle_list_issues_by_jql,
+    "get_current_user": _handle_get_current_user,
+    "generate_tasks_report": _handle_generate_tasks_report,
 }
 ```
 
@@ -132,22 +140,37 @@ user-friendly messages via `_user_friendly_error`.
 
 ## 🧪 Testing
 
-Tests live in `tests/` and run under `pytest` with `asyncio_mode = "auto"`:
+Tests live in `tests/` (15 test files) and run under `pytest` with
+`asyncio_mode = "auto"`:
 
 | File | Covers |
 | --- | --- |
 | `test_config.py` | `Config` validation, env loading, secret masking |
+| `test_config_diagnostics.py` | `ConfigError` messages, backend-specific remediation |
 | `test_utils.py` | duration parsing, formatting, timezone helpers |
 | `test_report.py` | report generation logic (unit) |
 | `test_report_integration.py` | end-to-end report with mocked client |
+| `test_team_report.py` | team report aggregation, concurrency, 429 retry |
+| `test_tasks_report.py` | tasks report generation |
+| `test_templates.py` | template registry, builtin templates |
+| `test_templates_dx.py` | template developer experience (DX) helpers |
+| `test_client_pagination.py` | client pagination, cursor handling |
+| `test_security.py` | secret masking, redaction, path-traversal guards |
+| `test_bugs_and_ux.py` | regression bugs and UX edge cases |
+| `test_install.py` | installer flow (interactive) |
+| `test_install_noninteractive.py` | installer `--non-interactive` path |
+| `test_install_agent.py` | Copilot Chat agent install / uninstall |
 
-CI runs `ruff check` + `ruff format --check` + `mypy src/` + `pytest tests/ -v`
-on Python 3.12. See [deployment.md](deployment.md#cicd) for the pipeline.
+The canonical CI gate is `make ci` — it runs `ruff check` + `ruff format
+--check` + `mypy src/` + `pytest tests/ -v` on Python 3.12, mirroring what
+the GitHub Actions `ci.yml` would run. **GitHub Actions are disabled in this
+environment** (billing-locked), so a green `make ci` is the merge/release
+signal. See [deployment.md](deployment.md#-cicd) for details.
 
 ---
 
 ## ➡️ Next steps
 
-- 🌐 [api.md](api.md) — the 7 MCP tools
+- 🌐 [api.md](api.md) — the 15 MCP tools
 - 🐳 [deployment.md](deployment.md) — Docker, CI/CD, release
 - ⚙️ [configuration.md](configuration.md) — env vars and secret handling

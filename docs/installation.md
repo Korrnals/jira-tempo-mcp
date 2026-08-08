@@ -44,6 +44,15 @@ Steps performed:
 
 ## 📥 Path 2 — pip (published package)
 
+> ⚠️ **Not yet available.** The package is **not published to PyPI** while
+> GitHub Actions are disabled and the `pypi-publish` job is guarded by
+> `if: false` (see [deployment.md](deployment.md)). `pip install
+> jira-tempo-mcp` will fail with a 404. Until PyPI publishing is enabled, use
+> the **interactive installer** (Path 1), an **editable install from source**
+> (Path 3), or **Docker** (Path 4).
+
+The command below is the intended flow once the package is published:
+
 ```bash
 pip install jira-tempo-mcp
 jira-tempo-mcp serve

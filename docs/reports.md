@@ -11,20 +11,20 @@ Tempo worklogs.
 2. Groups worklogs by issue key.
 3. Maps known issues to stable report sections (via `REPORT_SECTION_MAP`).
 4. Fetches Jira issue summaries for unknown issues.
-5. Writes `<prefix>_<DDMMYY>-<DDMMYY>.txt` to the configured output directory.
+5. Writes `<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.txt` to the configured output directory.
 
 ---
 
 ## 📄 Filename format
 
 ```text
-<prefix>_<DDMMYY>-<DDMMYY>.txt
+<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 ```
 
 - `<prefix>` — `REPORT_FILENAME_PREFIX` (default: `JIRA_USER`)
-- `<DDMMYY>-<DDMMYY>` — Monday–Friday dates of the target week
+- `<YYYY-MM-DD>_<YYYY-MM-DD>` — Monday–Friday dates of the target week (ISO 8601, separated by `_`)
 
-> 💡 **Tip:** Example: `your-username_160620-200620.txt`
+> 💡 **Tip:** Example: `your-username_2026-06-16_2026-06-20.txt`
 
 ---
 
@@ -86,7 +86,7 @@ Jira issue.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `REPORT_OUTPUT_DIR` | `./reports` | Base directory for report files |
+| `REPORT_OUTPUT_DIR` | `~/.mcp/jira-tempo-mcp/reports/` | Base directory for report files |
 | `REPORT_AUTHOR_NAME` | `JIRA_USER` | Author display name in the report header |
 | `REPORT_FILENAME_PREFIX` | `JIRA_USER` | Prefix for report filenames |
 
@@ -127,10 +127,10 @@ the top 5 issues across the team.
 ### 📄 Filename format
 
 ```text
-team_<DDMMYY>-<DDMMYY>.txt
+team_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 ```
 
-> 💡 **Tip:** Example: `team_150626-190626.txt`
+> 💡 **Tip:** Example: `team_2026-06-15_2026-06-19.txt`
 
 ### 🛡️ Rate-limiting
 
@@ -242,13 +242,13 @@ Use the `list_report_templates` tool to see all builtin + custom templates.
 
 The `output_dir` parameter of `generate_weekly_report` is validated against
 path traversal. The resolved path must be inside the allowed root
-(`REPORT_OUTPUT_DIR` or `./reports`). Paths like `../../etc` are rejected
+(`REPORT_OUTPUT_DIR` or `~/.mcp/jira-tempo-mcp/reports/`). Paths like `../../etc` are rejected
 with an explicit error.
 
 ---
 
 ## ➡️ Next steps
 
-- 🌐 [api.md#generate_weekly_report](api.md#generate_weekly_report) — tool parameters
-- ⚙️ [configuration.md](configuration.md#weekly-report-optional) — all report env vars
+- 🌐 [api.md#generate_weekly_report](api.md#-generate_weekly_report) — tool parameters
+- ⚙️ [configuration.md](configuration.md#-weekly-report-optional) — all report env vars
 - 🐛 [troubleshooting.md](troubleshooting.md) — report-related errors

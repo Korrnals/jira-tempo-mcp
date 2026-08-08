@@ -11,20 +11,20 @@ worklog'ов Tempo.
 2. Worklog'и группируются по ключу задачи.
 3. Известные задачи отображаются в стабильные секции отчёта (через `REPORT_SECTION_MAP`).
 4. Для неизвестных задач подтягиваются summary из Jira.
-5. Записывается `<prefix>_<DDMMYY>-<DDMMYY>.txt` в настроенную директорию.
+5. Записывается `<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.txt` в настроенную директорию.
 
 ---
 
 ## 📄 Формат имени файла
 
 ```text
-<prefix>_<DDMMYY>-<DDMMYY>.txt
+<prefix>_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 ```
 
 - `<prefix>` — `REPORT_FILENAME_PREFIX` (по умолч. `JIRA_USER`)
-- `<DDMMYY>-<DDMMYY>` — даты понедельника и пятницы целевой недели
+- `<YYYY-MM-DD>_<YYYY-MM-DD>` — даты понедельника и пятницы целевой недели (ISO 8601, разделитель `_`)
 
-> 💡 **Совет:** Пример: `your-username_160620-200620.txt`
+> 💡 **Совет:** Пример: `your-username_2026-06-16_2026-06-20.txt`
 
 ---
 
@@ -86,7 +86,7 @@ Jira.
 
 | Переменная | По умолч. | Эффект |
 | --- | --- | --- |
-| `REPORT_OUTPUT_DIR` | `./reports` | Базовая директория для файлов отчётов |
+| `REPORT_OUTPUT_DIR` | `~/.mcp/jira-tempo-mcp/reports/` | Базовая директория для файлов отчётов |
 | `REPORT_AUTHOR_NAME` | `JIRA_USER` | Имя автора в заголовке отчёта |
 | `REPORT_FILENAME_PREFIX` | `JIRA_USER` | Префикс имён файлов отчётов |
 
@@ -127,10 +127,10 @@ worklog'ов Tempo для нескольких пользователей Jira. 
 ### 📄 Формат имени файла
 
 ```text
-team_<DDMMYY>-<DDMMYY>.txt
+team_<YYYY-MM-DD>_<YYYY-MM-DD>.txt
 ```
 
-> 💡 **Совет:** Пример: `team_150626-190626.txt`
+> 💡 **Совет:** Пример: `team_2026-06-15_2026-06-19.txt`
 
 ### 🛡️ Rate-limiting
 
@@ -175,7 +175,7 @@ team_<DDMMYY>-<DDMMYY>.txt
 
 ---
 
-## 🎨 Кастомные шаблоны
+## 🎨 Пользовательские шаблоны
 
 Начиная с v0.2.0 рендеринг отчётов делегируется шаблонам. Встроенные
 шаблоны:
@@ -191,7 +191,7 @@ team_<DDMMYY>-<DDMMYY>.txt
 Передайте параметр `template` в `generate_weekly_report` или
 `generate_team_report`, либо установите переменную `REPORT_TEMPLATE`.
 
-### ➕ Добавление кастомных шаблонов
+### ➕ Добавление пользовательских шаблонов
 
 Поместите файлы шаблонов в `REPORT_TEMPLATE_DIR` (по умолчанию
 `~/.config/jira-tempo-mcp/templates/`). Поддерживаются два формата:
@@ -223,7 +223,7 @@ team_<DDMMYY>-<DDMMYY>.txt
 ```python
 class MyTemplate:
     name = "my_template"
-    description = "Мой кастомный шаблон"
+    description = "Мой пользовательский шаблон"
 
     def render(self, worklogs, config, **kwargs):
         return f"Получено {len(worklogs)} worklog'ов"
@@ -238,7 +238,7 @@ TEMPLATE = MyTemplate()
 ### 📋 Список доступных шаблонов
 
 Используйте инструмент `list_report_templates` чтобы увидеть все
-встроенные и кастомные шаблоны.
+встроенные и пользовательские шаблоны.
 
 ---
 
@@ -246,13 +246,13 @@ TEMPLATE = MyTemplate()
 
 Параметр `output_dir` инструмента `generate_weekly_report` проверяется на
 path traversal. Разрешённый путь должен быть внутри разрешённого корня
-(`REPORT_OUTPUT_DIR` или `./reports`). Пути вида `../../etc` отклоняются
+(`REPORT_OUTPUT_DIR` или `~/.mcp/jira-tempo-mcp/reports/`). Пути вида `../../etc` отклоняются
 с явной ошибкой.
 
 ---
 
 ## ➡️ Дальнейшие шаги
 
-- 🌐 [api.ru.md#generate_weekly_report](api.ru.md#generate_weekly_report) — параметры инструмента
-- ⚙️ [configuration.ru.md](configuration.ru.md#еженедельный-отчёт-опциональные) — все переменные отчёта
+- 🌐 [api.ru.md#generate_weekly_report](api.ru.md#-generate_weekly_report) — параметры инструмента
+- ⚙️ [configuration.ru.md](configuration.ru.md#-еженедельный-отчёт-опциональные) — все переменные отчёта
 - 🐛 [troubleshooting.ru.md](troubleshooting.ru.md) — ошибки, связанные с отчётом

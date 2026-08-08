@@ -79,6 +79,14 @@ docker run -i --rm \
 > — без дублирования. Зависимости pip кэшируются через `actions/setup-python` по
 > ключу `pyproject.toml`.
 
+> ⚠️ **Внимание — Actions отключены в этом окружении:** описанные выше workflow
+> **намеренно отключены** (биллинг GitHub Actions заблокирован, раннеры
+> `runs-on: self-hosted` не развёрнуты — поэтому ни `ci.yml`, ни `release.yml`
+> не запускаются ни при push, ни по тегу `v*`). **Каноническая CI-проверка —
+> `make ci`**: локально запускает `ruff` + `mypy` + `pytest` и повторяет то, что
+> делал бы `ci.yml`. Сигнал к merge/релизу — зелёный `make ci`, а не зелёная
+> отметка Actions.
+
 ### 📊 Детали CI-пайплайна
 
 ```mermaid
@@ -103,8 +111,8 @@ flowchart LR
 # 1. Поднять версию в pyproject.toml
 # 2. Коммит + push в main (CI должен быть зелёным)
 # 3. Тег и push
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 Далее release-workflow запускается автоматически:
@@ -116,9 +124,17 @@ git push origin v0.1.0
    через Trusted Publishing (OIDC). API-токен не хранится в репозитории.
 3. 🐳 **Сборка и push Docker-образа** — многостадийная сборка пушится в
    `ghcr.io/korrnals/jira-tempo-mcp` с semver-тегами (см.
-   [Теги Docker-образа](#теги-docker-образа)).
+   [Теги Docker-образа](#-теги-docker-образа)).
 4. 📝 **Создание GitHub Release** — автогенерированные заметки с wheel как
    вложением.
+
+> ⚠️ **Внимание — публикация в PyPI сейчас отключена:** job `pypi-publish` в
+> `release.yml` защищён `if: false` (см. комментарий `# DISABLED`), а runtime
+> Actions в этом окружении и так отключён. **Пакет не публикуется в PyPI**, поэтому
+> `pip install jira-tempo-mcp` завершится ошибкой. Пока Trusted Publishing не
+> настроен, а Actions не включены, релизы выходят только как GitHub Release +
+> Docker-образ в `ghcr.io`; ставьте из исходников или через Docker (см.
+> [installation.ru.md](installation.ru.md)).
 
 ### 📊 Детали release-пайплайна
 
@@ -218,5 +234,5 @@ pre-commit install
 ## ➡️ Дальнейшие шаги
 
 - 📦 [installation.ru.md](installation.ru.md) — способы локальной установки
-- 🏗️ [architecture.ru.md](architecture.ru.md#безопасность-сборки-docker) — модель безопасности Docker
+- 🏗️ [architecture.ru.md](architecture.ru.md#-безопасность-сборки-docker) — модель безопасности Docker
 - ⚙️ [configuration.ru.md](configuration.ru.md) — переменные окружения для контейнера
