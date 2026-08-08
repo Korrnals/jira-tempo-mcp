@@ -80,6 +80,14 @@ The repo has two GitHub Actions workflows:
 > — no duplicated config. Pip dependencies are cached via `actions/setup-python`
 > keyed on `pyproject.toml`.
 
+> ⚠️ **Warning — Actions are disabled in this environment:** the workflows above
+> are **intentionally disabled** (GitHub Actions billing is locked; the
+> `runs-on: self-hosted` runners are not provisioned, so neither `ci.yml` nor
+> `release.yml` runs on push or on a `v*` tag). The **canonical CI gate is
+> `make ci`** — it runs `ruff` + `mypy` + `pytest` locally and mirrors what
+> `ci.yml` would run. Treat a green `make ci` as the merge/release signal, not a
+> green Actions check.
+
 ### 📊 CI pipeline detail
 
 ```mermaid
@@ -104,8 +112,8 @@ flowchart LR
 # 1. Bump version in pyproject.toml
 # 2. Commit + push to main (CI must be green)
 # 3. Tag and push
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 The release workflow then runs automatically:
@@ -120,6 +128,14 @@ The release workflow then runs automatically:
    [Docker image tags](#docker-image-tags)).
 4. 📝 **Create GitHub Release** — auto-generated release notes with the wheel
    attached as a download asset.
+
+> ⚠️ **Warning — PyPI publish is currently disabled:** the `pypi-publish` job
+> in `release.yml` is guarded by `if: false` (see the `# DISABLED` comment),
+> and the Actions runtime is disabled in this environment anyway. **The package
+> is not published to PyPI**, so `pip install jira-tempo-mcp` will fail. Until
+> Trusted Publishing is configured and Actions are re-enabled, releases ship
+> only as GitHub Releases + the `ghcr.io` Docker image; install from source or
+> Docker (see [installation.md](installation.md)).
 
 ### 📊 Release pipeline detail
 
