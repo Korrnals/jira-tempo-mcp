@@ -8,11 +8,11 @@
 # JIRA_TIMEZONE, LOG_LEVEL) via the .env file (chmod 600, gitignored).
 # Copy .env.example to .env and fill in your Jira credentials.
 #
-# Image: pinned to release 0.3.5. Update the tag when upgrading.
+# Image: pinned to release 0.4.2. Update the tag when upgrading.
 
 services:
   jira-tempo-mcp:
-    image: ghcr.io/korrnals/jira-tempo-mcp:0.4.1
+    image: ghcr.io/korrnals/jira-tempo-mcp:0.4.2
     container_name: jira-tempo-mcp
     env_file:
       - .env
