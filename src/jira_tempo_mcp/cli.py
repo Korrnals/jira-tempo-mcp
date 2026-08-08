@@ -47,7 +47,16 @@ def _run_install_script(subcommand: str) -> int:
         return 0
 
     print(
-        "install.py not found. Run from the project root:\n  python install.py",
+        "\n'jira-tempo-mcp install' requires a git clone (not a wheel/Docker install).\n"
+        "install.py is a dev-setup script that needs the repository tree "
+        "(.env.example, copilot-integration/, pyproject.toml).\n\n"
+        "To install:\n"
+        "  git clone https://github.com/Korrnals/jira-tempo-mcp.git\n"
+        "  cd jira-tempo-mcp\n"
+        "  pip install -e .\n"
+        "  jira-tempo-mcp install\n\n"
+        "For Docker-only usage (no install needed):\n"
+        "  docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:latest\n",
         file=sys.stderr,
     )
     return 1
