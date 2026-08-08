@@ -50,6 +50,30 @@ python install.py
 
 Полное описание — в [installation.ru.md](installation.ru.md).
 
+### 🔧 Флаги установщика
+
+Установщик (`install.py`) принимает следующие флаги — полезны в CI, headless-окружениях
+или при перезапуске только части настройки:
+
+| Флаг | Эффект |
+| --- | --- |
+| `-n` / `--non-interactive` / `--yes` | Запуск без запросов; значения берутся из флагов / env-переменных / умолчаний |
+| `--register-only` | Пропустить venv/pip — только записать `.env.local` и зарегистрировать в `mcp.json` |
+| `--no-agent` | Пропустить установку агента Copilot Chat (по умолчанию агент устанавливается) |
+| `--uninstall-agent` | Удалить только агент Copilot Chat + skill + `JTM_AGENT.md`, затем выйти |
+| `--skip-vscode` | Пропустить регистрацию в VS Code `mcp.json` (только записать `.env.local`) |
+| `--jira-base-url` | Переопределить `JIRA_BASE_URL` (по умолч.: env-переменная) |
+| `--jira-user` | Переопределить `JIRA_USER` (по умолч.: env-переменная) |
+| `--jira-pat` | Переопределить `JIRA_PAT` (по умолч.: env-переменная) |
+| `--jira-timezone` | Переопределить `JIRA_TIMEZONE` (по умолч.: `Europe/Moscow`) |
+| `--log-level` | Переопределить `LOG_LEVEL` (по умолч.: `INFO`) |
+
+Пример — только регистрация, неинтерактивно:
+
+```bash
+python install.py --non-interactive --register-only
+```
+
 ---
 
 ## 🗑️ `uninstall`
@@ -74,7 +98,7 @@ jira-tempo-mcp uninstall
 
 ```bash
 jira-tempo-mcp --version
-# jira-tempo-mcp 0.1.0
+# jira-tempo-mcp 0.4.1
 
 jira-tempo-mcp --help
 # выводит блок использования, показанный выше
