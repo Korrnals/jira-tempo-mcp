@@ -185,7 +185,7 @@ the user tasks the agent could have solved itself.
 ### ✅ The only sanctioned channel — MCP tools
 
 The agent interacts with the server **only** through MCP tools
-(`generate_weekly_report`, `get_tempo_worklogs`, `get_jira_issue`, etc.),
+(`generate_weekly_report`, `list_worklogs`, `get_issue`, etc.),
 invoked from Copilot / MCP-client chat. In this mode the VS Code MCP-host
 injects variables from `.env.local` into the server's process environment,
 and reports are written to the canonical directory automatically.
