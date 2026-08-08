@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.4.2] — 2026-08-08
+
+### Documentation
+
+- **`api.md`/`api.ru.md` — all 15 MCP tools documented** — the reference previously documented only 9 tools; the missing 6 (`preview_report_template`, `list_report_templates`, `get_tempo_worklogs`, `get_jira_issue`, `list_workspace_files`, `convert_report_template`) are now covered with full request/response contracts updated to v0.4.x.
+- **`reports.md` — filename format ISO `YYYY-MM-DD`** — the weekly-report filename format was previously documented as `DDMMYY`; it is now documented as ISO `YYYY-MM-DD` (the actual implementation format). No `DDMMYY` references remain.
+- **`mcp-integration.md` — phantom tool names fixed** — the MCP integration guide previously referenced tool names that do not exist in the server (phantom names); all references now resolve to real tool names.
+- **`deployment.md` — GitHub Actions disabled status clarified** — the deployment guide previously implied CI workflows were active; it now documents explicitly that GitHub Actions are intentionally disabled and that `make ci` is the canonical local verification path.
+- **`architecture.md` — tool count 9 → 15, CI reference updated** — the architecture overview previously stated "9 tools"; corrected to 15, with the CI reference updated to the current `make ci` flow.
+- **`cli.md` — version 0.4.1, installer flags documented** — the CLI reference previously referenced version `0.1.0` and omitted installer flags; version corrected and installer flags documented.
+- **`troubleshooting.md` — `pydantic` → `ConfigError`** — the troubleshooting guide previously attributed config-validation errors to `pydantic`; corrected to `ConfigError` (the actual exception class used by the server).
+- **RU terminology unified** (`кастомные` → `пользовательские`) — the Russian documentation previously mixed `кастомные` (anglicism) and `пользовательские`; unified to `пользовательские` across all Russian docs.
+- **Emoji-heading anchors fixed across all docs** — Markdown anchors generated from emoji-prefixed headings were broken (GitHub anchor algorithm strips emoji but leaves stray punctuation); all emoji-prefixed headings and their cross-references corrected across 14 files.
+
 ## [0.4.1] — 2026-08-08
 
 ### Fixed
