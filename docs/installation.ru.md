@@ -128,6 +128,14 @@ python install.py --non-interactive --skip-vscode \
 jira-tempo-mcp install --non-interactive --register-only   # эквивалент python install.py
 ```
 
+> ⚠️ **Важно:** `jira-tempo-mcp install` требует git clone (editable-установку).
+> `install.py` — это dev-setup скрипт: он создаёт venv, пишет `.env`, регистрирует MCP
+> и копирует agent из `copilot-integration/`. Для этого нужен доступ к дереву репозитория
+> (`.env.example`, `copilot-integration/`, `pyproject.toml`). При установке через wheel
+> или Docker этих файлов нет — команда выведет понятную ошибку с инструкцией.
+> Для Docker-использования установка не нужна: сервер запускается напрямую через
+> `docker run` (см. [Путь 4](#-путь-4--docker)).
+
 ---
 
 ## 📥 Путь 2 — pip (опубликованный пакет)

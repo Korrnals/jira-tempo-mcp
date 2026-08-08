@@ -40,6 +40,22 @@ Steps performed:
 > 💡 **Tip:** Re-run `python install.py` any time to regenerate `.env` or
 > re-register the VS Code config. The installer is idempotent.
 
+### CLI dispatcher compatibility
+
+The installer is also reachable through the package's CLI dispatcher:
+
+```bash
+jira-tempo-mcp install --non-interactive --register-only   # equivalent to python install.py
+```
+
+> ⚠️ **Note:** `jira-tempo-mcp install` requires a git clone (editable install).
+> `install.py` is a dev-setup script: it creates a venv, writes `.env`, registers the
+> MCP server, and copies the agent from `copilot-integration/`. It needs access to the
+> repository tree (`.env.example`, `copilot-integration/`, `pyproject.toml`). Under a
+> wheel or Docker install these files are absent — the command prints a clear error
+> with recovery instructions. For Docker-only usage, no install is needed: run the
+> server directly via `docker run` (see [Path 4](#-path-4--docker)).
+
 ---
 
 ## 📥 Path 2 — pip (published package)
