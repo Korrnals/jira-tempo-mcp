@@ -25,11 +25,6 @@ def format_date(d: date) -> str:
     return d.strftime("%d.%m.%Y")
 
 
-def format_date_short(d: date) -> str:
-    """Format a date as DDMMYY (filename style)."""
-    return d.strftime("%d%m%y")
-
-
 def month_ru(month: int) -> str:
     """Map month number to Russian lowercase month name (for folder name)."""
     names = [
@@ -171,6 +166,12 @@ def group_worklogs_by_comment_raw(
     Returns a list of ``(raw_comment, total_seconds)`` tuples sorted by
     ``total_seconds`` descending (ties broken alphabetically by the normalized
     key for deterministic output).
+
+    The representative raw comment is chosen deterministically: among all raw
+    comments that share a normalized key we keep the **longest** one. This is
+    order-independent (so stable regardless of how Jira orders the worklogs)
+    and tends to pick the most informative raw comment (the one with the most
+    bullet/structure preserved), which is what the render paths want.
     """
     totals: dict[str, int] = {}
     raw_repr: dict[str, str] = {}
@@ -178,7 +179,8 @@ def group_worklogs_by_comment_raw(
         raw = extract_comment(wl)
         key = normalize_comment(raw)
         totals[key] = totals.get(key, 0) + extract_seconds(wl)
-        if key not in raw_repr:
+        existing = raw_repr.get(key)
+        if existing is None or len(raw) > len(existing):
             raw_repr[key] = raw
     ordered = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
     return [(raw_repr[key], secs) for key, secs in ordered]
@@ -313,7 +315,6 @@ __all__ = [
     "extract_seconds",
     "extract_worker",
     "format_date",
-    "format_date_short",
     "group_worklogs_by_comment",
     "group_worklogs_by_comment_raw",
     "md_escape_cell",

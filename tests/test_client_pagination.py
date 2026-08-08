@@ -183,7 +183,13 @@ async def test_list_user_tasks_single_page() -> None:
 
 @pytest.mark.asyncio
 async def test_list_user_tasks_multi_page_accumulates() -> None:
-    """A user with more tasks than the page size gets all of them."""
+    """A user with more tasks than the server page size gets all of them, up to the cap.
+
+    The client requests page_size=max_results (bounded to 100), but the server
+    here returns only 2 per request (its own ceiling), so the client must follow
+    the startAt/total paging until the cap is reached. max_results=4 == total so
+    accumulation is observed across two pages.
+    """
     all_issues = [_issue(f"USR-{i}") for i in range(4)]
     seen_start_at: list[str] = []
 
@@ -198,13 +204,44 @@ async def test_list_user_tasks_multi_page_accumulates() -> None:
 
     client = _client_with_transport(handler)
     try:
-        result = await client.list_user_tasks("alice", max_results=2)
+        result = await client.list_user_tasks("alice", max_results=4)
     finally:
         await client.aclose()
     assert len(result) == 4
     assert [r["key"] for r in result] == ["USR-0", "USR-1", "USR-2", "USR-3"]
     # Pages requested at startAt 0 and 2; third not needed (2+2 >= 4).
     assert seen_start_at == ["0", "2"]
+
+
+@pytest.mark.asyncio
+async def test_list_user_tasks_cap_stops_pagination() -> None:
+    """max_results is a hard total cap — pagination stops once it is reached.
+
+    Regression guard for code-review #2: previously max_results was only the
+    page size with no upper bound, so the client could page forever. Now an
+    explicit small cap must truncate the result and never request a third page.
+    """
+    all_issues = [_issue(f"USR-{i}") for i in range(6)]
+    requested_pages: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        start_at = int(dict(request.url.params)["startAt"])
+        requested_pages.append(dict(request.url.params)["startAt"])
+        page = all_issues[start_at : start_at + 2]
+        return httpx.Response(
+            200,
+            json={"issues": page, "startAt": start_at, "maxResults": 2, "total": 6},
+        )
+
+    client = _client_with_transport(handler)
+    try:
+        result = await client.list_user_tasks("alice", max_results=2)
+    finally:
+        await client.aclose()
+    # Cap honoured: exactly 2 returned, and only the first page was fetched.
+    assert len(result) == 2
+    assert [r["key"] for r in result] == ["USR-0", "USR-1"]
+    assert requested_pages == ["0"]
 
 
 @pytest.mark.asyncio

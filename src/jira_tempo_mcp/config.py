@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 
+import pytz
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -196,6 +197,15 @@ class Config(BaseModel):
     # HTTP timeout (m5 — configurable).
     http_timeout: float = Field(default=30.0, gt=0)
 
+    # HTTP retries for transient server/network errors (v0.4.1 — finding #11).
+    # Applied at the low-level _request() layer to idempotent GET requests only.
+    # Default 0 preserves the original fail-fast behaviour (backwards compatible).
+    http_max_retries: int = Field(
+        default=0,
+        ge=0,
+        description="Max retry attempts for idempotent GET on HTTP 5xx / network errors (exponential backoff). 0 = fail fast (backwards compatible).",
+    )
+
     # --- Team report rate-limiting (v0.2.0) ---
     tempo_max_concurrent_requests: int = Field(
         default=3,
@@ -240,7 +250,12 @@ class Config(BaseModel):
         description="Opt-in flag to load .py templates (code execution risk).",
     )
 
-    def __repr__(self) -> str:  # pragma: no cover - safety guard
+    def __repr__(self) -> str:
+        """Masked repr — secrets (jira_pat, tempo_api_token) never appear.
+
+        Covered by tests/test_config.py::TestConfigValidation::test_repr_* to
+        guard against regressions that would leak a secret via repr/logging.
+        """
         return (
             f"Config(jira_base_url={self.jira_base_url!r}, "
             f"jira_user={self.jira_user!r}, "
@@ -281,8 +296,17 @@ class Config(BaseModel):
     def team_users_resolved(self) -> list[str]:
         """Default users for team/tasks reports.
 
-        Returns report_team_users if non-empty, else falls back to [jira_user]
-        so a team report with no users and no env still works for the current user.
+        Returns ``report_team_users`` when non-empty, else falls back to
+        ``[jira_user]`` so a team report with no users and no env still works
+        for the current user.
+
+        .. note::
+
+            An **unset or empty** ``report_team_users`` always resolves to
+            ``[jira_user]`` — it never returns an empty list. To generate a
+            report for zero users, filter downstream (pass an explicit empty
+            ``users=`` argument through to the report generator) rather than
+            relying on this property to surface an empty set.
         """
         return list(self.report_team_users) if self.report_team_users else [self.jira_user]
 
@@ -299,6 +323,26 @@ class Config(BaseModel):
         if upper not in allowed:
             raise ValueError(f"log_level must be one of {allowed}, got {v!r}")
         return upper
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, v: str) -> str:
+        """Validate ``timezone`` via pytz at config load time (not runtime).
+
+        Without this an invalid zone (e.g. ``Europe/Moskow`` typo) would crash
+        the first time ``datetime.now(pytz.timezone(tz))`` runs, far from the
+        configuration source. Validating at load yields a clear, actionable
+        error at startup instead.
+        """
+        try:
+            pytz.timezone(v)
+        except pytz.UnknownTimeZoneError as exc:
+            raise ValueError(
+                f"Unknown timezone {v!r}. Use an IANA/pytz zone name like "
+                "'Europe/Moscow', 'UTC', or 'America/New_York'. "
+                "List: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
+            ) from exc
+        return v
 
 
 def _load_section_map() -> dict[str, str]:
@@ -394,6 +438,8 @@ def load_config() -> Config:
     stable_order = _load_json_list("REPORT_STABLE_ORDER")
     non_issue_sections = _load_json_list("REPORT_NON_ISSUE_SECTIONS")
     http_timeout_str = os.getenv("JIRA_HTTP_TIMEOUT", "30.0").strip()
+    # v0.4.1 — low-level HTTP retries for idempotent GET on 5xx / network errors.
+    http_max_retries = _load_int("JIRA_HTTP_MAX_RETRIES", 0)
 
     # v0.2.0 — team report rate-limiting + templates.
     tempo_max_concurrent = _load_int("TEMPO_MAX_CONCURRENT_REQUESTS", 3)
@@ -426,6 +472,7 @@ def load_config() -> Config:
         stable_order=stable_order,
         non_issue_sections=non_issue_sections,
         http_timeout=http_timeout,
+        http_max_retries=http_max_retries,
         tempo_max_concurrent_requests=tempo_max_concurrent,
         tempo_request_delay_ms=tempo_request_delay_ms,
         tempo_max_retries=tempo_max_retries,

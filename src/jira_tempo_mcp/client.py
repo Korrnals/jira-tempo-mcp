@@ -6,7 +6,9 @@ logged. Errors are redacted before propagation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -16,12 +18,38 @@ from .config import Config
 logger = logging.getLogger(__name__)
 
 
-class JiraTempoError(Exception):
-    """Raised on API errors. Message never contains tokens or full URLs with auth."""
+def _retry_backoff_seconds(attempt: int) -> float:
+    """Exponential backoff (seconds) for HTTP retries.
 
-    # HTTP status + body of the failing response, populated by _request().
-    status_code: int | None = None
-    response_body: Any = None
+    Sequence for attempts 0,1,2,...: 0.5, 1.0, 2.0, 4.0 — capped at 30s.
+    """
+    return float(min(0.5 * (2 ** attempt), 30.0))
+
+
+class JiraTempoError(Exception):
+    """Raised on API errors. Message never contains tokens or full URLs with auth.
+
+    Optional ``status_code`` (HTTP status of the failing response) and
+    ``response_body`` (parsed JSON or raw text) are populated by the request
+    path when an HTTP response is available. They are real instance
+    attributes declared via an explicit ``__init__`` rather than class-level
+    annotations, so there is no ambiguity about whether they exist on a given
+    instance (previously they were class-level annotations silently
+    inherited by subclasses and required ``# type: ignore[attr-defined]`` at
+    call sites). ``str(exc)`` remains the message alone, so existing code that
+    does ``if "429" in str(exc)`` keeps working.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        response_body: Any = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_body = response_body
 
 
 class WorkerKeyResolutionError(JiraTempoError):
@@ -60,6 +88,29 @@ def _redact(url: str) -> str:
         host = rest.split("@", 1)[1]
         return f"{scheme}://***@{host}"
     return url
+
+
+# Secret patterns that may appear in API error response bodies. Matches are
+# replaced with ``***REDACTED***`` before the body reaches logs or exception
+# messages. Covers GitHub tokens (ghp_/gho_/ghs_/ghu_/github_pat_), Vault
+# (hvs.), Stripe/Anthropic/OpenAI (sk-), Slack (xox[bpoa]-), and Authorization
+# header echoes (Bearer <token>).
+_SECRET_BODY_RE = re.compile(
+    r"(?:gh[pous]_|github_pat_)[A-Za-z0-9_]{8,}"
+    r"|hvs\.[A-Za-z0-9._-]{8,}"
+    r"|sk[-_][A-Za-z0-9_-]{15,}"
+    r"|xox[bpoa]-[A-Za-z0-9-]{10,}"
+    r"|Bearer\s+[A-Za-z0-9._\-]+"
+)
+
+
+def _redact_body(text: str) -> str:
+    """Mask token-shaped substrings in an API response body before logging.
+
+    Pairs with :func:`_redact` (which strips URL credentials): ``_redact``
+    handles the request URL, ``_redact_body`` handles the response body.
+    """
+    return _SECRET_BODY_RE.sub("***REDACTED***", text)
 
 
 class JiraTempoClient:
@@ -118,32 +169,82 @@ class JiraTempoClient:
         json: Any | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        try:
-            resp = await self._client.request(
-                method, url, headers=headers, json=json, params=params
-            )
-        except httpx.RequestError as exc:
-            raise JiraTempoError(
-                f"Network error contacting Jira/Tempo: {exc.__class__.__name__}"
-            ) from exc
-
-        if resp.status_code >= 400:
-            # m6: truncate to 200 chars to reduce log noise and potential token leakage.
-            body = resp.text[:200] if resp.text else ""
-            logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
-            err = JiraTempoError(f"API error {resp.status_code} from {_redact(url)}: {body}")
-            err.status_code = resp.status_code
+        # Retry transient failures on idempotent GET only (finding #11).
+        # Non-GET methods never retry: a network error on POST is ambiguous
+        # (the request may have reached the server) and retrying could create
+        # duplicates (e.g. worklogs). Default http_max_retries=0 keeps the
+        # original fail-fast behaviour.
+        max_retries = self._config.http_max_retries
+        idempotent = method.upper() == "GET"
+        for attempt in range(max_retries + 1):
             try:
-                err.response_body = resp.json()
-            except ValueError:
-                # Malformed JSON body (json.JSONDecodeError is a subclass
-                # of ValueError) — fall back to raw response text.
-                err.response_body = resp.text
-            raise err
+                resp = await self._client.request(
+                    method, url, headers=headers, json=json, params=params
+                )
+            except httpx.RequestError as exc:
+                if idempotent and attempt < max_retries:
+                    delay = _retry_backoff_seconds(attempt)
+                    logger.warning(
+                        "Network error %s on %s %s (attempt %d/%d) — retrying in %.2fs",
+                        exc.__class__.__name__,
+                        method,
+                        _redact(url),
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise JiraTempoError(
+                    f"Network error contacting Jira/Tempo: {exc.__class__.__name__}"
+                ) from exc
 
-        if resp.status_code == 204 or not resp.text:
-            return None
-        return resp.json()
+            # Retry idempotent GET on HTTP 5xx before entering the error path.
+            if (
+                500 <= resp.status_code <= 599
+                and idempotent
+                and attempt < max_retries
+            ):
+                delay = _retry_backoff_seconds(attempt)
+                logger.warning(
+                    "HTTP %d from %s %s (attempt %d/%d) — retrying in %.2fs",
+                    resp.status_code,
+                    method,
+                    _redact(url),
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            if resp.status_code >= 400:
+                # Truncate to 200 chars and redact token-shaped substrings so
+                # error logs / exception messages never leak a secret echoed by
+                # the API in the response body.
+                raw_body = resp.text[:200] if resp.text else ""
+                body = _redact_body(raw_body)
+                logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
+                try:
+                    parsed_body: Any = resp.json()
+                except ValueError:
+                    # Malformed JSON body (json.JSONDecodeError is a subclass
+                    # of ValueError) — fall back to raw response text.
+                    parsed_body = resp.text
+                raise JiraTempoError(
+                    f"API error {resp.status_code} from {_redact(url)}: {body}",
+                    status_code=resp.status_code,
+                    response_body=parsed_body,
+                )
+
+            if resp.status_code == 204 or not resp.text:
+                return None
+            return resp.json()
+
+        # Unreachable: the loop body always returns, raises, or continues
+        # until the last attempt falls through to the error path above.
+        # Kept for type-checkers; flagged so coverage does not expect it.
+        raise JiraTempoError("retry loop exited without a result")  # pragma: no cover
 
     # --- paginated GET (Jira REST startAt/total) ---
 
@@ -450,13 +551,17 @@ class JiraTempoClient:
         # 4. Non-default user: Jira REST API user search — returns a list
         #    of matching users, each with a ``key`` field (e.g.
         #    ``JIRAUSER40101``) which Tempo accepts as a worker key.
+        #    Paginated for consistency with search_users(): /user/search can
+        #    return a bare list with no envelope, so without paging a large
+        #    user directory could silently truncate before the exact match.
         search_url = f"{self._config.jira_api_base}/user/search"
         try:
-            results = await self._request(
-                "GET",
+            results = await self._paginated_get(
                 search_url,
-                self._jira_headers(),
-                params={"username": target},
+                {"username": target},
+                results_key="values",
+                page_size=100,
+                max_results=1000,
             )
         except JiraTempoError as exc:
             raise WorkerKeyResolutionError(
@@ -589,15 +694,27 @@ class JiraTempoClient:
                 cats = ", ".join(f'"{c}"' for c in unique_cats)
                 jql += f" AND statusCategory IN ({cats})"
             else:
+                # At least one status_filter value has no entry in
+                # _RU_STATUS_TO_CATEGORY, so statusCategory filtering cannot be
+                # used. Log so the operator can see which statuses were not
+                # covered and extend the mapping if needed.
+                unmapped = [s for s in status_filter if _RU_STATUS_TO_CATEGORY.get(s) is None]
+                logger.info(
+                    "status_filter fallback to 'status IN (...)' — "
+                    "unmapped status values: %s",
+                    unmapped,
+                )
                 statuses = ", ".join(f'"{s}"' for s in status_filter)
                 jql += f" AND status IN ({statuses})"
         jql += " ORDER BY updated DESC"
 
         url = f"{self._config.jira_api_base}/search"
-        # Paginate via startAt/total so users with >100 assigned issues
-        # are not silently truncated (BUG: single-page maxResults). Here
-        # ``max_results`` is the per-request page size, not a total cap —
-        # all assigned tasks are returned.
+        # Paginate via startAt/total so users with >page-size assigned issues
+        # are not silently truncated. ``max_results`` is now the TOTAL cap across
+        # pages; the per-request page size is bounded to 100 (the Jira /search
+        # server ceiling) so an unbounded pagination loop cannot pull thousands
+        # of issues. Mirrors search_issues() cap semantics. (#2)
+        capped_page = min(max_results, 100)
         issues = await self._paginated_get(
             url,
             {
@@ -605,7 +722,8 @@ class JiraTempoClient:
                 "fields": "summary,status,duedate,comment,priority,issuetype,project,created,updated",
             },
             results_key="issues",
-            page_size=max_results,
+            page_size=capped_page,
+            max_results=max_results,
         )
 
         tasks: list[dict[str, Any]] = []

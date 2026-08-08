@@ -20,26 +20,19 @@ import logging
 from pathlib import Path
 from typing import Any
 
+# Jinja2 is a required dependency (pyproject [project.dependencies]), so the
+# import is unconditional. .j2 templates are a documented core feature; the
+# previous optional-import fallback was unreachable in practice and
+# contradicted the declared dependency.
+from jinja2 import FileSystemLoader, TemplateNotFound
+from jinja2.sandbox import SandboxedEnvironment
+
 from ..config import Config
 from ..utils import format_seconds_to_human
 from . import ReportTemplate, TemplateRegistry, builtin_registry
 from ._shared import format_date
 
 logger = logging.getLogger(__name__)
-
-# Jinja2 is optional at runtime — import lazily so the server still starts
-# if it is not installed (only .j2 templates become unavailable).
-try:
-    from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-    from jinja2.sandbox import SandboxedEnvironment
-
-    _JINJA2_AVAILABLE = True
-except ImportError:  # pragma: no cover - exercised only without jinja2
-    _JINJA2_AVAILABLE = False
-    SandboxedEnvironment = None  # type: ignore[assignment, misc]
-    Environment = None  # type: ignore[assignment, misc]
-    FileSystemLoader = None  # type: ignore[assignment, misc]
-    TemplateNotFound = None  # type: ignore[assignment, misc]
 
 
 class JinjaTemplate:
@@ -121,12 +114,6 @@ def _load_python_template(path: Path) -> ReportTemplate | None:
 
 def _load_jinja_template(path: Path, env: Any) -> ReportTemplate | None:
     """Load a .j2 template into the sandboxed environment."""
-    if not _JINJA2_AVAILABLE:
-        logger.warning(
-            "Jinja2 not installed — skipping .j2 template %s (pip install jinja2)",
-            path,
-        )
-        return None
     try:
         # Pre-compile to validate syntax.
         env.get_template(path.name)
@@ -151,14 +138,12 @@ def discover_custom_templates(config: Config) -> list[ReportTemplate]:
         logger.debug("Template dir %s does not exist — no custom templates", template_dir)
         return []
 
-    env: Any = None
-    if _JINJA2_AVAILABLE:
-        env = SandboxedEnvironment(
-            loader=FileSystemLoader(str(template_dir)),
-            autoescape=False,  # reports are plain text, not HTML
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
+    env = SandboxedEnvironment(
+        loader=FileSystemLoader(str(template_dir)),
+        autoescape=False,  # reports are plain text, not HTML
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
 
     templates: list[ReportTemplate] = []
     for path in sorted(template_dir.iterdir()):
@@ -208,14 +193,12 @@ def resolve_template(config: Config, registry: TemplateRegistry) -> ReportTempla
         else:
             suffix = path.suffix.lower()
             if suffix == ".j2":
-                env: Any = None
-                if _JINJA2_AVAILABLE:
-                    env = SandboxedEnvironment(
-                        loader=FileSystemLoader(str(path.parent)),
-                        autoescape=False,
-                        trim_blocks=True,
-                        lstrip_blocks=True,
-                    )
+                env = SandboxedEnvironment(
+                    loader=FileSystemLoader(str(path.parent)),
+                    autoescape=False,
+                    trim_blocks=True,
+                    lstrip_blocks=True,
+                )
                 tpl = _load_jinja_template(path, env)
                 if tpl is not None:
                     return tpl
@@ -225,6 +208,15 @@ def resolve_template(config: Config, registry: TemplateRegistry) -> ReportTempla
                         "REPORT_TEMPLATE_PATH points to .py but REPORT_TEMPLATE_ALLOW_PY=0"
                     )
                 else:
+                    # Code-execution warning — mirrors discover_custom_templates.
+                    # A .py template runs arbitrary Python via importlib; the user
+                    # must trust the file. This is opt-in (REPORT_TEMPLATE_ALLOW_PY=1)
+                    # and the threat model is documented separately by Tech Writer.
+                    logger.warning(
+                        "Loading Python template %s via REPORT_TEMPLATE_PATH — "
+                        "this executes arbitrary code; ensure the file is trusted",
+                        path,
+                    )
                     tpl = _load_python_template(path)
                     if tpl is not None:
                         return tpl

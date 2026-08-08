@@ -24,6 +24,7 @@ import pytz
 
 from .client import JiraTempoClient, JiraTempoError
 from .config import Config
+from .report_common import resolve_report_base_dir, sort_worklogs_by_issue, write_report_file
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
     extract_comment as _extract_comment,  # noqa: F401 — re-exported for tests
@@ -39,9 +40,6 @@ from .templates._shared import (
 )
 from .templates._shared import (
     format_date as _format_date,  # noqa: F401
-)
-from .templates._shared import (
-    format_date_short as _format_date_short,  # noqa: F401
 )
 from .templates._shared import (
     group_worklogs_by_comment_raw,
@@ -67,7 +65,6 @@ logger = logging.getLogger(__name__)
 # Backward-compatible aliases (tests import these private names).
 _week_range = week_range
 _format_date = _format_date
-_format_date_short = _format_date_short
 _month_ru = _month_ru
 _parse_tempo_date = parse_tempo_date
 
@@ -120,12 +117,7 @@ def _render_weekly_md(
         return "\n".join(lines)
 
     # Sort worklogs: by issue key asc, then by seconds desc within issue.
-    def _sort_key(wl: dict[str, Any]) -> tuple[str, int]:
-        k = _extract_issue_key(wl) or ""
-        s = _extract_seconds(wl)
-        return (k, -s)
-
-    sorted_worklogs = sorted(flat, key=_sort_key)
+    sorted_worklogs = sort_worklogs_by_issue(flat)
 
     # --- Worklogs table ---
     lines.append(
@@ -200,10 +192,14 @@ def _render_weekly_json(
 
     # 2. Remaining issues sorted by total time desc.
     remaining = [k for k in grouped if k not in used_keys]
-    remaining.sort(key=lambda k: sum(_extract_seconds(w) for w in grouped[k]), reverse=True)
+    # Cache each key's time total once: the sort key and the record below both
+    # need it, so computing it in the sort lambda AND again in the loop would
+    # sum extract_seconds over the same worklogs twice.
+    totals = {k: sum(_extract_seconds(w) for w in grouped[k]) for k in remaining}
+    remaining.sort(key=lambda k: totals[k], reverse=True)
     for key in remaining:
         title = issue_titles.get(key, key)
-        task_total = sum(_extract_seconds(w) for w in grouped[key])
+        task_total = totals[key]
         worklog_entries = []
         for comment, secs in group_worklogs_by_comment_raw(grouped[key]):
             worklog_entries.append(
@@ -357,8 +353,7 @@ async def generate_weekly_report(
 
     # --- Determine output path ---
     if output_dir is None:
-        base = config.report_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
-        output_dir = Path(base) / str(monday.year) / _month_ru(monday.month) / "weekly"
+        output_dir = resolve_report_base_dir(config) / str(monday.year) / _month_ru(monday.month) / "weekly"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # UX-8: ISO dates in filename for clarity across years.
@@ -368,7 +363,7 @@ async def generate_weekly_report(
     filename_prefix = username if username else config.report_filename_header
     filename = f"{filename_prefix}_{monday.isoformat()}_{friday.isoformat()}.{fmt}"
     out_path = output_dir / filename
-    out_path.write_text(report_text, encoding="utf-8")
+    write_report_file(out_path, report_text)
     total_seconds = sum(_extract_seconds(w) for w in filtered)
     logger.info("Report written to %s (%d seconds total, fmt=%s)", out_path, total_seconds, fmt)
     return str(out_path)
@@ -382,7 +377,6 @@ __all__ = [
     "_extract_seconds",
     "_extract_worker",
     "_format_date",
-    "_format_date_short",
     "_month_ru",
     "_parse_tempo_date",
     "_week_range",

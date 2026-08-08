@@ -48,6 +48,19 @@ class TestConfigValidation:
         with pytest.raises(ValueError):
             Config(jira_base_url="https://x", jira_user="u", jira_pat="p", log_level="VERBOSE")
 
+    def test_invalid_timezone_rejected(self) -> None:
+        # Typo / non-existent zone must fail at load, not at first datetime.now().
+        with pytest.raises(ValidationError) as exc_info:
+            Config(
+                jira_base_url="https://x", jira_user="u", jira_pat="p", timezone="Europe/Moskow"
+            )
+        assert "Unknown timezone" in str(exc_info.value)
+
+    def test_valid_timezone_accepted(self) -> None:
+        for tz in ("Europe/Moscow", "UTC", "America/New_York", "Asia/Tokyo"):
+            c = Config(jira_base_url="https://x", jira_user="u", jira_pat="p", timezone=tz)
+            assert c.timezone == tz
+
     def test_tempo_token_fallback(self) -> None:
         c = Config(jira_base_url="https://x", jira_user="u", jira_pat="p")
         assert c.tempo_token == "p"  # falls back to jira_pat
@@ -59,10 +72,12 @@ class TestConfigValidation:
         assert c.tempo_token == "tempo_tok"
 
     def test_repr_masks_pat(self) -> None:
-        c = Config(jira_base_url="https://x", jira_user="u", jira_pat="secret123")
+        c = Config(jira_base_url="https://x", jira_user="u", jira_pat="test-pat-123")
         repr_str = repr(c)
-        assert "secret123" not in repr_str
+        assert "test-pat-123" not in repr_str
         assert "***" in repr_str
+        # The field name must remain visible so logs show which secret was redacted.
+        assert "jira_pat" in repr_str
 
     def test_repr_masks_tempo_token(self) -> None:
         c = Config(
