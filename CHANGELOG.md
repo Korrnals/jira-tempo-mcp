@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## [0.4.1] — 2026-08-08
+
+### Fixed
+
+- **`tasks_report` concurrency bounded** (`tasks_report.py`) — previously called `asyncio.gather` over all users without a `Semaphore`, risking Tempo API rate-limit storms (HTTP 429) and silent empty results on large teams. Now mirrors `team_report.py`: bounded concurrency (`TEMPO_MAX_CONCURRENT_REQUESTS`), inter-batch delay, and retry-on-429 via the shared `_fetch_with_retry` helper. Also caps `max_results` to prevent unbounded pagination.
+- **Client retry on transient failures** (`client.py`) — `_request` now optionally retries idempotent GET requests on HTTP 5xx and `httpx.RequestError` with exponential backoff, controlled by `JIRA_HTTP_MAX_RETRIES` (default `0` = current behaviour, backwards-compatible). POST/PUT/DELETE are never retried (avoids duplicate worklogs).
+- **Server distinguishes unexpected errors** (`server.py`) — the catch-all `except Exception` in `_call_tool` previously labelled every failure identically. Unexpected errors (not `JiraTempoError`/`ValueError`/`KeyError`) are now prefixed `[unexpected]` with a hint to enable DEBUG, so users can tell a validation error from a latent bug.
+- **Tolerant `date_started` parsing in `create_worklog`** (`server.py`) — `datetime.fromisoformat` in Python 3.11 rejected `+0300` (no colon) and microsecond variants. A new `_parse_iso_datetime` helper normalizes these shapes before parsing.
+- **Filename hash `md5` → `sha256`** (`team_report.py`) — the per-users filename hash now uses SHA-256 (6-char digest) instead of MD5, satisfying `ruff/B` and removing the only crypto-broken primitive from the codebase.
+- **Jinja2 dependency contradiction resolved** (`templates/loader.py`) — the optional-import fallback (classes set to `None` on `ImportError`) was unreachable because `jinja2` is a declared `[project.dependencies]` entry. Jinja2 is now imported unconditionally; dead fallback branches removed.
+- **`.py` template code-execution warning strengthened** (`templates/loader.py`) — `REPORT_TEMPLATE_PATH` pointing at a `.py` file previously loaded without warning (unlike `discover_custom_templates`, which warned). Now both paths log prominently; the threat model is also documented in `docs/templates.*`.
+- **Secrets redacted from error response bodies** (`client.py`) — API error bodies logged at `ERROR` level (first 200 chars) are now passed through a `_redact_body` filter masking common token patterns (`ghp_`, `hvs.`, `Bearer …`, `sk-`, `xox[bpoa]-`).
+- **22 additional low-severity quality fixes** across `client.py`, `config.py`, `report.py`, `_shared.py`, `server.py`, `utils.py`, and the builtin templates — dead-code removal (`format_date_short`, `_resolve_issue_titles` sync version), deterministic `group_worklogs_by_comment_raw` selection (longest raw wins), Unix-newline enforcement in report file writes, cached `extract_seconds` in sort keys, paginated `find_worker_key`, explicit `JiraTempoError.__init__`, `timezone` field validation at config load, duplicate-key fix in the `default` template's remaining-section header, and more.
+
+### Security
+
+- **Security test suite added** (`tests/test_security.py`, 8 tests) — path-traversal rejection in `_validate_output_dir`, Jinja2 sandbox dunder-escape (`{{ config.__class__… }}` blocked), 5xx retry/no-retry semantics, network-error propagation, and `.py`-template warning verification. Previously, security coverage was zero.
+- **`Config.__repr__` secret masking now tested** (`tests/test_config.py`) — removed `# pragma: no cover`; asserts `jira_pat` value never appears in `repr(config)`.
+
+### Changed
+
+- **`report_common.py` shared module** (`src/jira_tempo_mcp/report_common.py`) — extracts `resolve_output_dir`, `sort_worklogs_by_issue`, and `write_report_file` helpers previously duplicated across `report.py`, `tasks_report.py`, and `team_report.py` (~40 lines deduplicated). Enforces deterministic Unix newlines in written report files.
+
+### Docs
+
+- **15 MCP tools documented** (`docs/api.md` + `docs/api.ru.md`) — was 9; added `search_users`, `list_user_tasks`, `list_issues_by_jql`, `get_current_user`, `generate_tasks_report`, `preview_report_template`. Contracts for `generate_weekly_report`, `generate_team_report`, `get_issue`, `create_worklog`, `list_report_templates` updated to match `server.py` (`format`, `username`, user-hash, 8 metadata fields, provenance, ISO filenames).
+- **Legacy docs modernised** — `reports.md`/`.ru.md` filename format `DDMMYY` → ISO `YYYY-MM-DD`; `mcp-integration.md`/`.ru.md` phantom tool names (`get_tempo_worklogs`/`get_jira_issue`) replaced with real names (`list_worklogs`/`get_issue`); `deployment.md`/`.ru.md` clarifies GitHub Actions are disabled and `make ci` is the canonical gate; `architecture.md`/`.ru.md` tool count 9 → 15; `cli.md`/`.ru.md` version example and installer flags updated; `troubleshooting.md`/`.ru.md` pydantic → `ConfigError`.
+- **Quick start Docker tag** (`README.md` + `README.ru.md`) — `:0.3.2` → `:0.4.0`; Features table lists all 15 tools.
+- **Broken emoji-heading anchors fixed** across `api.md`, `configuration.md`/`.ru.md`, `reports.md`, `troubleshooting.md` — GitHub strips leading emojis from anchors, leaving a leading dash (`#-custom-templates`, not `#custom-templates`).
+- **RU terminology unified** — "пользовательские" vs "кастомные" custom templates consolidated to a single term per doc.
+
 ## [0.4.0] — 2026-08-08
 
 ### Added
