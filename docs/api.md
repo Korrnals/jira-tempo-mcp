@@ -10,21 +10,21 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 
 | Tool | Group | Purpose |
 | --- | --- | --- |
-| [`list_worklogs`](#list_worklogs) | Worklogs | List worklogs for a date range or single day |
-| [`get_worklog`](#get_worklog) | Worklogs | Get a single worklog by Tempo ID |
-| [`create_worklog`](#create_worklog) | Worklogs | Track time on a Jira issue |
-| [`delete_worklog`](#delete_worklog) | Worklogs | Delete a worklog by ID |
-| [`get_issue`](#get_issue) | Issues | Get Jira issue metadata (8 fields) |
-| [`list_favorite_issues`](#list_favorite_issues) | Issues | List favorite issues for the current user |
-| [`list_issues_by_jql`](#list_issues_by_jql) | Issues | Search issues by JQL query |
-| [`get_current_user`](#get_current_user) | Users | Get authenticated user info |
-| [`search_users`](#search_users) | Users | Search Jira users by name or email |
-| [`list_user_tasks`](#list_user_tasks) | Users | Get tasks assigned to a user |
-| [`generate_weekly_report`](#generate_weekly_report) | Reports | Generate a weekly report (`txt`/`md`/`json`) |
-| [`generate_team_report`](#generate_team_report) | Reports | Generate a team report for multiple users |
-| [`generate_tasks_report`](#generate_tasks_report) | Reports | Generate a tasks report grouped by status |
-| [`list_report_templates`](#list_report_templates) | Reports | List available report templates |
-| [`preview_report_template`](#preview_report_template) | Reports | Preview a template with sample data |
+| [`list_worklogs`](#-list_worklogs) | Worklogs | List worklogs for a date range or single day |
+| [`get_worklog`](#-get_worklog) | Worklogs | Get a single worklog by Tempo ID |
+| [`create_worklog`](#-create_worklog) | Worklogs | Track time on a Jira issue |
+| [`delete_worklog`](#-delete_worklog) | Worklogs | Delete a worklog by ID |
+| [`get_issue`](#-get_issue) | Issues | Get Jira issue metadata (8 fields) |
+| [`list_favorite_issues`](#-list_favorite_issues) | Issues | List favorite issues for the current user |
+| [`list_issues_by_jql`](#-list_issues_by_jql) | Issues | Search issues by JQL query |
+| [`get_current_user`](#-get_current_user) | Users | Get authenticated user info |
+| [`search_users`](#-search_users) | Users | Search Jira users by name or email |
+| [`list_user_tasks`](#-list_user_tasks) | Users | Get tasks assigned to a user |
+| [`generate_weekly_report`](#-generate_weekly_report) | Reports | Generate a weekly report (`txt`/`md`/`json`) |
+| [`generate_team_report`](#-generate_team_report) | Reports | Generate a team report for multiple users |
+| [`generate_tasks_report`](#-generate_tasks_report) | Reports | Generate a tasks report grouped by status |
+| [`list_report_templates`](#-list_report_templates) | Reports | List available report templates |
+| [`preview_report_template`](#-preview_report_template) | Reports | Preview a template with sample data |
 
 ---
 
@@ -385,7 +385,7 @@ Report templates (4):
 - my_custom (custom, Jinja2): My custom Jinja2 template
 ```
 
-> 💡 **Tip:** See [reports.md#custom-templates](reports.md#custom-templates) for how to
+> 💡 **Tip:** See [reports.md#custom-templates](reports.md#-custom-templates) for how to
 > add custom templates.
 
 ---

@@ -124,7 +124,7 @@ git push origin v0.4.1
    через Trusted Publishing (OIDC). API-токен не хранится в репозитории.
 3. 🐳 **Сборка и push Docker-образа** — многостадийная сборка пушится в
    `ghcr.io/korrnals/jira-tempo-mcp` с semver-тегами (см.
-   [Теги Docker-образа](#теги-docker-образа)).
+   [Теги Docker-образа](#-теги-docker-образа)).
 4. 📝 **Создание GitHub Release** — автогенерированные заметки с wheel как
    вложением.
 
@@ -234,5 +234,5 @@ pre-commit install
 ## ➡️ Дальнейшие шаги
 
 - 📦 [installation.ru.md](installation.ru.md) — способы локальной установки
-- 🏗️ [architecture.ru.md](architecture.ru.md#безопасность-сборки-docker) — модель безопасности Docker
+- 🏗️ [architecture.ru.md](architecture.ru.md#-безопасность-сборки-docker) — модель безопасности Docker
 - ⚙️ [configuration.ru.md](configuration.ru.md) — переменные окружения для контейнера

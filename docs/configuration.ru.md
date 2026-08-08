@@ -216,7 +216,7 @@ REPORT_FILENAME_PREFIX=your-username
 - Тела ошибок API обрезаются до 200 символов для снижения шума и возможной
   утечки токена.
 
-Полная модель безопасности — в [architecture.ru.md](architecture.ru.md#безопасность).
+Полная модель безопасности — в [architecture.ru.md](architecture.ru.md#-безопасность).
 
 ---
 

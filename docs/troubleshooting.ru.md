@@ -38,7 +38,7 @@ root-namespace, а не `$HOME` пользователя. Ломается в sa
 "envFile": "/var/home/your-username/.distrobox/box/home/.config/Code/User/.env.local"
 ```
 
-> 💡 **Совет:** См. [mcp-integration.ru.md](mcp-integration.ru.md#абсолютные-пути-для-envfile-distrobox--контейнеры).
+> 💡 **Совет:** См. [mcp-integration.ru.md](mcp-integration.ru.md#-абсолютные-пути-для-envfile-distrobox--контейнеры).
 
 ---
 
@@ -77,7 +77,7 @@ HTTP-серверов.
 
 **✅ Решение:** используйте `${input:...}` — он один раз запрашивает значение и
 кэширует его в секретном хранилище VS Code. См.
-[mcp-integration.ru.md](mcp-integration.ru.md#input-для-http-серверов).
+[mcp-integration.ru.md](mcp-integration.ru.md#-input-для-http-серверов).
 
 ---
 
@@ -146,7 +146,7 @@ HTTP-серверов.
 **✅ Решение:** передавайте `output_dir` внутри разрешённого корня или задайте
 `REPORT_OUTPUT_DIR` в нужную базовую директорию.
 
-> 💡 **Совет:** См. [reports.ru.md](reports.ru.md#защита-от-path-traversal).
+> 💡 **Совет:** См. [reports.ru.md](reports.ru.md#-защита-от-path-traversal).
 
 ---
 
@@ -198,4 +198,4 @@ HTTP-серверов.
 
 - 🔌 [mcp-integration.ru.md](mcp-integration.ru.md) — детали MCP-конфигурации
 - ⚙️ [configuration.ru.md](configuration.ru.md) — все переменные окружения
-- 🌐 [api.ru.md](api.ru.md#обработка-ошибок) — справочник сообщений об ошибках
+- 🌐 [api.ru.md](api.ru.md#-обработка-ошибок) — справочник сообщений об ошибках

@@ -249,6 +249,6 @@ with an explicit error.
 
 ## ➡️ Next steps
 
-- 🌐 [api.md#generate_weekly_report](api.md#generate_weekly_report) — tool parameters
-- ⚙️ [configuration.md](configuration.md#weekly-report-optional) — all report env vars
+- 🌐 [api.md#generate_weekly_report](api.md#-generate_weekly_report) — tool parameters
+- ⚙️ [configuration.md](configuration.md#-weekly-report-optional) — all report env vars
 - 🐛 [troubleshooting.md](troubleshooting.md) — report-related errors

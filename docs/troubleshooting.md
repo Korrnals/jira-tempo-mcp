@@ -38,7 +38,7 @@ For distrobox:
 "envFile": "/var/home/your-username/.distrobox/box/home/.config/Code/User/.env.local"
 ```
 
-> 💡 **Tip:** See [mcp-integration.md](mcp-integration.md#absolute-paths-for-envfile-distrobox--containers).
+> 💡 **Tip:** See [mcp-integration.md](mcp-integration.md#-absolute-paths-for-envfile-distrobox--containers).
 
 ---
 
@@ -77,7 +77,7 @@ HTTP-type servers.
 
 **✅ Fix:** use `${input:...}` instead, which prompts once and caches the value
 in VS Code secret storage. See
-[mcp-integration.md](mcp-integration.md#input-for-http-type-servers).
+[mcp-integration.md](mcp-integration.md#-input-for-http-type-servers).
 
 ---
 
@@ -145,7 +145,7 @@ Tempo connectivity is broken.
 **✅ Fix:** pass an `output_dir` that is inside the allowed root, or set
 `REPORT_OUTPUT_DIR` to the desired base directory.
 
-> 💡 **Tip:** See [reports.md](reports.md#path-traversal-protection).
+> 💡 **Tip:** See [reports.md](reports.md#-path-traversal-protection).
 
 ---
 
@@ -197,4 +197,4 @@ Tempo connectivity is broken.
 
 - 🔌 [mcp-integration.md](mcp-integration.md) — MCP config details
 - ⚙️ [configuration.md](configuration.md) — all env vars
-- 🌐 [api.md](api.md#error-handling) — error messages reference
+- 🌐 [api.md](api.md#-error-handling) — error messages reference

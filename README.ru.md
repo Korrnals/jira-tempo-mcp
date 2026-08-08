@@ -227,7 +227,7 @@ jira-tempo-mcp --version        # показать версию
 - **🐳 Docker** — многостадийная сборка, non-root пользователь, секреты никогда
   не вшиваются в образ.
 
-Полная модель: [docs/architecture.ru.md#безопасность](docs/architecture.ru.md#безопасность).
+Полная модель: [docs/architecture.ru.md#безопасность](docs/architecture.ru.md#-безопасность).
 
 </details>
 

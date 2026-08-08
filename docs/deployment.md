@@ -125,7 +125,7 @@ The release workflow then runs automatically:
    via Trusted Publishing (OIDC). No API token is stored in the repo.
 3. 🐳 **Build & push Docker image** — multi-stage build pushed to
    `ghcr.io/korrnals/jira-tempo-mcp` with semver tags (see
-   [Docker image tags](#docker-image-tags)).
+   [Docker image tags](#-docker-image-tags)).
 4. 📝 **Create GitHub Release** — auto-generated release notes with the wheel
    attached as a download asset.
 
@@ -235,5 +235,5 @@ pre-commit install
 ## ➡️ Next steps
 
 - 📦 [installation.md](installation.md) — local install paths
-- 🏗️ [architecture.md](architecture.md#docker-build-safety) — Docker security model
+- 🏗️ [architecture.md](architecture.md#-docker-build-safety) — Docker security model
 - ⚙️ [configuration.md](configuration.md) — env vars for the container

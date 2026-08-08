@@ -227,7 +227,7 @@ Full reference: [docs/cli.md](docs/cli.md).
   guard) are validated before any API call.
 - **🐳 Docker** — multi-stage build, non-root user, secrets never baked in.
 
-Full model: [docs/architecture.md#security](docs/architecture.md#security).
+Full model: [docs/architecture.md#security](docs/architecture.md#-security).
 
 </details>
 

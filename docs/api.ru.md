@@ -10,21 +10,21 @@
 
 | Инструмент | Группа | Назначение |
 | --- | --- | --- |
-| [`list_worklogs`](#list_worklogs) | Worklog'и | Список worklog'ов за период или один день |
-| [`get_worklog`](#get_worklog) | Worklog'и | Получить один worklog по Tempo ID |
-| [`create_worklog`](#create_worklog) | Worklog'и | Учесть время на задаче Jira |
-| [`delete_worklog`](#delete_worklog) | Worklog'и | Удалить worklog по ID |
-| [`get_issue`](#get_issue) | Задачи | Получить метаданные задачи Jira (8 полей) |
-| [`list_favorite_issues`](#list_favorite_issues) | Задачи | Список избранных задач текущего пользователя |
-| [`list_issues_by_jql`](#list_issues_by_jql) | Задачи | Поиск задач через JQL-запрос |
-| [`get_current_user`](#get_current_user) | Пользователи | Данные аутентифицированного пользователя |
-| [`search_users`](#search_users) | Пользователи | Поиск пользователей Jira по имени или email |
-| [`list_user_tasks`](#list_user_tasks) | Пользователи | Задачи, назначенные пользователю |
-| [`generate_weekly_report`](#generate_weekly_report) | Отчёты | Сгенерировать еженедельный отчёт (`txt`/`md`/`json`) |
-| [`generate_team_report`](#generate_team_report) | Отчёты | Сгенерировать командный отчёт для нескольких пользователей |
-| [`generate_tasks_report`](#generate_tasks_report) | Отчёты | Сгенерировать отчёт по задачам, сгруппированный по статусу |
-| [`list_report_templates`](#list_report_templates) | Отчёты | Показать доступные шаблоны отчётов |
-| [`preview_report_template`](#preview_report_template) | Отчёты | Предпросмотр шаблона с тестовыми данными |
+| [`list_worklogs`](#-list_worklogs) | Worklog'и | Список worklog'ов за период или один день |
+| [`get_worklog`](#-get_worklog) | Worklog'и | Получить один worklog по Tempo ID |
+| [`create_worklog`](#-create_worklog) | Worklog'и | Учесть время на задаче Jira |
+| [`delete_worklog`](#-delete_worklog) | Worklog'и | Удалить worklog по ID |
+| [`get_issue`](#-get_issue) | Задачи | Получить метаданные задачи Jira (8 полей) |
+| [`list_favorite_issues`](#-list_favorite_issues) | Задачи | Список избранных задач текущего пользователя |
+| [`list_issues_by_jql`](#-list_issues_by_jql) | Задачи | Поиск задач через JQL-запрос |
+| [`get_current_user`](#-get_current_user) | Пользователи | Данные аутентифицированного пользователя |
+| [`search_users`](#-search_users) | Пользователи | Поиск пользователей Jira по имени или email |
+| [`list_user_tasks`](#-list_user_tasks) | Пользователи | Задачи, назначенные пользователю |
+| [`generate_weekly_report`](#-generate_weekly_report) | Отчёты | Сгенерировать еженедельный отчёт (`txt`/`md`/`json`) |
+| [`generate_team_report`](#-generate_team_report) | Отчёты | Сгенерировать командный отчёт для нескольких пользователей |
+| [`generate_tasks_report`](#-generate_tasks_report) | Отчёты | Сгенерировать отчёт по задачам, сгруппированный по статусу |
+| [`list_report_templates`](#-list_report_templates) | Отчёты | Показать доступные шаблоны отчётов |
+| [`preview_report_template`](#-preview_report_template) | Отчёты | Предпросмотр шаблона с тестовыми данными |
 
 ---
 
@@ -352,7 +352,7 @@ Report templates (4):
 - my_custom (custom, Jinja2): My custom Jinja2 template
 ```
 
-> 💡 **Совет:** См. [reports.md#custom-templates](reports.md#custom-templates) —
+> 💡 **Совет:** См. [reports.md#custom-templates](reports.md#-custom-templates) —
 > как добавлять пользовательские шаблоны.
 
 ---

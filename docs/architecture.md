@@ -165,7 +165,7 @@ The canonical CI gate is `make ci` — it runs `ruff check` + `ruff format
 --check` + `mypy src/` + `pytest tests/ -v` on Python 3.12, mirroring what
 the GitHub Actions `ci.yml` would run. **GitHub Actions are disabled in this
 environment** (billing-locked), so a green `make ci` is the merge/release
-signal. See [deployment.md](deployment.md#cicd) for details.
+signal. See [deployment.md](deployment.md#-cicd) for details.
 
 ---
 

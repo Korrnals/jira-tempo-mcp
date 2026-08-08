@@ -157,7 +157,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
 --check` + `mypy src/` + `pytest tests/ -v` на Python 3.12, повторяя то, что
 запускал бы GitHub Actions `ci.yml`. **GitHub Actions отключены в этом
 окружении** (billing заблокирован), поэтому зелёный `make ci` — сигнал для
-merge/релиза. См. [deployment.ru.md](deployment.ru.md#cicd).
+merge/релиза. См. [deployment.ru.md](deployment.ru.md#-cicd).
 
 ---
 

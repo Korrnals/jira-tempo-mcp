@@ -253,6 +253,6 @@ path traversal. Разрешённый путь должен быть внутр
 
 ## ➡️ Дальнейшие шаги
 
-- 🌐 [api.ru.md#generate_weekly_report](api.ru.md#generate_weekly_report) — параметры инструмента
-- ⚙️ [configuration.ru.md](configuration.ru.md#еженедельный-отчёт-опциональные) — все переменные отчёта
+- 🌐 [api.ru.md#generate_weekly_report](api.ru.md#-generate_weekly_report) — параметры инструмента
+- ⚙️ [configuration.ru.md](configuration.ru.md#-еженедельный-отчёт-опциональные) — все переменные отчёта
 - 🐛 [troubleshooting.ru.md](troubleshooting.ru.md) — ошибки, связанные с отчётом
