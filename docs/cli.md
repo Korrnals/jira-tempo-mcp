@@ -116,8 +116,9 @@ Notes:
 
 ## 🤖 `install-specialist`
 
-Installs the **JTM: Jira Tempo Reports** specialist (agent file + skill +
-knowledge doc) into AI harnesses. Idempotent: re-installing overwrites
+Installs the **JTM: Jira Tempo Reports** specialist into AI harnesses —
+the installed file set depends on the harness (see the table below).
+Idempotent: re-installing overwrites
 JTM-owned files and creates a timestamped backup first
 (`~/.copilot/.backups/<name>.bak.YYYYMMDD-HHMMSS` — out-of-tree, harness dirs
 stay clean); other harness files are never touched. Reversible with
