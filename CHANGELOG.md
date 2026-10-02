@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `install-specialist`: the `claude` harness is now skills-only — no agent file
+  is written to `~/.claude/agents/`. VS Code cross-scans the Claude agents dir
+  alongside its own, so the identically-named file surfaced as a duplicate
+  "JTM: Jira Tempo Reports" entry in the agent picker. Claude Code uses the
+  skill under `~/.claude/skills/jira-tempo-reports/` either way.
+- `install-specialist`: reinstall backups moved out of harness dirs into
+  `~/.copilot/.backups/` — timestamped `.bak.*` files no longer accumulate next
+  to live files in directories VS Code scans (a `.bak` with malformed
+  frontmatter could surface as a bogus picker entry via the filename fallback).
+
+### Fixed
+
+- `install-specialist --remove` now purges leftovers of pre-skills-only
+  installs: `jtm-*` files in `~/.claude/agents/` (including the legacy agent
+  file behind the duplicate picker entry) and stale in-tree `.bak.*` backups
+  sitting next to JTM targets in every harness dir. Foreign files are never
+  touched.
+
 ## [0.6.1] — 2026-10-02
 
 ### Fixed
