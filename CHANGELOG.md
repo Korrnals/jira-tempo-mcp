@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `install-specialist`: three new harnesses — `zcode` (agent file in
+  `~/.zcode/agents/` + skill dir in `~/.zcode/skills/jira-tempo-reports/`)
+  and `pi` / `hermes` (skills-only: `~/.pi/agent/skills/jira-tempo-reports/`
+  and `~/.hermes/skills/jira-tempo-reports/`). Registry order is now
+  copilot, zcode, claude, pi, hermes, opencode; `codex` stays skipped.
+- Specialist auto-refresh on update: `install-specialist` records the
+  installed harnesses in a state file
+  (`$XDG_STATE_HOME` or `~/.local/state/jira-tempo-mcp/specialist-state.json`);
+  after a successful `jira-tempo-mcp update` the specialist is re-installed
+  from the new package data into every recorded harness (per-harness
+  failures warn and never change the exit code). A successful
+  `install-specialist --remove` deletes the state file.
+
 ## [0.6.2] — 2026-10-02
 
 ### Changed

@@ -107,13 +107,16 @@ The `jira-tempo-mcp` console script dispatches five subcommands (plus
 | `serve` | Start the MCP server over stdio (default) |
 | `install` | Interactive installer (venv + `.env` + VS Code) |
 | `uninstall` | Reverse the installation |
-| `update` | Self-update; detects the install mode (wheel / editable) |
+| `update` | Self-update; detects the install mode (wheel / editable); auto-refreshes the installed specialist |
 | `install-specialist` | Install the AI specialist into AI harnesses |
 
-`install-specialist` knows a harness registry: `copilot`, `claude`, and
-`opencode` are supported, `codex` is skipped (no agent-file convention).
-`claude` installs skills-only — no agents file, to avoid a duplicate picker
-entry in VS Code.
+`install-specialist` knows a harness registry: `copilot`, `zcode`, `claude`,
+`pi`, `hermes`, and `opencode` are supported, `codex` is skipped (no
+agent-file convention). Skills-only harnesses (`claude`, `pi`, `hermes`,
+`opencode`) install no agents file — VS Code cross-scans the claude agents
+dir, so a JTM agent file there would show a duplicate picker entry. Every
+install records the harness names in a state file; `update` re-installs the
+specialist from the new package data after a successful upgrade.
 
 Commands reference: [cli.md](cli.md). Installation paths: [installation.md](installation.md).
 
@@ -123,9 +126,9 @@ Commands reference: [cli.md](cli.md). Installation paths: [installation.md](inst
 
 A standalone agent — **JTM: Jira Tempo Reports** — that produces Jira/Tempo
 reports predictably by calling the server's generators. Works in Copilot Chat
-(graphical picker, one-click weekly report) and other MCP-capable harnesses.
-Ships inside the wheel: `(re)install` it any time with `install-specialist`,
-no git clone needed.
+(graphical picker, one-click weekly report), ZCode, Claude Code, pi, Hermes,
+OpenCode, and other MCP-capable harnesses. Ships inside the wheel:
+`(re)install` it any time with `install-specialist`, no git clone needed.
 
 Details: [README §JTM Agent](../README.md#-jtm-agent-standalone-copilot-chat-agent),
 harness table in [cli.md](cli.md#-install-specialist).

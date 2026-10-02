@@ -130,7 +130,7 @@ The full uninstall removes the VS Code `mcp.json` entry, the Copilot Chat agent 
 ```bash
 # Option A — docker run with an .env file (chmod 600, gitignored):
 cp .env.example .env  # fill in JIRA_BASE_URL, JIRA_USER, JIRA_PAT
-docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.4.0
+docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.6.3
 
 # Option B — docker compose (uses docker-compose.yml at repo root):
 docker compose up -d
@@ -139,7 +139,7 @@ docker compose logs -f jira-tempo-mcp
 docker compose run --rm -T jira-tempo-mcp
 ```
 
-The image is published to ghcr for every release: `ghcr.io/korrnals/jira-tempo-mcp:<version>` and `:latest`. Pin to a version tag (e.g. `:0.4.0`) for reproducibility; use `:latest` to track the newest release.
+The image is published to ghcr for every release: `ghcr.io/korrnals/jira-tempo-mcp:<version>` and `:latest`. Pin to a version tag (e.g. `:0.6.3`) for reproducibility; use `:latest` to track the newest release.
 
 > ⚠️ **Warning:** The install script URL works once the repository is public.
 > Until then, clone manually and run `python install.py`.
@@ -296,10 +296,12 @@ This repo ships a standalone AI agent that produces Jira/Tempo worklog reports p
 - `~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` — the universal knowledge doc (7-type report matrix, scenarios, rules).
 
 The wheel-installed package can re-install the specialist into this or other
-harnesses (Copilot Chat, Claude Code, OpenCode — `codex` unsupported) at any
-time, no git clone needed. `claude` installs skills only — VS Code
+harnesses (Copilot Chat, ZCode, Claude Code, pi, Hermes, OpenCode — `codex`
+unsupported) at any time, no git clone needed. Skills-only harnesses
+(`claude`, `pi`, `hermes`, `opencode`) install no agents file — VS Code
 cross-scans the Claude agents dir, an extra agent file there would show a
-duplicate picker entry:
+duplicate picker entry. `update` auto-refreshes the specialist into the
+recorded harnesses after each successful upgrade:
 
 ```bash
 jira-tempo-mcp install-specialist            # all supported harnesses

@@ -102,6 +102,10 @@ Install mode: wheel — installed from a package index (no direct_url.json)
 Update complete.
 Version: 0.6.2 -> 0.6.3
 If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the new code.
+[copilot] VS Code Copilot Chat (agents + skills)
+  installed jtm-jira-tempo-reports.agent.md: /home/user/.copilot/agents/jtm-jira-tempo-reports.agent.md
+  ...
+specialist refreshed: 0.6.2 -> 0.6.3
 ```
 
 Notes:
@@ -110,6 +114,13 @@ Notes:
   update lands in the same environment/venv `update` was invoked from.
 - A failed step aborts the update — nothing else is changed; the exit code is
   `1`.
+- **Specialist auto-refresh** — after a successful upgrade, the harnesses
+  recorded by `install-specialist` in its
+  [state file](#-specialist-state-file-auto-refresh-on-update) are re-installed from the new package
+  data (`specialist refreshed: <old> -> <new>`). Unknown recorded names are
+  ignored; per-harness failures print warnings and never change the exit
+  code. Without the state file, one hint line is printed
+  (`run install-specialist to enable specialist auto-refresh on update`).
 - Takes no flags; unknown flags exit with `2`.
 
 ---
@@ -124,6 +135,10 @@ JTM-owned files and creates a timestamped backup first
 stay clean); other harness files are never touched. Reversible with
 `--remove`, which also purges legacy leftovers (pre-skills-only JTM files
 in `~/.claude/agents/`, in-tree `.bak.*` backups next to JTM files).
+Successful installs also record the harness names in a
+[state file](#-specialist-state-file-auto-refresh-on-update) that
+`update` uses to auto-refresh the specialist; a successful `--remove`
+deletes it.
 
 ### 🔧 Flags
 
@@ -141,7 +156,10 @@ names are rejected before anything is written.
 | Harness | Status | Files installed |
 | --- | --- | --- |
 | `copilot` | ✅ supported | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md`, `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `zcode` | ✅ supported | `~/.zcode/agents/jtm-jira-tempo-reports.md` (agent, frontmatter `name`/`description`/`tools`), `~/.zcode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
 | `claude` | ✅ supported | `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only, no agents file (VS Code cross-scans the claude agents dir and shows a duplicate picker entry) |
+| `pi` | ✅ supported | `~/.pi/agent/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only: pi has no agent-file convention |
+| `hermes` | ✅ supported | `~/.hermes/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only: hermes agents are runtime profiles, not markdown files |
 | `opencode` | ✅ supported | `~/.config/opencode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only convention |
 | `codex` | ⏭️ skipped | unsupported: no agent-file convention — `AGENTS.md` is machine-managed, safe manual placement is not defined |
 
@@ -150,7 +168,10 @@ Actual `--list` output:
 ```text
 Supported harnesses:
   copilot    supported                                               VS Code Copilot Chat (agents + skills)
+  zcode      supported                                               ZCode (agents + skills)
   claude     supported                                               Claude Code (skills directory)
+  pi         supported                                               pi coding agent (skills directory)
+  hermes     supported                                               Hermes agent (skills directory)
   opencode   supported                                               OpenCode (skills directory)
   codex      skipped — unsupported: no agent-file convention (AGENTS.md is machine-managed; safe manual placement is not defined) OpenAI Codex CLI
 ```
@@ -175,8 +196,30 @@ Unknown harness name (usage block omitted):
 
 ```text
 jira-tempo-mcp install-specialist: error: unknown harness(es): nonexistent.
-Known: claude, codex, copilot, opencode. Use --list to show support status.
+Known: claude, codex, copilot, hermes, opencode, pi, zcode. Use --list to show support status.
 ```
+
+### 📄 Specialist state file (auto-refresh on update)
+
+Every successful install records the installed harness names in a state
+file — `$XDG_STATE_HOME/jira-tempo-mcp/specialist-state.json` when
+`XDG_STATE_HOME` is set, else
+`~/.local/state/jira-tempo-mcp/specialist-state.json`:
+
+```json
+{
+  "harnesses": ["copilot", "zcode", "claude"],
+  "specialist_version": "0.6.2",
+  "updated_at": "2026-10-02T18:00:00.000000+00:00"
+}
+```
+
+- Re-installing (full or `--harness`) rewrites the file in place — the
+  recorded set only grows, never duplicates.
+- A successful `--remove` deletes the file.
+- `jira-tempo-mcp update` reads the file after a successful upgrade and
+  re-installs the specialist from the new package data into every recorded
+  harness — see [`update`](#️-update).
 
 Works from a **wheel install** — the specialist files ship inside the wheel
 (`jira_tempo_mcp.integration` package data), no git clone needed. The legacy

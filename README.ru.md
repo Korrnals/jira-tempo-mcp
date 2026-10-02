@@ -130,7 +130,7 @@ python install.py --uninstall-agent
 ```bash
 # Опция A — docker run с .env-файлом (chmod 600, добавлен в .gitignore):
 cp .env.example .env  # впишите JIRA_BASE_URL, JIRA_USER, JIRA_PAT
-docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.4.0
+docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:0.6.3
 
 # Опция B — docker compose (использует docker-compose.yml в корне репо):
 docker compose up -d
@@ -139,7 +139,7 @@ docker compose logs -f jira-tempo-mcp
 docker compose run --rm -T jira-tempo-mcp
 ```
 
-Образ публикуется в ghcr для каждого релиза: `ghcr.io/korrnals/jira-tempo-mcp:<version>` и `:latest`. Пиньте к тегу версии (например `:0.4.0`) для воспроизводимости; `:latest` отслеживает новейший релиз.
+Образ публикуется в ghcr для каждого релиза: `ghcr.io/korrnals/jira-tempo-mcp:<version>` и `:latest`. Пиньте к тегу версии (например `:0.6.3`) для воспроизводимости; `:latest` отслеживает новейший релиз.
 
 > ⚠️ **Внимание:** URL установочного скрипта заработает, когда репозиторий
 > станет публичным. До этого — клонируйте вручную и запустите `python install.py`.
@@ -297,10 +297,12 @@ make build      # python -m build (sdist + wheel)
 - `~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` — универсальный документ знаний (матрица из 7 типов отчётов, сценарии, правила).
 
 Установленный из wheel пакет может в любой момент переустановить специалиста
-в эту или другие AI-оболочки (Copilot Chat, Claude Code, OpenCode — `codex` не
-поддерживается), без git clone. `claude` устанавливает только skills — VS Code
+в эту или другие AI-оболочки (Copilot Chat, ZCode, Claude Code, pi, Hermes,
+OpenCode — `codex` не поддерживается), без git clone. Оболочки «только skills»
+(`claude`, `pi`, `hermes`, `opencode`) не получают файла агента — VS Code
 кросс-сканирует каталог агентов Claude, лишний файл агента там дал бы
-дублирующуюся запись в picker:
+дублирующуюся запись в picker. `update` после каждого успешного обновления
+пакета автообновляет специалиста в записанные оболочки:
 
 ```bash
 jira-tempo-mcp install-specialist            # все поддерживаемые оболочки
