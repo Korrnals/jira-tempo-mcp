@@ -1,0 +1,35 @@
+{
+  "name": "jira-tempo-mcp",
+  "version": "0.6.0",
+  "description": "MCP server for self-hosted Jira + Tempo Timesheets: track time, list worklogs, generate weekly reports. npm wrapper — installs and runs the Python package (PyPI: jira-tempo-mcp).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Korrnals/jira-tempo-mcp"
+  },
+  "homepage": "https://github.com/Korrnals/jira-tempo-mcp",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "jira",
+    "tempo",
+    "timesheets",
+    "worklog",
+    "report",
+    "python"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "README.md",
+    "bin/"
+  ],
+  "bin": {
+    "jira-tempo-mcp": "bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js",
+    "test": "node --test"
+  }
+}

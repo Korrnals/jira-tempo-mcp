@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jira-tempo-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for self-hosted Jira + Tempo Timesheets: track time, list worklogs, generate weekly reports."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,10 +47,14 @@ jira-tempo-mcp = "jira_tempo_mcp.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# Built-in task templates (parent + child subtasks from YAML) are package
-# data: they must ship inside the wheel for importlib.resources discovery.
+# Built-in task templates (parent + child subtasks from YAML) and the
+# JTM specialist integration files (agent md + skill + knowledge doc)
+# are package data: they must ship inside the wheel for
+# importlib.resources discovery (install-specialist reads them from
+# jira_tempo_mcp.integration in both editable and wheel installs).
 [tool.setuptools.package-data]
 "jira_tempo_mcp.templates" = ["tasks/*.yaml"]
+"jira_tempo_mcp.integration" = ["*.md"]
 
 # NOTE: install.py stays at the project root. It is included in the sdist via
 # MANIFEST.in (which also ships .env.example-equivalents and copilot-integration/

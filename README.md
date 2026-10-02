@@ -75,6 +75,19 @@ Get up and running in under a minute:
 curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash
 ```
 
+Or from the package indexes once published:
+
+```bash
+pip install jira-tempo-mcp      # PyPI
+npm i -g jira-tempo-mcp         # npm wrapper (installs the Python package)
+```
+
+Then install the report specialist into your AI harness (or skip — the CLI lists supported ones):
+
+```bash
+jira-tempo-mcp install-specialist
+```
+
 This downloads and runs the interactive installer, which:
 
 - ✅ Checks Python 3.11+ and pip
@@ -211,6 +224,8 @@ jira-tempo-mcp                  # start the MCP server (default)
 jira-tempo-mcp serve            # start the MCP server
 jira-tempo-mcp install          # interactive installer
 jira-tempo-mcp uninstall        # reverse the installation
+jira-tempo-mcp update           # self-update (pip upgrade / git pull)
+jira-tempo-mcp install-specialist  # install the JTM agent into AI harnesses
 jira-tempo-mcp --version        # show version
 ```
 
@@ -266,8 +281,19 @@ This repo ships a standalone AI agent that produces Jira/Tempo worklog reports p
 
 `python install.py` installs the agent by default:
 - `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` — the VS Code Copilot Chat agent.
-- `~/.copilot/agents/JTM_AGENT.md` — the universal knowledge doc (7-type report matrix, scenarios, rules), copied next to the agent.
 - `~/.copilot/skills/jira-tempo-reports/SKILL.md` — the VS Code-specific skill (interactive picker flow).
+- `~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` — the universal knowledge doc (7-type report matrix, scenarios, rules).
+
+The wheel-installed package can re-install the specialist into this or other
+harnesses (Copilot Chat, Claude Code, OpenCode — `codex` unsupported) at any
+time, no git clone needed:
+
+```bash
+jira-tempo-mcp install-specialist            # all supported harnesses
+jira-tempo-mcp install-specialist --remove   # uninstall
+```
+
+Full harness table and flags: [docs/cli.md](docs/cli.md#-install-specialist).
 
 A loud announcement block at the end of `install.py` confirms the install. To skip the agent: `python install.py --no-agent`. To remove only the agent: `python install.py --uninstall-agent`.
 
