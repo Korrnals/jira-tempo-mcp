@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failures warn and never change the exit code). A successful
   `install-specialist --remove` deletes the state file.
 
+### Fixed
+
+- Pinned `mcp>=1.0.0,<2`: mcp 2.x removed the low-level `Server` decorators
+  (`list_tools` / `call_tool`) that `server.py` relies on, so a fresh
+  `pip install jira-tempo-mcp` resolving mcp 2.x crashed at startup with an
+  `AttributeError`. A drift-guard test (`tests/test_mcp_compat.py`) fails
+  loudly if the API surface drifts again.
+
 ## [0.6.2] — 2026-10-02
 
 ### Changed
