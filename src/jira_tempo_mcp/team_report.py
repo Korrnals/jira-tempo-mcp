@@ -37,6 +37,7 @@ from .report_common import (
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
     dedupe_worklogs_by_id,
+    drop_lines_matching_title,
     extract_comment,
     extract_issue_key,
     group_worklogs_by_comment_raw,
@@ -317,7 +318,7 @@ def _render_team_md(
             secs = wl.get("timeSpentSeconds", 0)
             if not isinstance(secs, int):
                 secs = 0
-            comment = extract_comment(wl)
+            comment = drop_lines_matching_title(extract_comment(wl), title)
             lines.append(
                 f"| {key} | {md_escape_cell(truncate_text(title, 50))} | "
                 f"{format_seconds_to_human(secs)} | "

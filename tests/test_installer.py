@@ -265,6 +265,17 @@ class TestRegisterVscodeEntry:
         assert register_vscode_entry(vsc / ".env.local") is False
         assert mcp.read_text(encoding="utf-8") == "{not valid json"  # untouched
 
+    def test_non_dict_servers_refused(self, fake_home: Path) -> None:
+        """mcp.json with a valid-JSON but non-object 'servers' is refused
+        untouched — never silently replaced with an empty object."""
+        vsc = _vscode_dir(fake_home)
+        vsc.mkdir(parents=True)
+        mcp = vsc / "mcp.json"
+        original = '{"servers": ["not", "an", "object"]}'
+        mcp.write_text(original, encoding="utf-8")
+        assert register_vscode_entry(vsc / ".env.local") is False
+        assert mcp.read_text(encoding="utf-8") == original  # untouched
+
 
 # ---------------------------------------------------------------------------
 # Wheel install flow (non-interactive)

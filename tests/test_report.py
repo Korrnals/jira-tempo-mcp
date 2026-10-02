@@ -188,6 +188,29 @@ class TestWeeklyMdJsonComments:
         # No double marker.
         assert "+ +" not in row
 
+    def test_md_drops_title_echo_from_comment_cell(self) -> None:
+        """Live shape: comment re-echoes the issue summary (whitespace-wobble
+        included) — the md cell must keep only the real detail lines."""
+        from jira_tempo_mcp.report import _render_weekly_md
+
+        config = self._config()
+        title = "PROXY-BOT: Создать agent registry / agent-gateway"
+        worklogs = [
+            {
+                "issueKey": "PROXY-1",
+                "timeSpentSeconds": 14400,
+                "comment": "PROXY-BOT: Создать agent registry  / agent-gateway\n+ разработка платформы",
+            }
+        ]
+        md = _render_weekly_md(
+            worklogs, config, date(2026, 9, 28), date(2026, 10, 2), {"PROXY-1": title}
+        )
+        rows = [ln for ln in md.splitlines() if ln.startswith("| PROXY-1 |")]
+        assert rows, "expected a worklog row"
+        # The summary echo is gone from the comment cell…
+        assert "agent registry" in md  # …but the title column still shows it
+        assert "разработка платформы" in rows[0]
+
     def test_json_preserves_raw_multiline_comment(self) -> None:
         import json as _json
 

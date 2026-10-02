@@ -314,6 +314,23 @@ class TestTitleEchoDrop:
         assert drop_lines_matching_title(self.COMMENT, "Другая задача") == self.COMMENT
         assert drop_lines_matching_title(None, self.TITLE) == ""
 
+    def test_helper_whitespace_remainder_falls_back_to_comment(self) -> None:
+        """Echo + whitespace-only tail with NO real detail must not strip to
+        an empty comment — an empty detail would orphan the rendered hours."""
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        echoed = f"{self.TITLE}\n   "
+        result = drop_lines_matching_title(echoed, self.TITLE)
+        assert result == echoed  # original returned, never ""
+
+    def test_helper_strips_trailing_whitespace_when_detail_survives(self) -> None:
+        """A real detail surviving the drop makes the whitespace tail cosmetic
+        — result is the stripped remainder, not the original."""
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        echoed = f"{self.COMMENT}\n   "
+        assert drop_lines_matching_title(echoed, self.TITLE) == "+ разработка платформы"
+
     def test_default_template_live_shape_no_echo(self) -> None:
         """Full template: echo dropped, details kept, hours summed."""
         worklogs = [

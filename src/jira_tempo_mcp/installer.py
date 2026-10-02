@@ -441,6 +441,7 @@ def remove_managed_env_keys(path: Path) -> bool:
     if remaining:
         lines = [f"{key}={value}" for key, value in sorted(remaining.items())]
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.chmod(path, 0o600)
         print(f"  removed {len(removed)} managed key(s) from {path}")
     else:
         path.unlink()
@@ -497,8 +498,13 @@ def register_vscode_entry(env_local: Path, *, skip_vscode: bool = False) -> bool
             print("    Fix the file manually (or restore from a backup) and re-run.")
             return False
         data = parsed
+    if not isinstance(data, dict):
+        print(f"  ! {mcp_path} has an unexpected top-level shape — refusing to modify it.")
+        return False
     if not isinstance(data.get("servers"), dict):
-        data["servers"] = {}
+        print(f"  ! {mcp_path} 'servers' is not an object — refusing to modify it.")
+        print("    Fix the file manually (or restore from a backup) and re-run.")
+        return False
 
     if mcp_path.exists():
         backup = _backup_file(mcp_path)

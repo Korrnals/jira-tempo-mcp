@@ -361,7 +361,9 @@ def drop_lines_matching_title(comment: str | None, title: str | None) -> str:
     if not kept:
         # Every line echoed the title — keep the original so hours render.
         return comment
-    return "\n".join(kept).strip()
+    # `or comment`: a kept remainder of whitespace-only lines strips to ""
+    # and orphans the group's hours downstream — fall back to the original.
+    return "\n".join(kept).strip() or comment
 
 
 def render_comment_lines(
