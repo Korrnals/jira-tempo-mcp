@@ -12,6 +12,7 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 
 | Тема | Документ | Что вы узнаете |
 | --- | --- | --- |
+| ✨ Возможности | [features.ru.md](features.ru.md) | карта возможностей — 19 MCP-инструментов по группам, CLI, AI-агент-специалист |
 | 📦 Установка | [installation.ru.md](installation.ru.md) | `python install.py`, pip, Docker, venv |
 | ⚙️ Настройка | [configuration.ru.md](configuration.ru.md) | переменные окружения, `.env.local`, `.env`, примеры |
 | 🔌 MCP-интеграция | [mcp-integration.ru.md](mcp-integration.ru.md) | VS Code `mcp.json`, `envFile`, workspace-конфиг |

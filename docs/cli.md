@@ -79,7 +79,7 @@ python install.py --non-interactive --register-only
 
 ---
 
-## � `update`
+## ⬆️ `update`
 
 Self-updates the installed package. Detects the install mode (from pip's
 `direct_url.json`) and runs the matching procedure:
@@ -100,7 +100,7 @@ Example output (wheel install):
 Install mode: wheel — installed from a package index (no direct_url.json)
 --> pip install --upgrade jira-tempo-mcp: /path/to/python -m pip install --upgrade jira-tempo-mcp
 Update complete.
-Version: 0.6.0 -> 0.7.0
+Version: 0.6.2 -> 0.6.3
 If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the new code.
 ```
 
@@ -185,7 +185,7 @@ clone; see [installation.md](installation.md).
 
 ---
 
-## �🗑️ `uninstall`
+## 🗑️ `uninstall`
 
 Reverses the installation in 4 steps:
 
@@ -207,7 +207,7 @@ jira-tempo-mcp uninstall
 
 ```bash
 jira-tempo-mcp --version
-# jira-tempo-mcp 0.6.0
+# jira-tempo-mcp 0.6.2
 
 jira-tempo-mcp --help
 # prints the usage block shown above
