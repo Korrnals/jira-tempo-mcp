@@ -223,6 +223,24 @@ The server runs over **stdio** and is registered in VS Code `mcp.json`:
 > 💡 **Tip:** Always use **absolute paths** for `envFile` — `~` does not work in
 > sandboxed environments (distrobox, snap, containers).
 
+**Wheel / pip install** (`pip install jira-tempo-mcp`): point the entry at the
+console script instead — no `PYTHONPATH`, no repo checkout needed:
+
+```json
+{
+  "servers": {
+    "jira-tempo": {
+      "command": "/home/your-username/.local/bin/jira-tempo-mcp",
+      "args": ["serve"],
+      "envFile": "/home/your-username/.config/Code/User/.env.local"
+    }
+  }
+}
+```
+
+> Note: the `install` / `uninstall` subcommands need a git clone (they drive
+> the repo's `install.py`); a wheel install is configured by hand as above.
+
 Full guide: [docs/mcp-integration.md](docs/mcp-integration.md).
 
 ---

@@ -223,6 +223,25 @@ docker run -i --rm \
 > 💡 **Совет:** Всегда используйте **абсолютные пути** для `envFile` — `~` не
 > работает в sandbox-окружениях (distrobox, snap, контейнеры).
 
+**Wheel / pip-установка** (`pip install jira-tempo-mcp`): указывайте на
+консольную команду — без `PYTHONPATH` и без чеката репозитория:
+
+```json
+{
+  "servers": {
+    "jira-tempo": {
+      "command": "/home/your-username/.local/bin/jira-tempo-mcp",
+      "args": ["serve"],
+      "envFile": "/home/your-username/.config/Code/User/.env.local"
+    }
+  }
+}
+```
+
+> Примечание: подкомандам `install` / `uninstall` нужен git-чекат (они
+> запускают `install.py` из репозитория); wheel-установка настраивается
+> вручную, как выше.
+
 Полное руководство: [docs/mcp-integration.ru.md](docs/mcp-integration.ru.md).
 
 ---
