@@ -14,11 +14,23 @@ Harness              Layout (discovered on this host, 2026-10-02)
                      goes to the *skills* dir — ``~/.copilot/agents/`` is
                      scanned by VS Code and a stray md there would appear
                      as a second fake agent in the picker).
+``zcode``            ``~/.zcode/agents/jtm-jira-tempo-reports.md`` (markdown
+                     agent with frontmatter — the ``.agent.md`` artefact
+                     already carries the required ``name``/``description``/
+                     ``tools`` fields, so it is reused as-is, renamed to
+                     ``.md``) + ``~/.zcode/skills/jira-tempo-reports/``
+                     (``SKILL.md`` + ``JTM_AGENT.md``).
 ``claude``           ``~/.claude/skills/jira-tempo-reports/`` (``SKILL.md`` +
                      ``JTM_AGENT.md``) — skills-only, mirroring
                      ``opencode_plan()`` shape: VS Code cross-scans the
                      Claude agents dir, an extra agent file there would
                      show a duplicate picker entry.
+``pi``               ``~/.pi/agent/skills/jira-tempo-reports/`` (``SKILL.md``
+                     + ``JTM_AGENT.md``) — skills-only: pi has no agent-file
+                     convention (it skips subagents).
+``hermes``           ``~/.hermes/skills/jira-tempo-reports/`` (``SKILL.md`` +
+                     ``JTM_AGENT.md``) — skills-only: hermes agents are
+                     runtime delegation profiles, not markdown files.
 ``opencode``         ``~/.config/opencode/skills/jira-tempo-reports/``
                      (``SKILL.md`` — opencode only has a skills convention).
 ``codex``            UNSUPPORTED — ``~/.codex`` has no agent/skill file
@@ -54,6 +66,7 @@ PACKAGE = "jira_tempo_mcp"
 INTEGRATION_SUBPACKAGE = "integration"
 
 AGENT_FILE_NAME = "jtm-jira-tempo-reports.agent.md"
+ZCODE_AGENT_FILE_NAME = "jtm-jira-tempo-reports.md"  # zcode agent convention: plain .md
 SKILL_SOURCE_NAME = "jira-tempo-reports.skill.md"  # repo consolidated name
 SKILL_INSTALLED_NAME = "SKILL.md"  # harnesses expect this name
 KNOWLEDGE_DOC_NAME = "JTM_AGENT.md"
@@ -185,6 +198,30 @@ def copilot_plan() -> HarnessPlan:
     )
 
 
+def zcode_plan() -> HarnessPlan:
+    """ZCode layout: agent file + skills directory.
+
+    The agent lands as ``~/.zcode/agents/jtm-jira-tempo-reports.md`` —
+    zcode reads plain markdown with frontmatter and the ``.agent.md``
+    artefact already carries the required ``name``/``description``/
+    ``tools`` fields (copilot-only extras such as ``argument-hint`` are
+    ignored), so the artefact is reused unchanged. Skills follow the
+    standard skills-dir convention under ``~/.zcode/skills/``.
+    """
+    home = Path.home()
+    agents = home / ".zcode" / "agents"
+    skills = home / ".zcode" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="zcode",
+        description="ZCode (agents + skills)",
+        targets=(
+            Target(AGENT_FILE_NAME, agents / ZCODE_AGENT_FILE_NAME),
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
 def claude_plan() -> HarnessPlan:
     """Claude Code layout: skills-only under ``~/.claude/skills/``.
 
@@ -197,6 +234,43 @@ def claude_plan() -> HarnessPlan:
     return HarnessPlan(
         name="claude",
         description="Claude Code (skills directory)",
+        targets=(
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
+def pi_plan() -> HarnessPlan:
+    """pi (badlogic/pi-mono) layout: skills-only under ``~/.pi/agent/skills``.
+
+    pi has no agent-file convention — it skips subagents entirely — so the
+    knowledge doc rides along inside the skill dir (``SKILL.md`` already
+    references it). Mirrors ``opencode_plan()`` shape.
+    """
+    home = Path.home()
+    skills = home / ".pi" / "agent" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="pi",
+        description="pi coding agent (skills directory)",
+        targets=(
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
+def hermes_plan() -> HarnessPlan:
+    """Hermes (NousResearch/hermes-agent) layout: skills-only under ``~/.hermes/skills``.
+
+    Hermes agents are runtime delegation profiles, not markdown files, so
+    there is no agent file to install. Mirrors ``opencode_plan()`` shape.
+    """
+    home = Path.home()
+    skills = home / ".hermes" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="hermes",
+        description="Hermes agent (skills directory)",
         targets=(
             Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
             Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
@@ -236,7 +310,15 @@ def codex_plan() -> HarnessPlan:
 
 def registry() -> list[HarnessPlan]:
     """All harnesses in canonical order (copilot first, then discovery order)."""
-    return [copilot_plan(), claude_plan(), opencode_plan(), codex_plan()]
+    return [
+        copilot_plan(),
+        zcode_plan(),
+        claude_plan(),
+        pi_plan(),
+        hermes_plan(),
+        opencode_plan(),
+        codex_plan(),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +442,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "harnesses. Idempotent and reversible."
         ),
         epilog=(
-            "Supported harnesses: copilot, claude, opencode. "
+            "Supported harnesses: copilot, zcode, claude, pi, hermes, opencode. "
             "codex is registered but unsupported (no agent-file convention)."
         ),
     )
