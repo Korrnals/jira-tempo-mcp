@@ -74,6 +74,20 @@ MCP-сервер для **самохостинг-инстанса Jira (Server /
 curl -fsSL https://raw.githubusercontent.com/Korrnals/jira-tempo-mcp/main/scripts/install.sh | bash
 ```
 
+Или из пакетных индексов (после публикации):
+
+```bash
+pip install jira-tempo-mcp      # PyPI
+npm i -g jira-tempo-mcp         # npm-обёртка (ставит Python-пакет)
+```
+
+Затем установите агента отчётов в свою AI-оболочку (или пропустите — CLI
+покажет поддерживаемые):
+
+```bash
+jira-tempo-mcp install-specialist
+```
+
 Скрипт скачивает и запускает интерактивный установщик, который:
 
 - ✅ Проверяет Python 3.11+ и pip
@@ -210,6 +224,8 @@ jira-tempo-mcp                  # запустить MCP-сервер (по ум
 jira-tempo-mcp serve            # запустить MCP-сервер
 jira-tempo-mcp install          # интерактивный установщик
 jira-tempo-mcp uninstall        # откатить установку
+jira-tempo-mcp update           # самообновление (pip upgrade / git pull)
+jira-tempo-mcp install-specialist  # установить JTM-агента в AI-оболочки
 jira-tempo-mcp --version        # показать версию
 ```
 
@@ -266,8 +282,19 @@ make build      # python -m build (sdist + wheel)
 
 `python install.py` по умолчанию устанавливает агента:
 - `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` — агент для VS Code Copilot Chat.
-- `~/.copilot/agents/JTM_AGENT.md` — универсальный документ знаний (матрица из 7 типов отчётов, сценарии, правила), копируется рядом с агентом.
 - `~/.copilot/skills/jira-tempo-reports/SKILL.md` — VS Code-специфичный skill (интерактивный picker-флоу).
+- `~/.copilot/skills/jira-tempo-reports/JTM_AGENT.md` — универсальный документ знаний (матрица из 7 типов отчётов, сценарии, правила).
+
+Установленный из wheel пакет может в любой момент переустановить специалиста
+в эту или другие AI-оболочки (Copilot Chat, Claude Code, OpenCode — `codex` не
+поддерживается), без git clone:
+
+```bash
+jira-tempo-mcp install-specialist            # все поддерживаемые оболочки
+jira-tempo-mcp install-specialist --remove   # удаление
+```
+
+Полная таблица оболочек и флаги: [docs/cli.ru.md](docs/cli.ru.md#-install-specialist).
 
 В конце `install.py` выводится громкий блок-анонс, подтверждающий установку. Пропустить агента: `python install.py --no-agent`. Удалить только агента: `python install.py --uninstall-agent`.
 

@@ -1,7 +1,7 @@
 # 📦 Установка
 
 Способы установки `jira-tempo-mcp` — четыре пути: интерактивный установщик,
-pip, из исходников, Docker.
+pip (PyPI) / npm, из исходников, Docker.
 
 ---
 
@@ -138,24 +138,61 @@ jira-tempo-mcp install --non-interactive --register-only   # эквивален�
 
 ---
 
-## 📥 Путь 2 — pip (опубликованный пакет)
+## 📥 Путь 2 — pip (PyPI) и npm
 
-> ⚠️ **Пока недоступно.** Пакет **не опубликован в PyPI**, пока GitHub Actions
-> отключены, а job `pypi-publish` защищён `if: false` (см.
-> [deployment.ru.md](deployment.ru.md)). `pip install jira-tempo-mcp`
-> завершится ошибкой 404. Пока публикация в PyPI не включена, используйте
-> **интерактивный установщик** (Путь 1), **установку из исходников** (Путь 3)
-> или **Docker** (Путь 4).
-
-Команда ниже — целевой сценарий после публикации пакета:
+Установка из пакетного индекса — либо Python-пакет с PyPI, либо npm-обёртка
+(она ставит Python-пакет под капотом и проксирует все подкоманды в тот же CLI):
 
 ```bash
 pip install jira-tempo-mcp
-jira-tempo-mcp serve
+# или npm-обёртка (ставит Python-пакет через pipx → pip)
+npm i -g jira-tempo-mcp
+```
+
+> 💡 **Совет:** листинги на PyPI и npm появляются со следующим срезом релиза.
+> Пока публикация не включена, `pip install` может вернуть 404 — используйте
+> интерактивный установщик (Путь 1), исходники (Путь 3) или Docker (Путь 4).
+
+Дальше запускайте что нужно:
+
+```bash
+jira-tempo-mcp serve              # запустить MCP-сервер (stdio)
+jira-tempo-mcp update             # самообновление (pip upgrade)
+jira-tempo-mcp install-specialist # установить JTM-агента в AI-оболочки
 ```
 
 Конфигурация читается из переменных окружения или файла `.env` в рабочей
 директории. См. [configuration.ru.md](configuration.ru.md).
+
+> 💡 **Совет:** самообновление wheel-установки — одна команда:
+> `jira-tempo-mcp update` (сама запускает `pip install --upgrade
+> jira-tempo-mcp`). Editable-установка вместо этого получает
+> `git pull --ff-only` с переустановкой; см. [`update`](cli.ru.md#-update).
+
+### 🤖 Установка агента-специалиста (AI-оболочки)
+
+Интеграционные артефакты поставляются **внутри wheel** (данные пакета
+`jira_tempo_mcp.integration`), поэтому `install-specialist` работает с любой
+pip/npm-установкой — git clone для него **не** нужен. Прежний интерактивный
+`jira-tempo-mcp install` (настройка `.env`) по-прежнему требует git clone
+(см. Путь 1 выше).
+
+```bash
+jira-tempo-mcp install-specialist                  # все поддерживаемые оболочки
+jira-tempo-mcp install-specialist --harness copilot
+jira-tempo-mcp install-specialist --list
+jira-tempo-mcp install-specialist --remove
+```
+
+Статус поддержки по оболочкам — полный набор флагов и поведение в
+[cli.ru.md](cli.ru.md#-install-specialist):
+
+| Оболочка | Статус | Места установки |
+| --- | --- | --- |
+| `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `claude` | ✅ поддерживается | `~/.claude/agents/jtm-jira-tempo-reports.md` + `~/.claude/skills/jira-tempo-reports/` |
+| `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (конвенция только skills) |
+| `codex` | ⏭️ пропускается | нет конвенции файлов агента — `AGENTS.md` управляется системой |
 
 ---
 

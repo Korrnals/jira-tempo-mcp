@@ -1,7 +1,7 @@
 # 📦 Installation
 
-How to install `jira-tempo-mcp` — four paths: interactive installer, pip,
-source, Docker.
+How to install `jira-tempo-mcp` — four paths: interactive installer, pip (PyPI)
+/ npm, source, Docker.
 
 ---
 
@@ -58,24 +58,61 @@ jira-tempo-mcp install --non-interactive --register-only   # equivalent to pytho
 
 ---
 
-## 📥 Path 2 — pip (published package)
+## 📥 Path 2 — pip (PyPI) and npm
 
-> ⚠️ **Not yet available.** The package is **not published to PyPI** while
-> GitHub Actions are disabled and the `pypi-publish` job is guarded by
-> `if: false` (see [deployment.md](deployment.md)). `pip install
-> jira-tempo-mcp` will fail with a 404. Until PyPI publishing is enabled, use
-> the **interactive installer** (Path 1), an **editable install from source**
-> (Path 3), or **Docker** (Path 4).
-
-The command below is the intended flow once the package is published:
+Install from the package index — either the Python package from PyPI or the
+npm wrapper (it installs the Python package under the hood and proxies every
+subcommand to the same CLI):
 
 ```bash
 pip install jira-tempo-mcp
-jira-tempo-mcp serve
+# or the npm wrapper (installs the Python package via pipx → pip)
+npm i -g jira-tempo-mcp
+```
+
+> 💡 **Tip:** the PyPI and npm listings go live with the next release cut.
+> Until publishing is enabled, `pip install` may 404 — fall back to the
+> interactive installer (Path 1), source (Path 3), or Docker (Path 4).
+
+Then run whatever you need:
+
+```bash
+jira-tempo-mcp serve              # start the MCP server (stdio)
+jira-tempo-mcp update             # self-update (pip upgrade)
+jira-tempo-mcp install-specialist # install the JTM agent into AI harnesses
 ```
 
 Configuration is read from environment variables or a `.env` file in the
 working directory. See [configuration.md](configuration.md).
+
+> 💡 **Tip:** self-update of a wheel install is one command —
+> `jira-tempo-mcp update` (runs `pip install --upgrade jira-tempo-mcp` for
+> you). Editable installs get `git pull --ff-only` + reinstall instead; see
+> [`update`](cli.md#-update).
+
+### 🤖 Installing the specialist agent (harnesses)
+
+The specialist artefacts ship **inside the wheel** (`jira_tempo_mcp.integration`
+package data), so `install-specialist` works from any pip/npm install — a git
+clone is **not** required for it. The legacy interactive `jira-tempo-mcp
+install` (`.env` setup) still requires a git clone (see Path 1 above).
+
+```bash
+jira-tempo-mcp install-specialist                  # all supported harnesses
+jira-tempo-mcp install-specialist --harness copilot
+jira-tempo-mcp install-specialist --list
+jira-tempo-mcp install-specialist --remove
+```
+
+Support status per harness — full flags and behavior in
+[cli.md](cli.md#-install-specialist):
+
+| Harness | Status | Install locations |
+| --- | --- | --- |
+| `copilot` | ✅ supported | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `claude` | ✅ supported | `~/.claude/agents/jtm-jira-tempo-reports.md` + `~/.claude/skills/jira-tempo-reports/` |
+| `opencode` | ✅ supported | `~/.config/opencode/skills/jira-tempo-reports/` (skills-only convention) |
+| `codex` | ⏭️ skipped | no agent-file convention — `AGENTS.md` is machine-managed |
 
 ---
 
