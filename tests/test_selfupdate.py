@@ -6,6 +6,10 @@ environment state is touched. Command execution paths are exercised with
 monkeypatched ``subprocess.run``, verifying argument shaping
 (``sys.executable -m pip``, ``git -C <root> pull --ff-only``) and failure
 semantics (first failing command aborts the plan).
+
+The post-upgrade specialist auto-refresh is tested with a fake state file
+inside a monkeypatched home and faked ``load_artefacts`` — no real
+harness directory is ever written.
 """
 
 from __future__ import annotations
@@ -18,7 +22,61 @@ from pathlib import Path
 
 import pytest
 
-from jira_tempo_mcp import selfupdate
+from jira_tempo_mcp import selfupdate, specialist
+
+
+@pytest.fixture(autouse=True)
+def fake_specialist_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect the specialist state file + installs into a tmp home.
+
+    Autouse for this module: every ``run_update`` test would otherwise read
+    the real user state file (and, with one present, install into the real
+    harness dirs).
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(specialist.Path, "home", lambda: home)
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    return home
+
+
+@pytest.fixture
+def fake_specialist_artefacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake specialist package-data payloads."""
+    payload = {
+        specialist.AGENT_FILE_NAME: specialist.Artefact(
+            source_name=specialist.AGENT_FILE_NAME, content=b"# agent body\n"
+        ),
+        specialist.SKILL_SOURCE_NAME: specialist.Artefact(
+            source_name=specialist.SKILL_SOURCE_NAME, content=b"# skill body\n"
+        ),
+        specialist.KNOWLEDGE_DOC_NAME: specialist.Artefact(
+            source_name=specialist.KNOWLEDGE_DOC_NAME, content=b"# knowledge\n"
+        ),
+    }
+    monkeypatch.setattr(specialist, "load_artefacts", lambda: payload)
+
+
+def _write_state(home: Path, harnesses: list[str], version: str) -> Path:
+    """Pre-seed a specialist state file in the fake home."""
+    path = home / ".local" / "state" / "jira-tempo-mcp" / "specialist-state.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "harnesses": harnesses,
+                "specialist_version": version,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _read_state(home: Path) -> dict:
+    path = home / ".local" / "state" / "jira-tempo-mcp" / "specialist-state.json"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 class _FakeDist:
@@ -340,3 +398,163 @@ class TestRunUpdate:
         captured = capsys.readouterr()
         assert "0.5.0 -> 0.6.0" in captured.out
         assert "restart" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# specialist auto-refresh after a successful upgrade
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def successful_wheel_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wheel-mode update whose pip step succeeds."""
+    _patch_dist(monkeypatch, direct_url=None, version="0.6.0")
+    monkeypatch.setattr(
+        selfupdate.subprocess,
+        "run",
+        lambda argv, **_kw: subprocess.CompletedProcess(argv, 0),
+    )
+
+
+class TestSpecialistRefresh:
+    def test_refresh_installs_recorded_harnesses_with_new_artefacts(
+        self,
+        fake_specialist_home: Path,
+        fake_specialist_artefacts: None,
+        successful_wheel_update: None,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_state(fake_specialist_home, ["copilot", "claude", "ghost"], "0.5.0")
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 0
+        # Known harnesses re-installed from the (new) artefact payloads...
+        assert (
+            fake_specialist_home / ".copilot" / "agents" / specialist.AGENT_FILE_NAME
+        ).read_bytes() == b"# agent body\n"
+        assert (
+            fake_specialist_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).read_bytes() == b"# skill body\n"
+        # ...the unknown name is ignored (no such dir is invented)...
+        assert not (fake_specialist_home / ".ghost").exists()
+        # ...and the state file records the post-update version.
+        state = _read_state(fake_specialist_home)
+        assert state["specialist_version"] == "0.6.0"
+        assert state["harnesses"] == ["copilot", "claude", "ghost"]
+        out = capsys.readouterr().out
+        assert "[copilot]" in out and "[claude]" in out
+        assert "specialist refreshed: 0.5.0 -> 0.6.0" in out
+
+    def test_missing_state_prints_single_hint_and_no_error(
+        self,
+        fake_specialist_home: Path,
+        successful_wheel_update: None,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        rc = selfupdate.run_update([])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "install-specialist" in out and "auto-refresh" in out
+        assert "[copilot]" not in out  # nothing was installed
+        assert "specialist refreshed" not in out
+
+    def test_per_harness_failure_warns_and_update_still_succeeds(
+        self,
+        fake_specialist_home: Path,
+        fake_specialist_artefacts: None,
+        successful_wheel_update: None,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_state(fake_specialist_home, ["copilot", "claude"], "0.5.0")
+
+        real_write = specialist._write_file
+
+        def failing_write(target: Path, content: bytes) -> None:
+            if ".claude" in str(target):
+                msg = "read-only filesystem"
+                raise OSError(msg)
+            real_write(target, content)
+
+        monkeypatch.setattr(specialist, "_write_file", failing_write)
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 0  # the package did update — refresh stays best-effort
+        captured = capsys.readouterr()
+        assert "warned: could not write" in captured.out
+        assert "[copilot]" in captured.out  # the healthy harness still refreshed
+        assert "specialist refreshed: 0.5.0 -> 0.6.0" in captured.out
+        assert (fake_specialist_home / ".copilot" / "agents" / specialist.AGENT_FILE_NAME).exists()
+
+    def test_no_version_line_when_specialist_version_unchanged(
+        self,
+        fake_specialist_home: Path,
+        fake_specialist_artefacts: None,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _patch_dist(monkeypatch, direct_url=None, version="0.6.2")
+        monkeypatch.setattr(
+            selfupdate.subprocess,
+            "run",
+            lambda argv, **_kw: subprocess.CompletedProcess(argv, 0),
+        )
+        _write_state(fake_specialist_home, ["claude"], "0.6.2")
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 0
+        assert (
+            fake_specialist_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).exists()  # artefacts re-installed even without a version bump
+        assert "specialist refreshed" not in capsys.readouterr().out
+
+    def test_state_with_only_unknown_names_is_untouched(
+        self,
+        fake_specialist_home: Path,
+        successful_wheel_update: None,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_state(fake_specialist_home, ["ghost", "codex"], "0.5.0")
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "specialist refreshed" not in out
+        assert _read_state(fake_specialist_home)["specialist_version"] == "0.5.0"
+
+    def test_refresh_never_runs_when_update_aborts(
+        self,
+        fake_specialist_home: Path,
+        fake_specialist_artefacts: None,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A failing update step must not touch the specialist files."""
+        _write_state(fake_specialist_home, ["claude"], "0.5.0")
+        _patch_dist(
+            monkeypatch,
+            direct_url=json.dumps(
+                {"dir_info": {"editable": True}, "url": tmp_path.resolve().as_uri()}
+            ),
+            version="0.5.0",
+        )
+        monkeypatch.setattr(
+            selfupdate.subprocess,
+            "run",
+            lambda argv, **_kw: subprocess.CompletedProcess(argv, 1),
+        )
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 1
+        assert not (
+            fake_specialist_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).exists()
