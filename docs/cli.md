@@ -100,7 +100,7 @@ Example output (wheel install):
 Install mode: wheel — installed from a package index (no direct_url.json)
 --> pip install --upgrade jira-tempo-mcp: /path/to/python -m pip install --upgrade jira-tempo-mcp
 Update complete.
-Version: 0.5.0 -> 0.6.0
+Version: 0.6.0 -> 0.7.0
 If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the new code.
 ```
 
@@ -203,7 +203,7 @@ jira-tempo-mcp uninstall
 
 ```bash
 jira-tempo-mcp --version
-# jira-tempo-mcp 0.5.0
+# jira-tempo-mcp 0.6.0
 
 jira-tempo-mcp --help
 # prints the usage block shown above
