@@ -88,6 +88,12 @@ Then install the report specialist into your AI harness (or skip — the CLI lis
 jira-tempo-mcp install-specialist
 ```
 
+**Update to the latest version:**
+
+```bash
+jira-tempo-mcp update    # pip upgrade (wheel) — or git pull + reinstall (editable)
+```
+
 This downloads and runs the interactive installer, which:
 
 - ✅ Checks Python 3.11+ and pip

@@ -88,6 +88,12 @@ npm i -g jira-tempo-mcp         # npm-обёртка (ставит Python-пак
 jira-tempo-mcp install-specialist
 ```
 
+**Обновление до свежей версии:**
+
+```bash
+jira-tempo-mcp update    # pip upgrade (wheel) — или git pull + переустановка (editable)
+```
+
 Скрипт скачивает и запускает интерактивный установщик, который:
 
 - ✅ Проверяет Python 3.11+ и pip
