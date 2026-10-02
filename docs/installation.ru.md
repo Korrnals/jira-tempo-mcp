@@ -158,7 +158,7 @@ npm i -g jira-tempo-mcp
 ```bash
 jira-tempo-mcp serve              # запустить MCP-сервер (stdio)
 jira-tempo-mcp update             # самообновление (pip upgrade)
-jira-tempo-mcp install-specialist # установить JTM-агента в AI-оболочки
+jira-tempo-mcp install-specialist # установить skill специалиста в AI-оболочки
 ```
 
 Конфигурация читается из переменных окружения или файла `.env` в рабочей
@@ -190,7 +190,7 @@ jira-tempo-mcp install-specialist --remove
 | Оболочка | Статус | Места установки |
 | --- | --- | --- |
 | `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
-| `claude` | ✅ поддерживается | `~/.claude/agents/jtm-jira-tempo-reports.md` + `~/.claude/skills/jira-tempo-reports/` |
+| `claude` | ✅ поддерживается | `~/.claude/skills/jira-tempo-reports/` — только каталог skills, без файла агента (VS Code кросс-сканирует каталог агентов claude и показывает дублирующуюся запись в picker) |
 | `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (конвенция только skills) |
 | `codex` | ⏭️ пропускается | нет конвенции файлов агента — `AGENTS.md` управляется системой |
 

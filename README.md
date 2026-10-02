@@ -292,7 +292,9 @@ This repo ships a standalone AI agent that produces Jira/Tempo worklog reports p
 
 The wheel-installed package can re-install the specialist into this or other
 harnesses (Copilot Chat, Claude Code, OpenCode — `codex` unsupported) at any
-time, no git clone needed:
+time, no git clone needed. `claude` installs skills only — VS Code
+cross-scans the Claude agents dir, an extra agent file there would show a
+duplicate picker entry:
 
 ```bash
 jira-tempo-mcp install-specialist            # all supported harnesses

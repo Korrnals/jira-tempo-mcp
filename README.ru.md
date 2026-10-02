@@ -293,7 +293,9 @@ make build      # python -m build (sdist + wheel)
 
 Установленный из wheel пакет может в любой момент переустановить специалиста
 в эту или другие AI-оболочки (Copilot Chat, Claude Code, OpenCode — `codex` не
-поддерживается), без git clone:
+поддерживается), без git clone. `claude` устанавливает только skills — VS Code
+кросс-сканирует каталог агентов Claude, лишний файл агента там дал бы
+дублирующуюся запись в picker:
 
 ```bash
 jira-tempo-mcp install-specialist            # все поддерживаемые оболочки

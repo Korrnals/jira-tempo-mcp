@@ -14,7 +14,7 @@ jira-tempo-mcp serve            # start the MCP server (stdio)
 jira-tempo-mcp install          # interactive installer (venv + .env + VS Code)
 jira-tempo-mcp uninstall        # reverse the installation
 jira-tempo-mcp update           # self-update the installed package
-jira-tempo-mcp install-specialist  # install the JTM agent into AI harnesses
+jira-tempo-mcp install-specialist  # install the JTM specialist skill into AI harnesses
 jira-tempo-mcp --version        # show version
 jira-tempo-mcp --help           # show usage
 ```
@@ -118,8 +118,11 @@ Notes:
 
 Installs the **JTM: Jira Tempo Reports** specialist (agent file + skill +
 knowledge doc) into AI harnesses. Idempotent: re-installing overwrites
-JTM-owned files and creates a timestamped backup (`<name>.bak.YYYYMMDD-HHMMSS`)
-first; other harness files are never touched. Reversible with `--remove`.
+JTM-owned files and creates a timestamped backup first
+(`~/.copilot/.backups/<name>.bak.YYYYMMDD-HHMMSS` — out-of-tree, harness dirs
+stay clean); other harness files are never touched. Reversible with
+`--remove`, which also purges legacy leftovers (pre-skills-only JTM files
+in `~/.claude/agents/`, in-tree `.bak.*` backups next to JTM files).
 
 ### 🔧 Flags
 
@@ -127,7 +130,7 @@ first; other harness files are never touched. Reversible with `--remove`.
 | --- | --- |
 | `--harness NAME` | Install only the named harness(es); repeatable (`--harness copilot --harness claude`); default: all supported (unsupported ones are skipped with an explicit reason) |
 | `--list` | List the support status of every registered harness and exit |
-| `--remove` | Uninstall the specialist from the selected harnesses (default: all); deletes only JTM-owned files, prints "nothing to remove — already clean" when nothing is installed |
+| `--remove` | Uninstall the specialist from the selected harnesses (default: all); deletes only JTM-owned files, prints "nothing to remove — already clean" when nothing is installed; also purges legacy leftovers (JTM-named files in `~/.claude/agents/`, `.bak.*` backups next to JTM files) and reports the count |
 
 `--harness`, `--list` and `--remove` are mutually exclusive. Unknown harness
 names are rejected before anything is written.
@@ -137,7 +140,7 @@ names are rejected before anything is written.
 | Harness | Status | Files installed |
 | --- | --- | --- |
 | `copilot` | ✅ supported | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md`, `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
-| `claude` | ✅ supported | `~/.claude/agents/jtm-jira-tempo-reports.md`, `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `claude` | ✅ supported | `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only, no agents file (VS Code cross-scans the claude agents dir and shows a duplicate picker entry) |
 | `opencode` | ✅ supported | `~/.config/opencode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — skills-only convention |
 | `codex` | ⏭️ skipped | unsupported: no agent-file convention — `AGENTS.md` is machine-managed, safe manual placement is not defined |
 
@@ -146,7 +149,7 @@ Actual `--list` output:
 ```text
 Supported harnesses:
   copilot    supported                                               VS Code Copilot Chat (agents + skills)
-  claude     supported                                               Claude Code (agents + skills)
+  claude     supported                                               Claude Code (skills directory)
   opencode   supported                                               OpenCode (skills directory)
   codex      skipped — unsupported: no agent-file convention (AGENTS.md is machine-managed; safe manual placement is not defined) OpenAI Codex CLI
 ```
