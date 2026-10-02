@@ -87,6 +87,14 @@ pip install jira-tempo-mcp      # PyPI
 npm i -g jira-tempo-mcp         # npm wrapper (installs the Python package)
 ```
 
+Then configure credentials + VS Code (works on wheel/pip installs too — no git clone needed):
+
+```bash
+jira-tempo-mcp install    # writes .env.local, registers the MCP server in mcp.json, installs the specialist
+```
+
+In a git checkout the same command drives the full repo installer (`install.py`); non-interactive runs take values from flags/env vars (`--non-interactive --jira-base-url ... --jira-user ... --jira-pat ...`).
+
 Then install the report specialist into your AI harness (or skip — the CLI lists supported ones):
 
 ```bash
@@ -238,8 +246,10 @@ console script instead — no `PYTHONPATH`, no repo checkout needed:
 }
 ```
 
-> Note: the `install` / `uninstall` subcommands need a git clone (they drive
-> the repo's `install.py`); a wheel install is configured by hand as above.
+> 💡 **Tip:** `jira-tempo-mcp install` writes this entry for you — on wheel/pip
+> installs too (command points at the running interpreter, `envFile` at the
+> user-level `.env.local`). The manual example below is a fallback for
+> non-VS Code harnesses or hand-rolled setups.
 
 Full guide: [docs/mcp-integration.md](docs/mcp-integration.md).
 

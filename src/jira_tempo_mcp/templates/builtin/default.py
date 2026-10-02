@@ -13,6 +13,7 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
+    drop_lines_matching_title,
     extract_issue_key,
     extract_seconds,
     format_date,
@@ -89,7 +90,12 @@ class DefaultTemplate:
                 human = format_seconds_to_human(secs)
                 if comment:
                     lines.extend(
-                        render_comment_lines(comment, indent="\t", marker="+", time_human=human)
+                        render_comment_lines(
+                            drop_lines_matching_title(comment, title),
+                            indent="\t",
+                            marker="+",
+                            time_human=human,
+                        )
                     )
                 else:
                     lines.append(f"\t+ {human} отработано")
@@ -116,7 +122,12 @@ class DefaultTemplate:
                 human = format_seconds_to_human(secs)
                 if comment:
                     lines.extend(
-                        render_comment_lines(comment, indent="\t", marker="+", time_human=human)
+                        render_comment_lines(
+                            drop_lines_matching_title(comment, title),
+                            indent="\t",
+                            marker="+",
+                            time_human=human,
+                        )
                     )
                 else:
                     lines.append(f"\t+ {human} отработано")

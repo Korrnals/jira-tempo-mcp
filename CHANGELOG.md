@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] — 2026-10-02
+
+### Added
+
+- Wheel-mode `install` / `uninstall`: on a wheel/pip install (no git clone),
+  `jira-tempo-mcp install` now configures everything itself instead of
+  erroring with "requires a git clone" — collects
+  `JIRA_BASE_URL` / `JIRA_USER` / `JIRA_PAT` / `JIRA_TIMEZONE` / `LOG_LEVEL`
+  (priority: CLI flag → env var → existing `.env.local` → interactive prompt,
+  PAT via hidden input), merges the VS Code user-level `.env.local` (foreign
+  keys preserved, chmod 600, key names printed — never values), registers
+  `jira-tempo` in user `mcp.json` (timestamped backup first, other servers
+  preserved, `command` = the running interpreter with `-m jira_tempo_mcp.server`
+  and an absolute `envFile`), delegates the specialist install to
+  `install-specialist`, and performs a read-only `get_myself` connectivity
+  check (failure-tolerant). New flags: `--skip-check`; `--non-interactive`,
+  `--skip-vscode`, `--no-agent` shared with the repo installer, where a
+  missing required variable exits `1` with a clear message instead of being
+  masked by a placeholder. `jira-tempo-mcp uninstall` reverses the same steps
+  (mcp.json backup, specialist cleanup, optional removal of the managed
+  `JIRA_*` keys with a `pip uninstall` hint — the package itself is never
+  auto-removed). Git-checkout installs keep driving the repo's `install.py`
+  unchanged.
+
+### Fixed
+
+- Weekly/team report (txt renderers): a worklog comment echoing the Jira
+  issue summary no longer re-prints that summary as a `+ ` detail line under
+  the block title (title and echo compared whitespace-normalized, like the
+  grouping key). A comment consisting only of the title still renders so its
+  hours are never orphaned; md/json output keeps the raw comment untouched.
+- `find_worker_key`: the expected Tempo `/workers` 404 (endpoint missing on
+  some installations) now logs ONE WARNING line with explicit fallback
+  wording instead of a full ERROR log line; subsequent occurrences stay at
+  DEBUG via the existing availability cache. All other endpoints and status
+  classes keep the previous ERROR logging.
+
 ## [0.6.3] — 2026-10-02
 
 ### Added

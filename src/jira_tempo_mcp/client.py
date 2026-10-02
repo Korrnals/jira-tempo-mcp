@@ -224,7 +224,7 @@ class JiraTempoClient:
                 # the API in the response body.
                 raw_body = resp.text[:200] if resp.text else ""
                 body = _redact_body(raw_body)
-                logger.error("API %s %s -> %s: %s", method, _redact(url), resp.status_code, body)
+                self._log_http_error(method, url, resp.status_code, body)
                 try:
                     parsed_body: Any = resp.json()
                 except ValueError:
@@ -245,6 +245,35 @@ class JiraTempoClient:
         # until the last attempt falls through to the error path above.
         # Kept for type-checkers; flagged so coverage does not expect it.
         raise JiraTempoError("retry loop exited without a result")  # pragma: no cover
+
+    def _log_http_error(self, method: str, url: str, status_code: int, body: str) -> None:
+        """Log an HTTP >= 400 response at the appropriate level.
+
+        The Tempo ``/workers`` endpoint 404s on some installations (restricted
+        REST modules) and :meth:`find_worker_key` has a full Jira REST fallback
+        for it — a per-process ERROR line is noise, not an incident. For THAT
+        endpoint only: the first 404 (availability not yet cached) logs ONE
+        WARNING line with explicit fallback wording; any further 404 (endpoint
+        already cached) logs at DEBUG. Every other endpoint and every other
+        status class keeps the ERROR level.
+        """
+        if (
+            status_code == 404
+            and url.startswith(f"{self._config.tempo_api_base}/workers")
+            and JiraTempoClient._workers_endpoint_available is None
+        ):
+            logger.warning(
+                "Tempo /workers endpoint unavailable (404) — using fallback user resolution."
+            )
+            return
+        if (
+            status_code == 404
+            and url.startswith(f"{self._config.tempo_api_base}/workers")
+        ):
+            # Endpoint already cached as unavailable (or available): diagnostic only.
+            logger.debug("API %s %s -> %s: %s", method, _redact(url), status_code, body)
+            return
+        logger.error("API %s %s -> %s: %s", method, _redact(url), status_code, body)
 
     # --- paginated GET (Jira REST startAt/total) ---
 
@@ -597,7 +626,11 @@ class JiraTempoClient:
             except JiraTempoError:
                 if JiraTempoClient._workers_endpoint_available is None:
                     JiraTempoClient._workers_endpoint_available = False
-                    logger.info(
+                    # The user-visible WARNING (with fallback wording) is logged
+                    # by _log_http_error() on the 404 itself; this is the
+                    # debug-level companion so the fallback decision is
+                    # traceable without surfacing twice at log level >= INFO.
+                    logger.debug(
                         "Tempo /workers endpoint unavailable, using Jira REST "
                         "fallback for worker key resolution."
                     )

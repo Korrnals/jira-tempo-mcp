@@ -317,6 +317,55 @@ def _group_identity_key(comment: str | None) -> str:
     return ""
 
 
+def drop_lines_matching_title(comment: str | None, title: str | None) -> str:
+    """Drop comment lines that merely echo the block title (presentation fix).
+
+    Worklog comments on tracking issues often repeat the Jira issue summary as
+    their FIRST line («PROXY-BOT: Создать agent registry / agent-gateway»).
+    When the renderer already prints that summary as the block title, printing
+    every comment line as a ``+ `` detail re-shows the summary — a leak. The
+    title and the echoed line may differ by whitespace (double vs single
+    space), so lines are compared **normalized** (bullet marker stripped,
+    whitespace collapsed — the same treatment :func:`_group_identity_key`
+    applies).
+
+    Args:
+        comment: the raw representative comment (possibly multi-line).
+        title: the block title the renderer is about to print (e.g. the
+            Jira issue summary). ``None``/empty disables filtering.
+
+    Returns:
+        The comment with title-echo lines removed, preserving the original
+        line order. NEVER returns empty when the input was non-empty: a
+        comment that consists ONLY of the title is returned unchanged so the
+        hours it carries still render (no orphaned time). Empty input
+        returns ``""``.
+
+    Presentation-level helper: only the txt renderers (where the block title
+    is printed above the detail lines) wire this in; md/json renderers keep
+    the raw comment untouched so no information is lost in structured output.
+    """
+    if not comment:
+        return ""
+    if not title:
+        return comment
+    title_key = normalize_comment(strip_bullet_marker(title))
+    if not title_key:
+        return comment
+    normalized = str(comment).replace("\r\n", "\n").replace("\r", "\n")
+    kept = [
+        line
+        for line in normalized.split("\n")
+        if normalize_comment(strip_bullet_marker(line)) != title_key
+    ]
+    if not kept:
+        # Every line echoed the title — keep the original so hours render.
+        return comment
+    # `or comment`: a kept remainder of whitespace-only lines strips to ""
+    # and orphans the group's hours downstream — fall back to the original.
+    return "\n".join(kept).strip() or comment
+
+
 def render_comment_lines(
     comment: str | None,
     *,
@@ -392,6 +441,7 @@ def md_escape_cell(text: str) -> str:
 
 __all__ = [
     "dedupe_worklogs_by_id",
+    "drop_lines_matching_title",
     "extract_comment",
     "extract_issue_key",
     "extract_seconds",

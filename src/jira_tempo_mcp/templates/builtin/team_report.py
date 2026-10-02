@@ -13,6 +13,7 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
+    drop_lines_matching_title,
     extract_issue_key,
     extract_seconds,
     format_date,
@@ -102,7 +103,10 @@ class TeamReportTemplate:
                     if comment:
                         lines.extend(
                             render_comment_lines(
-                                comment, indent="      ", marker="+", time_human=human
+                                drop_lines_matching_title(comment, title),
+                                indent="      ",
+                                marker="+",
+                                time_human=human,
                             )
                         )
                     else:
@@ -121,7 +125,10 @@ class TeamReportTemplate:
                     if comment:
                         lines.extend(
                             render_comment_lines(
-                                comment, indent="      ", marker="+", time_human=human
+                                drop_lines_matching_title(comment, title),
+                                indent="      ",
+                                marker="+",
+                                time_human=human,
                             )
                         )
                     else:

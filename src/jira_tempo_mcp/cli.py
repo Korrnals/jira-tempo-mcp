@@ -3,7 +3,9 @@
 Usage:
     jira-tempo-mcp                  # same as 'serve' — start the MCP server
     jira-tempo-mcp serve            # start the MCP server (stdio)
-    jira-tempo-mcp install          # interactive installer (vibe-style setup)
+    jira-tempo-mcp install          # interactive installer (repo checkout drives
+                                    #   install.py; wheel installs use the built-in
+                                    #   configurator — see installer.py)
     jira-tempo-mcp uninstall        # reverse the installation (remove VS Code entry, optional .env + pip)
     jira-tempo-mcp update           # self-update (pip upgrade, or git pull for editable installs)
     jira-tempo-mcp install-specialist  # install the JTM agent into AI harnesses
@@ -13,55 +15,68 @@ Usage:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from . import __version__
 
 
-def _run_install_script(subcommand: str) -> int:
-    """Resolve install.py robustly (editable or wheel) and run it with the given subcommand.
+def _find_install_script() -> Path | None:
+    """Locate the repo-root ``install.py`` (editable flow), or None.
 
-    subcommand="install"   → executes main() (installer).
-    subcommand="uninstall" → executes uninstall() (uninstaller).
+    Probes, in order:
+    1. Package data (works in wheel installs only if install.py is shipped —
+       it is not, but keep the probe for sdist/custom builds).
+    2. Editable install — install.py at the project root (3 levels up from
+       cli.py).
+
+    Shared by the runpy dispatch and the wheel-mode fallback decision.
+    """
+    from importlib.resources import files
+
+    # Try package data first (works in wheel installs if install.py is shipped).
+    try:
+        install_path = Path(str(files(__package__) / "install.py"))
+        if install_path.exists():
+            return install_path
+    except (FileNotFoundError, ModuleNotFoundError):
+        pass
+
+    # Fallback: editable install — install.py is at project root.
+    editable_path = Path(__file__).resolve().parent.parent.parent / "install.py"
+    if editable_path.exists():
+        return editable_path
+    return None
+
+
+def _run_install_script(subcommand: str) -> int:
+    """Route ``install`` / ``uninstall`` to the right implementation.
+
+    When a repo checkout is detected (editable flow) the repo-root
+    ``install.py`` is executed with runpy — unchanged behaviour. Otherwise
+    (wheel / Docker / bare pip install) the built-in wheel-mode configurator
+    in :mod:`jira_tempo_mcp.installer` runs, so pip users no longer need to
+    hand-edit ``mcp.json``.
 
     install.py's ``if __name__ == "__main__"`` guard inspects ``sys.argv[1]``
     to dispatch, so we set ``sys.argv`` accordingly and run under
     ``run_name="__main__"`` so the guard fires.
     """
     import runpy
-    from importlib.resources import files
-    from pathlib import Path
 
-    # Try package data first (works in wheel installs if install.py is shipped).
-    try:
-        install_path = Path(str(files(__package__) / "install.py"))
-        if install_path.exists():
-            sys.argv = [str(install_path), subcommand]
-            runpy.run_path(str(install_path), run_name="__main__")
-            return 0
-    except (FileNotFoundError, ModuleNotFoundError):
-        pass
-
-    # Fallback: editable install — install.py is at project root (3 levels up from cli.py).
-    editable_path = Path(__file__).resolve().parent.parent.parent / "install.py"
-    if editable_path.exists():
-        sys.argv = [str(editable_path), subcommand]
-        runpy.run_path(str(editable_path), run_name="__main__")
+    script = _find_install_script()
+    if script is not None:
+        sys.argv = [str(script), subcommand]
+        runpy.run_path(str(script), run_name="__main__")
         return 0
 
-    print(
-        "\n'jira-tempo-mcp install' requires a git clone (not a wheel/Docker install).\n"
-        "install.py is a dev-setup script that needs the repository tree "
-        "(.env.example, copilot-integration/, pyproject.toml).\n\n"
-        "To install:\n"
-        "  git clone https://github.com/Korrnals/jira-tempo-mcp.git\n"
-        "  cd jira-tempo-mcp\n"
-        "  pip install -e .\n"
-        "  jira-tempo-mcp install\n\n"
-        "For Docker-only usage (no install needed):\n"
-        "  docker run -i --rm --env-file .env ghcr.io/korrnals/jira-tempo-mcp:latest\n",
-        file=sys.stderr,
-    )
-    return 1
+    if subcommand == "install":
+        from .installer import install_wheel
+
+        return install_wheel(sys.argv[2:])
+
+    from .installer import uninstall_wheel
+
+    return uninstall_wheel(sys.argv[2:])
 
 
 def main() -> int:
