@@ -79,7 +79,7 @@ Then run whatever you need:
 ```bash
 jira-tempo-mcp serve              # start the MCP server (stdio)
 jira-tempo-mcp update             # self-update (pip upgrade)
-jira-tempo-mcp install-specialist # install the JTM agent into AI harnesses
+jira-tempo-mcp install-specialist # install the JTM specialist skill into AI harnesses
 ```
 
 Configuration is read from environment variables or a `.env` file in the
@@ -110,7 +110,7 @@ Support status per harness — full flags and behavior in
 | Harness | Status | Install locations |
 | --- | --- | --- |
 | `copilot` | ✅ supported | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
-| `claude` | ✅ supported | `~/.claude/agents/jtm-jira-tempo-reports.md` + `~/.claude/skills/jira-tempo-reports/` |
+| `claude` | ✅ supported | `~/.claude/skills/jira-tempo-reports/` — skills-only, no agents file (VS Code cross-scans the claude agents dir and shows a duplicate picker entry) |
 | `opencode` | ✅ supported | `~/.config/opencode/skills/jira-tempo-reports/` (skills-only convention) |
 | `codex` | ⏭️ skipped | no agent-file convention — `AGENTS.md` is machine-managed |
 

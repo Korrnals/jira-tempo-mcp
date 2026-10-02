@@ -74,13 +74,21 @@ class TestRegistry:
             home / ".copilot" / "skills" / specialist.SKILL_DIR_NAME / specialist.KNOWLEDGE_DOC_NAME
         )
 
-    def test_claude_uses_agents_and_skills_dirs(self) -> None:
+    def test_claude_is_skills_only(self) -> None:
+        """No agent target at all: VS Code cross-scans the claude agents dir."""
         plan = specialist.claude_plan()
         dests = {t.artefact: t.dest for t in plan.targets}
         home = Path.home()
-        assert dests[specialist.AGENT_FILE_NAME].parent == home / ".claude" / "agents"
+        assert specialist.AGENT_FILE_NAME not in dests
         assert dests[specialist.SKILL_SOURCE_NAME] == (
             home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        )
+        assert dests[specialist.KNOWLEDGE_DOC_NAME] == (
+            home
+            / ".claude"
+            / "skills"
+            / specialist.SKILL_DIR_NAME
+            / specialist.KNOWLEDGE_DOC_NAME
         )
 
     def test_opencode_is_skills_only(self) -> None:
@@ -131,10 +139,16 @@ class TestInstallInto:
 
         assert specialist.install_into(plan, fake_artefacts) is True
 
-        skill_dir = fake_home / ".copilot" / "skills" / specialist.SKILL_DIR_NAME
-        backups = list(skill_dir.glob("SKILL.md.bak.*"))
+        backup_dir = fake_home / ".copilot" / ".backups"
+        backups = list(backup_dir.glob("SKILL.md.bak.*"))
         assert len(backups) == 1  # one backup per reinstall, content preserved
         assert backups[0].read_bytes() == b"# skill body\n"
+        # The harness skill dir itself stays clean — no in-tree .bak siblings.
+        skill_dir = fake_home / ".copilot" / "skills" / specialist.SKILL_DIR_NAME
+        assert {p.name for p in skill_dir.iterdir()} == {
+            specialist.SKILL_INSTALLED_NAME,
+            specialist.KNOWLEDGE_DOC_NAME,
+        }
 
     def test_never_touches_foreign_files(
         self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
@@ -214,7 +228,9 @@ class TestRunSpecialist:
 
         assert rc == 0
         assert (fake_home / ".copilot" / "agents" / specialist.AGENT_FILE_NAME).exists()
-        assert (fake_home / ".claude" / "agents" / "jtm-jira-tempo-reports.md").exists()
+        assert (
+            fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).exists()
         assert (
             fake_home
             / ".config"
@@ -234,7 +250,11 @@ class TestRunSpecialist:
         rc = specialist.run_specialist(["--harness", "claude"])
 
         assert rc == 0
-        assert (fake_home / ".claude" / "agents" / "jtm-jira-tempo-reports.md").exists()
+        assert not (fake_home / ".claude" / "agents").exists()
+        assert (
+            fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).exists()
+
         # copilot untouched
         assert not (fake_home / ".copilot" / "agents").exists()
 
@@ -268,7 +288,9 @@ class TestRunSpecialist:
 
         assert rc == 0
         assert not (fake_home / ".copilot" / "agents" / specialist.AGENT_FILE_NAME).exists()
-        assert not (fake_home / ".claude" / "agents" / "jtm-jira-tempo-reports.md").exists()
+        assert not (
+            fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME / "SKILL.md"
+        ).exists()
         skill_dir = (
             fake_home
             / ".config"
@@ -306,3 +328,158 @@ class TestRunSpecialist:
 
         assert rc == 1
         assert "error:" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# claude skills-only plan (end-to-end)
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeSkillsOnly:
+    def test_claude_plan_writes_skills_but_no_agent_file(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
+    ) -> None:
+        plan = specialist.claude_plan()
+
+        assert specialist.install_into(plan, fake_artefacts) is True
+
+        skills_dir = fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME
+        assert len(list(skills_dir.iterdir())) == 2  # SKILL.md + JTM_AGENT.md
+        assert not (fake_home / ".claude" / "agents").exists()
+
+    def test_remove_claude_purges_legacy_agent_file(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact], capsys
+    ) -> None:
+        """A pre-skills-only claude install left an agent file — remove purges it."""
+        legacy_agent = fake_home / ".claude" / "agents" / "jtm-jira-tempo-reports.md"
+        legacy_agent.parent.mkdir(parents=True)
+        legacy_agent.write_bytes(b"# legacy agent\n")
+
+        assert specialist.remove_from(specialist.claude_plan()) is True
+        purged = specialist.purge_legacy_noise()
+
+        assert purged == 1
+        assert not legacy_agent.exists()
+        assert "purged 1 legacy" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# backup relocation (~/.copilot/.backups/)
+# ---------------------------------------------------------------------------
+
+
+class TestBackupRelocation:
+    def test_backup_goes_to_copilot_backups_dir(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
+    ) -> None:
+        """Reinstall over an existing file: backup lands out-of-tree."""
+        plan = specialist.claude_plan()
+        specialist.install_into(plan, fake_artefacts)
+
+        assert specialist.install_into(plan, fake_artefacts) is True
+
+        backups = list((fake_home / ".copilot" / ".backups").glob("SKILL.md.bak.*"))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == b"# skill body\n"
+        skills_dir = fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME
+        assert {p.name for p in skills_dir.iterdir()} == {
+            specialist.SKILL_INSTALLED_NAME,
+            specialist.KNOWLEDGE_DOC_NAME,
+        }
+
+    def test_backup_preserves_original_dir(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
+    ) -> None:
+        """Foreign files in the same dir are untouched by backup creation."""
+        plan = specialist.copilot_plan()
+        specialist.install_into(plan, fake_artefacts)
+        foreign = fake_home / ".copilot" / "agents" / "other.agent.md"
+        foreign.write_bytes(b"foreign\n")
+
+        specialist.install_into(plan, fake_artefacts)
+
+        assert foreign.read_bytes() == b"foreign\n"
+        assert not list((fake_home / ".copilot" / "agents").glob("*.bak.*"))
+
+
+# ---------------------------------------------------------------------------
+# legacy purge (--remove noise cleanup)
+# ---------------------------------------------------------------------------
+
+
+class TestPurgeLegacyNoise:
+    def test_purges_jtm_files_in_claude_agents_dir(
+        self, fake_home: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        agents_dir = fake_home / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
+        jtm_agent = agents_dir / "jtm-jira-tempo-reports.md"
+        jtm_agent.write_bytes(b"legacy\n")
+        jtm_bak = agents_dir / "jtm-jira-tempo-reports.md.bak.20260101-000000"
+        jtm_bak.write_bytes(b"legacy bak\n")
+        foreign = agents_dir / "other-agent.md"
+        foreign.write_bytes(b"foreign\n")
+        foreign_jtm = agents_dir / "jtm-unrelated.md"  # jtm- prefix alone is not JTM-owned
+        foreign_jtm.write_bytes(b"foreign jtm-named\n")
+
+        purged = specialist.purge_legacy_noise()
+
+        assert purged == 2
+        assert not jtm_agent.exists()
+        assert not jtm_bak.exists()
+        assert foreign.read_bytes() == b"foreign\n"
+        assert foreign_jtm.read_bytes() == b"foreign jtm-named\n"
+        out = capsys.readouterr().out
+        assert "purged 2 legacy file(s)" in out
+
+    def test_purges_bak_next_to_jtm_targets(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
+    ) -> None:
+        """In-tree .bak siblings next to current JTM targets are purged."""
+        skills_dir = (
+            fake_home
+            / ".config"
+            / "opencode"
+            / "skills"
+            / specialist.SKILL_DIR_NAME
+        )
+        skills_dir.mkdir(parents=True)
+        old_bak = skills_dir / "SKILL.md.bak.20250101-000000"
+        old_bak.write_bytes(b"old in-tree backup\n")
+        foreign = skills_dir / "other.md.bak.20250101-000000"
+        foreign.write_bytes(b"foreign backup\n")
+
+        purged = specialist.purge_legacy_noise()
+
+        assert purged == 1
+        assert not old_bak.exists()
+        assert foreign.read_bytes() == b"foreign backup\n"
+
+    def test_purge_is_idempotent(
+        self, fake_home: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        agents_dir = fake_home / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "jtm-jira-tempo-reports.md").write_bytes(b"legacy\n")
+
+        assert specialist.purge_legacy_noise() == 1
+        assert specialist.purge_legacy_noise() == 0
+        assert "purged 0 legacy file(s)" in capsys.readouterr().out
+
+    def test_double_run_no_new_files_beyond_expected(
+        self, fake_home: Path, fake_artefacts: dict[str, specialist.Artefact]
+    ) -> None:
+        """Install + remove + remove again: no stray files, stable state."""
+        specialist.run_specialist([])
+        specialist.run_specialist(["--remove"])
+
+        rc = specialist.run_specialist(["--remove"])
+
+        assert rc == 0
+        claude_skills = fake_home / ".claude" / "skills" / specialist.SKILL_DIR_NAME
+        assert not claude_skills.exists() or not any(claude_skills.iterdir())
+        assert len(list((fake_home / ".copilot" / ".backups").glob("*"))) == 0
+        agents_dir = fake_home / ".claude" / "agents"
+        assert not agents_dir.exists() or not any(
+            p.name.startswith("jtm-") for p in agents_dir.iterdir()
+        )

@@ -14,7 +14,7 @@ jira-tempo-mcp serve            # запустить MCP-сервер (stdio)
 jira-tempo-mcp install          # интерактивный установщик (venv + .env + VS Code)
 jira-tempo-mcp uninstall        # откатить установку
 jira-tempo-mcp update           # самообновление установленного пакета
-jira-tempo-mcp install-specialist  # установить JTM-агента в AI-оболочки
+jira-tempo-mcp install-specialist  # установить skill специалиста в AI-оболочки
 jira-tempo-mcp --version        # показать версию
 jira-tempo-mcp --help           # показать справку
 ```
@@ -116,11 +116,15 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
 
 ## 🤖 `install-specialist`
 
-Устанавливает специалиста **JTM: Jira Tempo Reports** (файл агента + skill +
-документ знаний) в AI-оболочки. Работает идемпотентно: повторная установка
+Устанавливает специалиста **JTM: Jira Tempo Reports** в AI-оболочки —
+набор устанавливаемых файлов зависит от оболочки (см. таблицу ниже).
+Работает идемпотентно: повторная установка
 перезаписывает файлы JTM, предварительно создавая резервную копию
-(`<name>.bak.YYYYMMDD-HHMMSS`); чужие файлы оболочки не затрагиваются.
-Обратимо через `--remove`.
+(`~/.copilot/.backups/<name>.bak.YYYYMMDD-HHMMSS` — вне каталогов оболочки,
+каталоги оболочки остаются чистыми); чужие файлы не затрагиваются.
+Обратимо через `--remove`, который также вычищает остатки старых установок
+(JTM-файлы в `~/.claude/agents/`, резервные копии `.bak.*` рядом с файлами
+JTM).
 
 ### 🔧 Флаги
 
@@ -128,7 +132,7 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
 | --- | --- |
 | `--harness NAME` | Установить только в указанную оболочку; флаг повторяемый (`--harness copilot --harness claude`); по умолчанию: все поддерживаемые (неподдерживаемые пропускаются с явной причиной) |
 | `--list` | Показать статус поддержки всех зарегистрированных оболочек и выйти |
-| `--remove` | Удалить специалиста из выбранных оболочек (по умолчанию: из всех); удаляет только файлы JTM; если удалять нечего, печатает «nothing to remove — already clean» |
+| `--remove` | Удалить специалиста из выбранных оболочек (по умолчанию: из всех); удаляет только файлы JTM; если удалять нечего, печатает «nothing to remove — already clean»; также вычищает остатки старых установок (JTM-файлы в `~/.claude/agents/`, резервные копии `.bak.*`) и печатает их количество |
 
 `--harness`, `--list` и `--remove` взаимоисключающие. Неизвестые имена
 оболочек отклоняются до любой записи.
@@ -138,7 +142,7 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
 | Оболочка | Статус | Устанавливаемые файлы |
 | --- | --- | --- |
 | `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md`, `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
-| `claude` | ✅ поддерживается | `~/.claude/agents/jtm-jira-tempo-reports.md`, `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `claude` | ✅ поддерживается | `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills, без файла агента (VS Code кросс-сканирует каталог агентов claude и показывает дублирующуюся запись в picker) |
 | `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills |
 | `codex` | ⏭️ пропускается | не поддерживается: нет конвенции файлов агента — `AGENTS.md` управляется системой, безопасная ручная установка не определена |
 
@@ -147,7 +151,7 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
 ```text
 Supported harnesses:
   copilot    supported                                               VS Code Copilot Chat (agents + skills)
-  claude     supported                                               Claude Code (agents + skills)
+  claude     supported                                               Claude Code (skills directory)
   opencode   supported                                               OpenCode (skills directory)
   codex      skipped — unsupported: no agent-file convention (AGENTS.md is machine-managed; safe manual placement is not defined) OpenAI Codex CLI
 ```
