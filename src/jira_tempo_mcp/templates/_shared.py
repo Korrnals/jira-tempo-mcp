@@ -108,6 +108,54 @@ def extract_worker(worklog: dict[str, Any]) -> str | None:
     return None
 
 
+def extract_worklog_id(worklog: dict[str, Any]) -> str | None:
+    """Extract the Tempo worklog id from a worklog object.
+
+    Tempo 4 API exposes worklogs as ``tempoWorklogId``; alternate id fields
+    (``id``, ``worklogId``) are checked for compatibility with older Tempo
+    shapes and normalized client payloads. Returns ``None`` when no id field
+    is present — callers must treat id-less worklogs as always-unique.
+    """
+    for field in ("tempoWorklogId", "id", "worklogId"):
+        value = worklog.get(field)
+        if value is None:
+            continue
+        if isinstance(value, int):
+            return str(value)
+        value_str = str(value).strip()
+        if value_str:
+            return value_str
+    return None
+
+
+def dedupe_worklogs_by_id(
+    worklogs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Drop worklogs whose Tempo id repeats inside the same fetch result.
+
+    The Tempo API guarantees unique worklog ids, so a repeated id inside one
+    search response is a fetch/pagination defect, not two real entries. Such
+    entries are dropped (first occurrence wins) and their ids are returned so
+    the caller can log the event. Worklogs without an id field are always
+    kept — there is nothing to dedupe on, and dropping them would lose data.
+
+    Returns ``(worklogs, duplicate_ids)`` — ``duplicate_ids`` is sorted and
+    empty when nothing was dropped.
+    """
+    seen: set[str] = set()
+    kept: list[dict[str, Any]] = []
+    dupes: set[str] = set()
+    for wl in worklogs:
+        wl_id = extract_worklog_id(wl)
+        if wl_id is not None and wl_id in seen:
+            dupes.add(wl_id)
+            continue
+        if wl_id is not None:
+            seen.add(wl_id)
+        kept.append(wl)
+    return kept, sorted(dupes)
+
+
 _WS_RE = re.compile(r"\s+")
 
 
@@ -149,39 +197,49 @@ def group_worklogs_by_comment(
 def group_worklogs_by_comment_raw(
     worklogs: list[dict[str, Any]],
 ) -> list[tuple[str, int]]:
-    """Group worklogs by normalized comment but return the RAW comment.
+    """Group worklogs of one issue into (comment, total_seconds) lines.
 
-    Grouping/summation is identical to :func:`group_worklogs_by_comment` —
-    worklogs whose comments are equal after normalization are merged and their
-    ``timeSpentSeconds`` are summed. The difference is the returned comment:
-    this function yields the *first-seen original* comment text (with its
-    newlines and bullet structure preserved) instead of the flattened,
-    whitespace-collapsed grouping key.
+    Summation is over worklogs whose **identity** is equal: the
+    normalization-collapsed FIRST non-empty comment line (bullet markers
+    stripped — see :func:`_group_identity_key`). Two worklogs of the same
+    issue with the same header text are one logical work row repeated
+    (per-day tracking entries, or entries differing only by a detail-line
+    typo) — they aggregate into ONE output block with hours summed, instead
+    of rendering as duplicate blocks (owner-reported v0.6.0 defect).
 
-    This separates two concerns that used to be conflated:
-    - the *grouping key* (normalized, single-line) drives summation;
-    - the *render/serialization payload* (raw, multi-line) preserves the
-      structure that the TXT/MD/JSON render paths need.
+    The returned comment is the RAW representative text: the first-seen
+    comment whose body wins deterministically. Second+ body lines that are
+    not already covered by the representative are appended to it (first-seen
+    order, bullet markers stripped, repeats collapsed) so a detail line
+    present only in some of the entries is not silently lost — 6h+3h
+    entries with «разработка…» / «разрабокта…» detail variants render both
+    detail lines once each, under one summed «9h» block.
 
     Returns a list of ``(raw_comment, total_seconds)`` tuples sorted by
-    ``total_seconds`` descending (ties broken alphabetically by the normalized
+    ``total_seconds`` descending (ties broken alphabetically by the identity
     key for deterministic output).
 
-    The representative raw comment is chosen deterministically: among all raw
-    comments that share a normalized key we keep the **longest** one. This is
-    order-independent (so stable regardless of how Jira orders the worklogs)
-    and tends to pick the most informative raw comment (the one with the most
-    bullet/structure preserved), which is what the render paths want.
+    Worklogs with empty comments group under ``""`` (the caller renders the
+    «отработано» placeholder for those).
     """
     totals: dict[str, int] = {}
     raw_repr: dict[str, str] = {}
     for wl in worklogs:
         raw = extract_comment(wl)
-        key = normalize_comment(raw)
+        key = _group_identity_key(raw)
         totals[key] = totals.get(key, 0) + extract_seconds(wl)
         existing = raw_repr.get(key)
-        if existing is None or len(raw) > len(existing):
+        if existing is None:
             raw_repr[key] = raw
+            continue
+        body = split_comment_lines(raw)
+        # Append body lines that the representative does not already cover
+        # (identity-aware: compare against the whole accumulated body).
+        covered = split_comment_lines(existing)
+        extras = [line for line in body if line not in covered]
+        if extras:
+            raw_repr[key] = "\n".join([*covered, *extras])
+
     ordered = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
     return [(raw_repr[key], secs) for key, secs in ordered]
 
@@ -234,6 +292,29 @@ def split_comment_lines(comment: str | None) -> list[str]:
         if cleaned:
             items.append(cleaned)
     return items
+
+
+def _group_identity_key(comment: str | None) -> str:
+    """Return the aggregation identity key of a worklog comment.
+
+    The key is the FIRST non-empty comment line — bullet marker stripped,
+    whitespace collapsed (see :func:`normalize_comment`) — with letter case
+    preserved («PROXY-BOT» and «proxy-bot» are different rows for the
+    reader). Empty comments produce
+    ``""`` so comment-less worklogs group together.
+
+    Rationale: Jira/Tempo tracking entries repeat the same header line once
+    per logged period while detail lines drift (new bullet per day, typos).
+    Grouping by the header line matches what the report reader perceives as
+    «the same row» while summation preserves every logged hour.
+    """
+    if not comment:
+        return ""
+    for line in str(comment).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        cleaned = strip_bullet_marker(line)
+        if cleaned:
+            return normalize_comment(cleaned)
+    return ""
 
 
 def render_comment_lines(
@@ -310,10 +391,12 @@ def md_escape_cell(text: str) -> str:
 
 
 __all__ = [
+    "dedupe_worklogs_by_id",
     "extract_comment",
     "extract_issue_key",
     "extract_seconds",
     "extract_worker",
+    "extract_worklog_id",
     "format_date",
     "group_worklogs_by_comment",
     "group_worklogs_by_comment_raw",

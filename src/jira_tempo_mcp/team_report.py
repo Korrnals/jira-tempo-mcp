@@ -36,6 +36,7 @@ from .report_common import (
 )
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
+    dedupe_worklogs_by_id,
     extract_comment,
     extract_issue_key,
     group_worklogs_by_comment_raw,
@@ -91,6 +92,16 @@ async def _fetch_with_retry(
     for attempt in range(max_retries + 1):
         try:
             worklogs = await client.search_worklogs(date_from, date_to, worker_keys=[worker_key])
+            # Fetch-level dedupe (mirrors report.generate_weekly_report):
+            # repeated Tempo worklog ids are a fetch/pagination defect, not
+            # two real entries — drop and log them.
+            worklogs, duplicate_ids = dedupe_worklogs_by_id(list(worklogs))
+            for dup_id in duplicate_ids:
+                logger.warning(
+                    "Team report: dropped duplicate worklog id %s for user %s",
+                    dup_id,
+                    username,
+                )
             return worklogs
         except JiraTempoError as exc:
             last_exc = exc
