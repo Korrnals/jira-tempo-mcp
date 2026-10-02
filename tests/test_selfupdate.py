@@ -462,6 +462,28 @@ class TestSpecialistRefresh:
         assert "[copilot]" not in out  # nothing was installed
         assert "specialist refreshed" not in out
 
+    def test_refresh_survives_wrong_typed_harnesses(
+        self,
+        fake_specialist_home: Path,
+        fake_specialist_artefacts: None,
+        successful_wheel_update: None,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Hand-corrupted state (harnesses not a list) must not fail the update."""
+        path = fake_specialist_home / ".local" / "state" / "jira-tempo-mcp" / "specialist-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"harnesses": None, "specialist_version": "0.5.0"}),
+            encoding="utf-8",
+        )
+
+        rc = selfupdate.run_update([])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "[copilot]" not in out
+        assert "specialist refreshed" not in out
+
     def test_per_harness_failure_warns_and_update_still_succeeds(
         self,
         fake_specialist_home: Path,

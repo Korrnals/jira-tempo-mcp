@@ -204,7 +204,12 @@ def _refresh_specialist(new_version: str) -> None:
         return
 
     recorded_version = str(state.get("specialist_version", "unknown"))
-    names = [str(h) for h in state.get("harnesses", []) if isinstance(h, str)]
+    raw_harnesses = state.get("harnesses", [])
+    names = (
+        [str(h) for h in raw_harnesses if isinstance(h, str)]
+        if isinstance(raw_harnesses, list)
+        else []
+    )
     plans = {p.name: p for p in specialist.registry()}
     refreshable = [plans[name] for name in names if name in plans and not plans[name].note]
 
