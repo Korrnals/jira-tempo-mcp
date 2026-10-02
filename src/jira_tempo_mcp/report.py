@@ -27,6 +27,12 @@ from .config import Config
 from .report_common import resolve_report_base_dir, sort_worklogs_by_issue, write_report_file
 from .templates import ReportTemplate, TemplateRegistry
 from .templates._shared import (
+    dedupe_worklogs_by_id,
+    group_worklogs_by_comment_raw,
+    parse_tempo_date,
+    week_range,
+)
+from .templates._shared import (
     extract_comment as _extract_comment,  # noqa: F401 — re-exported for tests
 )
 from .templates._shared import (
@@ -40,11 +46,6 @@ from .templates._shared import (
 )
 from .templates._shared import (
     format_date as _format_date,  # noqa: F401
-)
-from .templates._shared import (
-    group_worklogs_by_comment_raw,
-    parse_tempo_date,
-    week_range,
 )
 from .templates._shared import (
     md_escape_cell as _md_escape_cell,
@@ -283,6 +284,13 @@ async def generate_weekly_report(
         worker_keys = [wk]
 
     worklogs = await client.search_worklogs(date_from, date_to, worker_keys=worker_keys)
+
+    # Fetch-level dedupe: Tempo guarantees unique worklog ids, so a repeated
+    # id inside one response is a fetch/pagination defect. Drop it here so
+    # every render path (txt/md/json) works from clean data.
+    worklogs, duplicate_ids = dedupe_worklogs_by_id(list(worklogs))
+    for dup_id in duplicate_ids:
+        logger.warning("Weekly report: dropped duplicate worklog id %s from Tempo response", dup_id)
     logger.info("Got %d worklogs", len(worklogs))
 
     # Filter worklogs to the target week (Tempo may return slightly out-of-range).

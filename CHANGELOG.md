@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-02
+
+### Fixed
+
+- Weekly/team reports: duplicated worklog blocks collapsed. Worklogs of the
+  same issue whose comments share the first line (the row header — typical
+  per-day re-logging, or entries differing only by a detail-line typo) now
+  aggregate into ONE block with `timeSpentSeconds` summed (6h + 3h → `9h`),
+  and detail lines present in only some entries are preserved in the merged
+  body. All render paths (weekly txt/md/json, team txt/md/json, builtin
+  templates) share the fixed helper. Fetch-level dedupe by Tempo worklog id
+  (`tempoWorklogId`) added to weekly and team generators with a warning log;
+  id-less worklogs are never dropped.
+
+### Added
+
+- README quick-start line for `jira-tempo-mcp update` self-update command
+  (EN + RU), pointing wheel installs at `pip install --upgrade` and editable
+  installs at `git pull` + reinstall.
+
 ## [0.6.0] — 2026-10-02
 
 ### Added
