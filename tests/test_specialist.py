@@ -419,6 +419,8 @@ class TestPurgeLegacyNoise:
         jtm_bak.write_bytes(b"legacy bak\n")
         foreign = agents_dir / "other-agent.md"
         foreign.write_bytes(b"foreign\n")
+        foreign_jtm = agents_dir / "jtm-unrelated.md"  # jtm- prefix alone is not JTM-owned
+        foreign_jtm.write_bytes(b"foreign jtm-named\n")
 
         purged = specialist.purge_legacy_noise()
 
@@ -426,6 +428,7 @@ class TestPurgeLegacyNoise:
         assert not jtm_agent.exists()
         assert not jtm_bak.exists()
         assert foreign.read_bytes() == b"foreign\n"
+        assert foreign_jtm.read_bytes() == b"foreign jtm-named\n"
         out = capsys.readouterr().out
         assert "purged 2 legacy file(s)" in out
 

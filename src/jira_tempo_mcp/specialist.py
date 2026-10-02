@@ -308,9 +308,11 @@ def purge_legacy_noise() -> int:
     """Purge leftovers of pre-skills-only installs. Idempotent; returns count.
 
     Removes, counting each file:
-    - every ``jtm-``-prefixed file in ``~/.claude/agents/`` — the legacy claude
-      agent write that VS Code's cross-scan surfaces as a duplicate picker
-      entry, plus its ``.bak.*`` backups (the ``jtm-*`` glob covers both);
+    - every ``jtm-jira-tempo-reports*`` file in ``~/.claude/agents/`` — the
+      legacy claude agent write that VS Code's cross-scan surfaces as a
+      duplicate picker entry, plus its ``.bak.*`` backups (the shared name
+      prefix covers both). The prefix is deliberately exact: a user's own
+      ``jtm-<other>`` file there is foreign and survives;
     - ``<JTM-name>.bak.*`` backups sitting next to current JTM targets in
       every supported harness dir (backups used to be written in-tree).
 
@@ -320,7 +322,7 @@ def purge_legacy_noise() -> int:
 
     claude_agents = Path.home() / ".claude" / "agents"
     if claude_agents.is_dir():
-        for leftover in sorted(claude_agents.glob("jtm-*")):
+        for leftover in sorted(claude_agents.glob("jtm-jira-tempo-reports*")):
             if leftover.is_file() and _try_unlink(leftover):
                 purged.append(leftover)
 
