@@ -148,6 +148,31 @@ Kubernetes Secret. See [deployment.md](deployment.md) for build details.
 
 ---
 
+## 🔁 Install modes
+
+Paths 2–4 put the same package on disk in three different ways — the
+difference matters when you update:
+
+| Mode | How you got it | Update to the latest |
+| --- | --- | --- |
+| **Wheel** (package index) | `pip install jira-tempo-mcp` / `pipx`, or the npm wrapper (it installs the same Python package) | `jira-tempo-mcp update` (runs `pip install --upgrade jira-tempo-mcp`), or the pip command directly |
+| **Editable** (git checkout) | `pip install -e .` from a cloned repo | `jira-tempo-mcp update` detects the mode and runs `git pull --ff-only` in the checkout, then `pip install -e .` to refresh metadata — or run both steps by hand |
+| **Docker image** | `ghcr.io/korrnals/jira-tempo-mcp`, tags `:X.Y.Z` and `:latest` | `docker pull` a newer tag and restart the container |
+
+`update` classifies the installation via pip's `direct_url.json` into modes
+`wheel` and `editable` and prints the detected mode as its first line. When
+the package is not pip-installed at all (Docker image, bare `PYTHONPATH`
+run), it does not guess — it prints per-kind guidance and exits without
+changing anything. See [`update`](cli.md#-update) for the full behavior.
+
+> 💡 **Tip: how to tell which mode you have.** `pip show jira-tempo-mcp`
+> prints an `Editable project location` line for an editable install and no
+> such line for a wheel install (the underlying marker is pip's
+> `direct_url.json`). If you run `jira-tempo-mcp` straight from a repo
+> checkout, you are almost certainly in editable mode.
+
+---
+
 ## 🛠️ Creating a venv manually
 
 ```bash

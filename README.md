@@ -16,6 +16,7 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 
 | Document | Description |
 |----------|---------|
+| [Features](docs/features.md) | Capability map — what the 19 MCP tools, the CLI, and the agent do |
 | [API Reference](docs/api.md) | Full MCP tool reference with parameters and examples |
 | [Installation](docs/installation.md) | Setup and installation guide |
 | [Configuration](docs/configuration.md) | Environment variables reference |
@@ -31,6 +32,10 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 ---
 
 ## 📋 Features
+
+The flat list of all 19 tools is below. For a grouped capability map —
+reading, time tracking, template decomposition, reports, CLI, agent — see
+[docs/features.md](docs/features.md).
 
 | Tool | What it does |
 | --- | --- |

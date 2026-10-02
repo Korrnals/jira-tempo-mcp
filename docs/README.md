@@ -12,6 +12,7 @@ Track time, list worklogs, and generate weekly reports from your AI agent
 
 | Topic | Document | What you will learn |
 | --- | --- | --- |
+| ✨ Features | [features.md](features.md) | capability map — the 19 MCP tools in groups, CLI, AI specialist agent |
 | 📦 Install | [installation.md](installation.md) | `python install.py`, pip, Docker, venv |
 | ⚙️ Configure | [configuration.md](configuration.md) | env vars, `.env.local`, `.env`, examples |
 | 🔌 MCP integration | [mcp-integration.md](mcp-integration.md) | VS Code `mcp.json`, `envFile`, workspace config |
