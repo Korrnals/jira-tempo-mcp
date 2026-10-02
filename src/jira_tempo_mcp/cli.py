@@ -5,6 +5,8 @@ Usage:
     jira-tempo-mcp serve            # start the MCP server (stdio)
     jira-tempo-mcp install          # interactive installer (vibe-style setup)
     jira-tempo-mcp uninstall        # reverse the installation (remove VS Code entry, optional .env + pip)
+    jira-tempo-mcp update           # self-update (pip upgrade, or git pull for editable installs)
+    jira-tempo-mcp install-specialist  # install the JTM agent into AI harnesses
     jira-tempo-mcp --version
 """
 
@@ -77,6 +79,16 @@ def main() -> int:
             return _run_install_script("install")
         if cmd == "uninstall":
             return _run_install_script("uninstall")
+        if cmd == "update":
+            from .selfupdate import run_update
+
+            rc_update: int = run_update(sys.argv[2:])
+            return rc_update
+        if cmd == "install-specialist":
+            from .specialist import run_specialist
+
+            rc_specialist: int = run_specialist(sys.argv[2:])
+            return rc_specialist
         if cmd in ("-h", "--help"):
             print(__doc__)
             return 0
