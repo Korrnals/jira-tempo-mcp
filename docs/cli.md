@@ -11,7 +11,7 @@ specialist installer.
 ```text
 jira-tempo-mcp                  # start the MCP server (default = serve)
 jira-tempo-mcp serve            # start the MCP server (stdio)
-jira-tempo-mcp install          # interactive installer (venv + .env + VS Code)
+jira-tempo-mcp install          # installer (git checkout: venv + .env; wheel: .env.local + mcp.json)
 jira-tempo-mcp uninstall        # reverse the installation
 jira-tempo-mcp update           # self-update the installed package
 jira-tempo-mcp install-specialist  # install the JTM specialist skill into AI harnesses
@@ -41,29 +41,40 @@ startup. See [configuration.md](configuration.md).
 
 ## 📦 `install`
 
-Runs the interactive installer (`install.py`). Creates a venv, writes
-`.env`, registers the MCP server in VS Code `mcp.json`, and optionally
-verifies Jira connectivity.
+Two modes, picked automatically:
+
+- **Git checkout (editable install)** — runs the repo's interactive installer
+  (`install.py`). Creates a venv, writes `.env`, registers the MCP server in
+  VS Code `mcp.json`, and optionally verifies Jira connectivity.
+- **Wheel / pip install** — runs the built-in configurator
+  (`jira_tempo_mcp.installer`): writes the VS Code user-level `.env.local`
+  (credentials, merged, chmod 600), registers `jira-tempo` in user `mcp.json`
+  (backup first; `command` = the running interpreter + `-m jira_tempo_mcp.server`,
+  `envFile` = absolute `.env.local` path), installs the JTM specialist, and
+  performs a read-only connectivity check (`/myself` — failure-tolerant, a
+  unreachable Jira never fails the install). No git clone needed.
 
 ```bash
 jira-tempo-mcp install
-# equivalent to:
+# in a git checkout equivalent to:
 python install.py
 ```
+
+Settings priority (both modes): CLI flag → env var → existing `.env.local`
+value → interactive prompt with default. Secrets (PAT) are entered via
+hidden input and never printed.
 
 See [installation.md](installation.md) for the full walkthrough.
 
 ### 🔧 Installer flags
 
-The installer (`install.py`) accepts these flags — useful in CI, headless
-setups, or when re-running only part of the setup:
+Flags shared by both modes (useful in CI, headless setups, or when re-running
+only part of the setup):
 
 | Flag | Effect |
 | --- | --- |
 | `-n` / `--non-interactive` / `--yes` | Run without prompts; take values from flags / env vars / defaults |
-| `--register-only` | Skip venv/pip — only write `.env.local` and register in `mcp.json` |
-| `--no-agent` | Skip the Copilot Chat agent installation (agent installs by default) |
-| `--uninstall-agent` | Remove only the Copilot Chat agent + skill + `JTM_AGENT.md`, then exit |
+| `--no-agent` | Skip the agent/specialist installation (installs by default) |
 | `--skip-vscode` | Skip VS Code `mcp.json` registration (only write `.env.local`) |
 | `--jira-base-url` | Override `JIRA_BASE_URL` (default: env var) |
 | `--jira-user` | Override `JIRA_USER` (default: env var) |
@@ -71,10 +82,35 @@ setups, or when re-running only part of the setup:
 | `--jira-timezone` | Override `JIRA_TIMEZONE` (default: `Europe/Moscow`) |
 | `--log-level` | Override `LOG_LEVEL` (default: `INFO`) |
 
+Wheel-mode extras:
+
+| Flag | Effect |
+| --- | --- |
+| `--skip-check` | Skip the read-only Jira connectivity check (on by default, failure-tolerant) |
+
+`install.py`-only flags (editable flow):
+
+| Flag | Effect |
+| --- | --- |
+| `--register-only` | Skip venv/pip — only write `.env.local` and register in `mcp.json` |
+| `--uninstall-agent` | Remove only the Copilot Chat agent + skill + `JTM_AGENT.md`, then exit |
+
+In non-interactive mode a missing required variable (`JIRA_BASE_URL`,
+`JIRA_USER`, `JIRA_PAT`) exits `1` with a clear message — values are never
+masked by placeholder defaults.
+
 Example — register only, non-interactive:
 
 ```bash
 python install.py --non-interactive --register-only
+```
+
+Wheel install, non-interactive (CI / agents):
+
+```bash
+jira-tempo-mcp install --non-interactive \
+  --jira-base-url https://jira.example.com \
+  --jira-user me --jira-pat "$JIRA_PAT"
 ```
 
 ---
@@ -230,15 +266,22 @@ clone; see [installation.md](installation.md).
 
 ## 🗑️ `uninstall`
 
-Reverses the installation in 4 steps:
+Two modes, matching `install`:
 
-1. ✅ Remove `jira-tempo` from VS Code `mcp.json` (backup `mcp.json.bak` first;
-   other servers preserved).
-2. ⚠️ Delete `.env` — optional, **default: No**. Irreversible; requires
-   explicit confirmation. The PAT value is never printed.
-3. ⚠️ Uninstall the pip package from the venv — optional, **default: No**.
-   The `.venv` directory itself is kept.
-4. ✅ Print a summary with next steps.
+- **Git checkout (editable)** — reverses the full installation in 4 steps:
+  1. ✅ Remove `jira-tempo` from VS Code `mcp.json` (backup `mcp.json.bak` first;
+     other servers preserved).
+  2. ⚠️ Delete `.env` — optional, **default: No**. Irreversible; requires
+     explicit confirmation. The PAT value is never printed.
+  3. ⚠️ Uninstall the pip package from the venv — optional, **default: No**.
+     The `.venv` directory itself is kept.
+  4. ✅ Print a summary with next steps.
+- **Wheel / pip install** — runs the built-in uninstaller:
+  removes the `jira-tempo` entry from user `mcp.json` (backup first),
+  removes the JTM specialist from AI harnesses, and asks (default: yes)
+  whether to drop the managed `JIRA_*` keys from `.env.local` (other keys
+  are kept). The pip package itself is **never** auto-uninstalled — the
+  summary prints the `pip uninstall jira-tempo-mcp` hint.
 
 ```bash
 jira-tempo-mcp uninstall
