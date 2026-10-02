@@ -298,6 +298,87 @@ class TestUX1WorkersCache:
         await client.aclose()
 
 
+class TestWorkers404NoiseDowngrade:
+    """The /workers 404 logs ONE WARNING (fallback wording), never ERROR.
+
+    Live case: this Tempo instance answers 404 on
+    ``GET {tempo_api_base}/workers?username=...`` while the Jira REST
+    fallback resolves the worker key fine. The 404 is expected behaviour,
+    so it must not surface as an ERROR line per process.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_workers_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Isolate the class-level availability cache per test (restored after)."""
+        monkeypatch.setattr(JiraTempoClient, "_workers_endpoint_available", None)
+
+    def _client_with_404_workers(self, requests_log: list[str]) -> JiraTempoClient:
+        import httpx
+
+        config = _make_config()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            requests_log.append(url)
+            if url.startswith(f"{config.tempo_api_base}/workers"):
+                return httpx.Response(404, text='{"errors": [{"message": "Not found"}]}')
+            if url.endswith("/rest/api/2/myself"):
+                return httpx.Response(200, json={"key": "JIRAUSER40101", "name": "testuser"})
+            return httpx.Response(404, text="unexpected")
+
+        client = JiraTempoClient(config)
+        client._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            timeout=30.0,
+            verify=True,
+            follow_redirects=False,
+        )
+        return client
+
+    async def test_first_404_logs_warning_not_error_and_fallback_used(
+        self, caplog: pytest.CaptureFixture[str]
+    ) -> None:
+        requests_log: list[str] = []
+        client = self._client_with_404_workers(requests_log)
+        try:
+            with caplog.at_level("DEBUG", logger="jira_tempo_mcp.client"):
+                key = await client.find_worker_key()
+        finally:
+            await client.aclose()
+
+        assert key == "JIRAUSER40101"  # Jira /myself fallback resolved the key
+        assert any("/workers" in url for url in requests_log)
+        warnings = [
+            r for r in caplog.records
+            if r.levelno == 30 and "Tempo /workers endpoint unavailable (404)" in r.message
+        ]
+        errors = [r for r in caplog.records if r.levelno == 40]
+        assert len(warnings) == 1
+        assert "using fallback user resolution" in warnings[0].message
+        assert errors == []  # the 404 never surfaces as ERROR
+
+    async def test_subsequent_call_logs_nothing_at_warning(
+        self, caplog: pytest.CaptureFixture[str]
+    ) -> None:
+        requests_log: list[str] = []
+        client = self._client_with_404_workers(requests_log)
+        try:
+            await client.find_worker_key()  # primes the cache (endpoint = unavailable)
+            assert JiraTempoClient._workers_endpoint_available is False
+            first_call_requests = len(requests_log)
+
+            with caplog.at_level("DEBUG", logger="jira_tempo_mcp.client"):
+                caplog.clear()
+                key = await client.find_worker_key()
+        finally:
+            await client.aclose()
+
+        assert key == "JIRAUSER40101"
+        # /workers was skipped entirely (cache) — nothing warns a second time.
+        assert not any("/workers" in url for url in requests_log[first_call_requests:])
+        assert [r for r in caplog.records if r.levelno == 30] == []
+
+
 # --- UX-2: get_issue expanded fields ---
 
 
