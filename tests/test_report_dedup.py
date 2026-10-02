@@ -84,9 +84,12 @@ class TestHeaderAggregation:
             friday=FRIDAY,
             issue_titles={"DEVOPS-11025": header},
         )
-        # The header line appears exactly ONCE as a rendered '+' item.
+        # The header echoes the block title — it is NOT rendered as a '+' item
+        # (title-echo leak fix): the title line lives in the section header only.
         item_lines = [line for line in rendered.splitlines() if "+ PROXY-BOT:" in line]
-        assert len(item_lines) == 1, rendered
+        assert len(item_lines) == 0, rendered
+        # The title itself is still printed as the block header.
+        assert "PROXY-BOT:" in rendered
         # Hours summed: 6h + 3h = 9h in the merged block.
         assert "9h" in rendered
         # The second block is gone — no second 6h/3h pair.
@@ -243,8 +246,12 @@ class TestArtefactReplication:
         )
 
     def test_header_rendered_once(self) -> None:
+        """The header is the block title — never echoed as a '+' detail item."""
         out = self._render()
-        assert out.count("+ PROXY-BOT: Создать agent registry") == 1
+        # Title appears once, as the section header.
+        assert out.count("PROXY-BOT: Создать agent registry") == 1
+        # And zero times as a '+' detail line.
+        assert out.count("+ PROXY-BOT: Создать agent registry") == 0
 
     def test_hours_summed_9h(self) -> None:
         out = self._render()
@@ -254,3 +261,105 @@ class TestArtefactReplication:
         out = self._render()
         assert "разработка платформы" in out
         assert "разрабокта платформы" in out  # typo variant kept, not dropped
+
+
+# --- Title-echo leak fix (v0.6.4): drop_lines_matching_title -------------------
+
+
+class TestTitleEchoDrop:
+    """Live-data shape: title (single space) vs comment echo (double space).
+
+    Comments like "PROXY-BOT: Создать agent registry  / agent-gateway\\n+
+    разработка платформы" on an issue titled "PROXY-BOT: Создать agent
+    registry / agent-gateway" must not re-print the summary as a '+' detail.
+    Comparison is whitespace-normalized (like the grouping identity key).
+    """
+
+    TITLE = "PROXY-BOT: Создать agent registry / agent-gateway"  # single space
+    COMMENT = "PROXY-BOT: Создать agent registry  / agent-gateway\n+ разработка платформы"
+
+    def test_helper_drops_normalized_title_line_keeps_details(self) -> None:
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        result = drop_lines_matching_title(self.COMMENT, self.TITLE)
+        assert "PROXY-BOT" not in result
+        # Raw line preserved verbatim (marker stripping is the renderer's job).
+        assert result == "+ разработка платформы"
+
+    def test_helper_bullet_marked_echo_also_dropped(self) -> None:
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        result = drop_lines_matching_title(
+            f"+ {self.TITLE}\n+ правки", self.TITLE
+        )
+        assert result == "+ правки"
+
+    def test_helper_keeps_only_title_comment(self) -> None:
+        """A comment that is ONLY the title still renders — hours never orphan."""
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        assert drop_lines_matching_title(self.TITLE, self.TITLE) == self.TITLE
+        assert (
+            drop_lines_matching_title(
+                "PROXY-BOT: Создать agent registry  / agent-gateway", self.TITLE
+            )
+            == "PROXY-BOT: Создать agent registry  / agent-gateway"
+        )
+
+    def test_helper_noop_when_title_empty_or_no_match(self) -> None:
+        from jira_tempo_mcp.templates._shared import drop_lines_matching_title
+
+        assert drop_lines_matching_title(self.COMMENT, None) == self.COMMENT
+        assert drop_lines_matching_title(self.COMMENT, "") == self.COMMENT
+        assert drop_lines_matching_title(self.COMMENT, "Другая задача") == self.COMMENT
+        assert drop_lines_matching_title(None, self.TITLE) == ""
+
+    def test_default_template_live_shape_no_echo(self) -> None:
+        """Full template: echo dropped, details kept, hours summed."""
+        worklogs = [
+            _wl("PROXY-1", 21600, self.COMMENT),
+            _wl("PROXY-1", 10800, f"{self.COMMENT}\n+ код-ревью"),
+        ]
+        rendered = DefaultTemplate().render(
+            worklogs,
+            _make_config(),
+            monday=MONDAY,
+            friday=FRIDAY,
+            issue_titles={"PROXY-1": self.TITLE},
+        )
+        assert rendered.count("PROXY-BOT: Создать agent registry") == 1  # title only
+        assert "+ разработка платформы" in rendered
+        # Time suffix attaches to the LAST detail line (render_comment_lines).
+        assert "+ код-ревью — 9h" in rendered
+
+    def test_single_line_comment_equal_title_still_renders(self) -> None:
+        """A worklog whose whole comment equals the title still shows its hours."""
+        worklogs = [_wl("PROXY-1", 3600, self.TITLE)]
+        rendered = DefaultTemplate().render(
+            worklogs,
+            _make_config(),
+            monday=MONDAY,
+            friday=FRIDAY,
+            issue_titles={"PROXY-1": self.TITLE},
+        )
+        assert "+ PROXY-BOT: Создать agent registry / agent-gateway — 1h" in rendered
+
+    def test_team_report_template_no_echo(self) -> None:
+        """Team report txt renderer drops the echo too."""
+        from jira_tempo_mcp.templates.builtin.team_report import TeamReportTemplate
+
+        worklogs = [_wl("PROXY-1", 7200, self.COMMENT)]
+        rendered = TeamReportTemplate().render(
+            worklogs,
+            _make_config(),
+            monday=MONDAY,
+            friday=FRIDAY,
+            issue_titles={"PROXY-1": self.TITLE},
+            users=[("testuser", "Test User")],
+            per_user_worklogs={"testuser": worklogs},
+        )
+        # No '+' detail line echoes the title (top-5 section legitimately
+        # repeats the title, so count '+'-prefixed occurrences instead).
+        assert "+ PROXY-BOT: Создать agent registry" not in rendered
+        assert "  - PROXY-1 (PROXY-BOT: Создать agent registry / agent-gateway):" in rendered
+        assert "+ разработка платформы — 2h" in rendered
