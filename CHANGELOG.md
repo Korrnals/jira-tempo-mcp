@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-02
+
 ### Fixed
 
 - Weekly/team reports: duplicated worklog blocks collapsed. Worklogs of the
@@ -18,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   templates) share the fixed helper. Fetch-level dedupe by Tempo worklog id
   (`tempoWorklogId`) added to weekly and team generators with a warning log;
   id-less worklogs are never dropped.
+
+### Added
+
+- README quick-start line for `jira-tempo-mcp update` self-update command
+  (EN + RU), pointing wheel installs at `pip install --upgrade` and editable
+  installs at `git pull` + reinstall.
 
 ## [0.6.0] — 2026-10-02
 
