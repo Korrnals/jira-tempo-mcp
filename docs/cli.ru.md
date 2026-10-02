@@ -1,7 +1,8 @@
 # 🖥️ Справочник CLI
 
 Консольный скрипт `jira-tempo-mcp` переключает между MCP-сервером,
-интерактивным установщиком и деинсталлятором.
+интерактивным установщиком, деинсталлятором, командой самообновления и
+установщиком специалиста.
 
 ---
 
@@ -12,6 +13,8 @@ jira-tempo-mcp                  # запустить MCP-сервер (по ум
 jira-tempo-mcp serve            # запустить MCP-сервер (stdio)
 jira-tempo-mcp install          # интерактивный установщик (venv + .env + VS Code)
 jira-tempo-mcp uninstall        # откатить установку
+jira-tempo-mcp update           # самообновление установленного пакета
+jira-tempo-mcp install-specialist  # установить JTM-агента в AI-оболочки
 jira-tempo-mcp --version        # показать версию
 jira-tempo-mcp --help           # показать справку
 ```
@@ -76,7 +79,110 @@ python install.py --non-interactive --register-only
 
 ---
 
-## 🗑️ `uninstall`
+## � `update`
+
+Самообновляет установленный пакет. Определяет способ установки (по
+`direct_url.json` от pip) и выполняет соответствующую процедуру:
+
+| Способ установки | Что выполняется |
+| --- | --- |
+| Wheel / пакетный индекс (PyPI, wheel-файл, локальная не-editable установка) | `pip install --upgrade jira-tempo-mcp` |
+| Editable (`pip install -e .` из git-клона) | `git pull --ff-only` в клоне, затем `pip install -e .` для обновления метаданных |
+| Не установлен через pip (Docker-образ, запуск через `PYTHONPATH`) | Не угадывает — печатает подсказку для каждого способа (например, `docker pull ghcr.io/korrnals/jira-tempo-mcp:latest`) и выходит с кодом `1` |
+
+```bash
+jira-tempo-mcp update
+```
+
+Пример вывода (wheel-установка):
+
+```text
+Install mode: wheel — installed from a package index (no direct_url.json)
+--> pip install --upgrade jira-tempo-mcp: /path/to/python -m pip install --upgrade jira-tempo-mcp
+Update complete.
+Version: 0.5.0 -> 0.6.0
+If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the new code.
+```
+
+Примечания:
+
+- pip запускается через **текущий интерпретатор** (`sys.executable -m pip`) —
+  обновление попадает в то же окружение/venv, из которого вызвали `update`.
+- Ошибка любого шага прерывает обновление — больше ничего не меняется; код
+  выхода `1`.
+- Не принимает флагов; неизвестный флаг завершается с кодом `2`.
+
+---
+
+## 🤖 `install-specialist`
+
+Устанавливает специалиста **JTM: Jira Tempo Reports** (файл агента + skill +
+документ знаний) в AI-оболочки. Работает идемпотентно: повторная установка
+перезаписывает файлы JTM, предварительно создавая резервную копию
+(`<name>.bak.YYYYMMDD-HHMMSS`); чужие файлы оболочки не затрагиваются.
+Обратимо через `--remove`.
+
+### 🔧 Флаги
+
+| Флаг | Эффект |
+| --- | --- |
+| `--harness NAME` | Установить только в указанную оболочку; флаг повторяемый (`--harness copilot --harness claude`); по умолчанию: все поддерживаемые (неподдерживаемые пропускаются с явной причиной) |
+| `--list` | Показать статус поддержки всех зарегистрированных оболочек и выйти |
+| `--remove` | Удалить специалиста из выбранных оболочек (по умолчанию: из всех); удаляет только файлы JTM; если удалять нечего, печатает «nothing to remove — already clean» |
+
+`--harness`, `--list` и `--remove` взаимоисключающие. Неизвестые имена
+оболочек отклоняются до любой записи.
+
+### 🧩 Поддержка оболочек
+
+| Оболочка | Статус | Устанавливаемые файлы |
+| --- | --- | --- |
+| `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md`, `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `claude` | ✅ поддерживается | `~/.claude/agents/jtm-jira-tempo-reports.md`, `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills |
+| `codex` | ⏭️ пропускается | не поддерживается: нет конвенции файлов агента — `AGENTS.md` управляется системой, безопасная ручная установка не определена |
+
+Фактический вывод `--list`:
+
+```text
+Supported harnesses:
+  copilot    supported                                               VS Code Copilot Chat (agents + skills)
+  claude     supported                                               Claude Code (agents + skills)
+  opencode   supported                                               OpenCode (skills directory)
+  codex      skipped — unsupported: no agent-file convention (AGENTS.md is machine-managed; safe manual placement is not defined) OpenAI Codex CLI
+```
+
+### 💡 Примеры
+
+```bash
+# Установить во все поддерживаемые оболочки (по умолчанию)
+jira-tempo-mcp install-specialist
+
+# Только конкретные оболочки
+jira-tempo-mcp install-specialist --harness copilot --harness claude
+
+# Показать статус поддержки
+jira-tempo-mcp install-specialist --list
+
+# Удалить (из всех, либо выбранных через --harness)
+jira-tempo-mcp install-specialist --remove
+```
+
+Неизвестное имя оболочки (usage-блок опущен):
+
+```text
+jira-tempo-mcp install-specialist: error: unknown harness(es): nonexistent.
+Known: claude, codex, copilot, opencode. Use --list to show support status.
+```
+
+Работает при установке **из wheel** — интеграционные файлы поставляются внутри
+wheel (`jira_tempo_mcp.integration`), git clone не нужен. Прежний интерактивный
+`jira-tempo-mcp install` (настройка `.env`) по-прежнему требует git clone;
+см. [installation.ru.md](installation.ru.md).
+
+---
+
+## �🗑️ `uninstall`
 
 Откатывает установку в 4 шага:
 
@@ -98,7 +204,7 @@ jira-tempo-mcp uninstall
 
 ```bash
 jira-tempo-mcp --version
-# jira-tempo-mcp 0.4.1
+# jira-tempo-mcp 0.5.0
 
 jira-tempo-mcp --help
 # выводит блок использования, показанный выше
@@ -114,6 +220,9 @@ jira-tempo-mcp --help
 ```bash
 python -m jira_tempo_mcp.server        # serve
 python -m jira_tempo_mcp               # __main__ диспетчеризует на serve
+python -m jira_tempo_mcp.cli --version # версия через диспетчер
+python -m jira_tempo_mcp.cli update    # самообновление
+python -m jira_tempo_mcp.cli install-specialist --list
 python install.py                      # install
 python install.py uninstall            # uninstall
 ```
@@ -125,8 +234,8 @@ python install.py uninstall            # uninstall
 | Код | Значение |
 | --- | --- |
 | `0` | ✅ успех |
-| `1` | ❌ ошибка установщика/деинсталлятора (напр. `install.py` не найден) |
-| `2` | ❌ неизвестная подкоманда |
+| `1` | ❌ ошибка подкоманды (установщик/деинсталлятор, `update`, `install-specialist`) |
+| `2` | ❌ неизвестная подкоманда, флаг или имя оболочки |
 
 ---
 
