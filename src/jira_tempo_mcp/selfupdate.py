@@ -18,6 +18,11 @@ the user invoked ``update`` from.
 Exit codes:
     0 — update applied (or nothing applicable but reported cleanly);
     1 — detection failed / a command failed.
+
+After a successful upgrade the specialist is refreshed best-effort: the
+harnesses recorded by ``install-specialist`` in its state file are
+re-installed from the new package data (per-harness failures print
+warnings and never change the exit code). See ``_refresh_specialist``.
 """
 
 from __future__ import annotations
@@ -173,6 +178,73 @@ def _installed_version() -> str:
         return "unknown"
 
 
+def _refresh_specialist(new_version: str) -> None:
+    """Re-install the specialist into the harnesses recorded in the state file.
+
+    Best-effort: never raises, never affects the update exit code (the
+    package itself did update). The state file is written by
+    ``install-specialist``; when it is absent the user gets a one-line hint
+    instead.
+
+    Version bookkeeping edge: this process runs while pip has already
+    replaced the on-disk package, so the artefacts re-installed below come
+    from the NEW code, but the state file's recorded ``specialist_version``
+    is still the OLD one — it is read BEFORE the state is overwritten, and
+    the state rewrite receives ``new_version`` explicitly (the in-memory
+    ``__version__`` of this long-running process is stale).
+    """
+    from jira_tempo_mcp import specialist  # lazy import: keep selfupdate import-light
+
+    state = specialist.read_state()
+    if state is None:
+        print(
+            "Hint: run 'jira-tempo-mcp install-specialist' to enable "
+            "specialist auto-refresh on update."
+        )
+        return
+
+    recorded_version = str(state.get("specialist_version", "unknown"))
+    raw_harnesses = state.get("harnesses", [])
+    names = (
+        [str(h) for h in raw_harnesses if isinstance(h, str)]
+        if isinstance(raw_harnesses, list)
+        else []
+    )
+    plans = {p.name: p for p in specialist.registry()}
+    refreshable = [plans[name] for name in names if name in plans and not plans[name].note]
+
+    if not refreshable:
+        return
+
+    artefacts: dict[str, specialist.Artefact] | None = None
+    refreshed: list[str] = []
+    for plan in refreshable:
+        if artefacts is None:
+            try:
+                artefacts = specialist.load_artefacts()
+            except (FileNotFoundError, OSError) as exc:
+                print(f"warned: specialist artefacts unavailable, refresh skipped: {exc}")
+                return
+        try:
+            # install_into prints the per-harness "[name] ..." line plus the
+            # installed-file lines, and warns per file on failure.
+            if specialist.install_into(plan, artefacts):
+                refreshed.append(plan.name)
+        except OSError as exc:
+            print(f"warned: could not refresh specialist harness {plan.name!r}: {exc}")
+
+    if not refreshed:
+        return
+
+    # Keep the full recorded set (unknown names ignored), refresh the stamp.
+    # A post-upgrade metadata read should never be "unknown"; if it somehow
+    # is, keep the recorded stamp rather than corrupting the state.
+    stamp = new_version if new_version != "unknown" else recorded_version
+    specialist.record_state(names, version=stamp)
+    if recorded_version not in ("", "unknown") and recorded_version != stamp:
+        print(f"specialist refreshed: {recorded_version} -> {stamp}")
+
+
 def _unknown_mode_message(mode: Mode) -> str:  # pragma: no cover - trivial formatter
     """Guidance printed when update cannot proceed."""
     return (
@@ -225,4 +297,10 @@ def run_update(argv: list[str] | None = None) -> int:
             "If an MCP server (jira-tempo-mcp serve) is running, restart it "
             "to pick up the new code."
         )
+    # Best-effort specialist refresh — never turns a successful update into
+    # a failure (the package itself did update).
+    try:
+        _refresh_specialist(new_version)
+    except OSError as exc:
+        print(f"warned: specialist refresh failed: {exc}", file=sys.stderr)
     return 0

@@ -190,7 +190,10 @@ jira-tempo-mcp install-specialist --remove
 | Оболочка | Статус | Места установки |
 | --- | --- | --- |
 | `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `zcode` | ✅ поддерживается | `~/.zcode/agents/jtm-jira-tempo-reports.md` (агент) + `~/.zcode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
 | `claude` | ✅ поддерживается | `~/.claude/skills/jira-tempo-reports/` — только каталог skills, без файла агента (VS Code кросс-сканирует каталог агентов claude и показывает дублирующуюся запись в picker) |
+| `pi` | ✅ поддерживается | `~/.pi/agent/skills/jira-tempo-reports/` (только skills: нет конвенции файлов агента) |
+| `hermes` | ✅ поддерживается | `~/.hermes/skills/jira-tempo-reports/` (только skills: агенты — рантайм-профили) |
 | `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (конвенция только skills) |
 | `codex` | ⏭️ пропускается | нет конвенции файлов агента — `AGENTS.md` управляется системой |
 

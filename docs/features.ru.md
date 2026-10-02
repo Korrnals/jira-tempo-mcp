@@ -106,13 +106,17 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 | `serve` | Запустить MCP-сервер через stdio (по умолчанию) |
 | `install` | Интерактивный установщик (venv + `.env` + VS Code) |
 | `uninstall` | Откатить установку |
-| `update` | Самообновление; определяет режим установки (wheel / editable) |
+| `update` | Самообновление; определяет режим установки (wheel / editable); автообновляет установленного специалиста |
 | `install-specialist` | Установить AI-специалиста в AI-оболочки |
 
-`install-specialist` знает реестр оболочек: `copilot`, `claude` и `opencode`
-поддерживаются, `codex` пропускается (нет конвенции файлов агента).
-`claude` ставит только skills — без файла агента, чтобы не плодить
-дублирующуюся запись в picker'е VS Code.
+`install-specialist` знает реестр оболочек: `copilot`, `zcode`, `claude`,
+`pi`, `hermes` и `opencode` поддерживаются, `codex` пропускается (нет
+конвенции файлов агента). Оболочки «только skills» (`claude`, `pi`,
+`hermes`, `opencode`) не получают файла агента — VS Code кросс-сканирует
+каталог агентов claude, и файл агента JTM там породил бы дублирующуюся
+запись в picker'е. Каждая установка записывает имена оболочек в файл
+состояния; `update` после успешного обновления пакета переустанавливает
+специалиста из новых данных.
 
 Справочник команд: [cli.ru.md](cli.ru.md). Способы установки: [installation.ru.md](installation.ru.md).
 
@@ -122,9 +126,10 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 
 Standalone-агент — **JTM: Jira Tempo Reports** — который предсказуемо строит
 отчёты по Jira/Tempo, вызывая генераторы сервера. Работает в Copilot Chat
-(графический пикер, недельный отчёт в один клик) и других оболочках с
-поддержкой MCP. Поставляется внутри wheel: переустановить его в любой момент
-можно командой `install-specialist`, git clone не нужен.
+(графический пикер, недельный отчёт в один клик), ZCode, Claude Code, pi,
+Hermes, OpenCode и других оболочках с поддержкой MCP. Поставляется внутри
+wheel: переустановить его в любой момент можно командой `install-specialist`,
+git clone не нужен.
 
 Подробности: [README §Агент JTM](../README.ru.md#-агент-jtm-standalone-агент-для-copilot-chat),
 таблица оболочек в [cli.ru.md](cli.ru.md#-install-specialist).

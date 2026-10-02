@@ -102,6 +102,10 @@ Install mode: wheel — installed from a package index (no direct_url.json)
 Update complete.
 Version: 0.6.2 -> 0.6.3
 If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the new code.
+[copilot] VS Code Copilot Chat (agents + skills)
+  installed jtm-jira-tempo-reports.agent.md: /home/user/.copilot/agents/jtm-jira-tempo-reports.agent.md
+  ...
+specialist refreshed: 0.6.2 -> 0.6.3
 ```
 
 Примечания:
@@ -110,6 +114,13 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
   обновление попадает в то же окружение/venv, из которого вызвали `update`.
 - Ошибка любого шага прерывает обновление — больше ничего не меняется; код
   выхода `1`.
+- **Автообновление специалиста** — после успешного обновления оболочки,
+  записанные `install-specialist` в
+  [файл состояния](#-файл-состояния-специалиста-автообновление-при-update), переустанавливаются из новых
+  данных пакета (`specialist refreshed: <старая> -> <новая>`). Неизвестные
+  имена игнорируются; ошибка по отдельной оболочке печатает предупреждение и
+  не меняет код выхода. Без файла состояния печатается одна подсказка
+  (`run install-specialist to enable specialist auto-refresh on update`).
 - Не принимает флагов; неизвестный флаг завершается с кодом `2`.
 
 ---
@@ -124,7 +135,9 @@ If an MCP server (jira-tempo-mcp serve) is running, restart it to pick up the ne
 каталоги оболочки остаются чистыми); чужие файлы не затрагиваются.
 Обратимо через `--remove`, который также вычищает остатки старых установок
 (JTM-файлы в `~/.claude/agents/`, резервные копии `.bak.*` рядом с файлами
-JTM).
+JTM). Успешная установка также записывает имена оболочек в файл состояния
+(см. ниже), который `update` использует для автообновления специалиста;
+успешный `--remove` удаляет его.
 
 ### 🔧 Флаги
 
@@ -142,7 +155,10 @@ JTM).
 | Оболочка | Статус | Устанавливаемые файлы |
 | --- | --- | --- |
 | `copilot` | ✅ поддерживается | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md`, `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `zcode` | ✅ поддерживается | `~/.zcode/agents/jtm-jira-tempo-reports.md` (агент, frontmatter `name`/`description`/`tools`), `~/.zcode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
 | `claude` | ✅ поддерживается | `~/.claude/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills, без файла агента (VS Code кросс-сканирует каталог агентов claude и показывает дублирующуюся запись в picker) |
+| `pi` | ✅ поддерживается | `~/.pi/agent/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills: у pi нет конвенции файлов агента |
+| `hermes` | ✅ поддерживается | `~/.hermes/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills: агенты hermes — рантайм-профили, а не md-файлы |
 | `opencode` | ✅ поддерживается | `~/.config/opencode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) — только каталог skills |
 | `codex` | ⏭️ пропускается | не поддерживается: нет конвенции файлов агента — `AGENTS.md` управляется системой, безопасная ручная установка не определена |
 
@@ -151,7 +167,10 @@ JTM).
 ```text
 Supported harnesses:
   copilot    supported                                               VS Code Copilot Chat (agents + skills)
+  zcode      supported                                               ZCode (agents + skills)
   claude     supported                                               Claude Code (skills directory)
+  pi         supported                                               pi coding agent (skills directory)
+  hermes     supported                                               Hermes agent (skills directory)
   opencode   supported                                               OpenCode (skills directory)
   codex      skipped — unsupported: no agent-file convention (AGENTS.md is machine-managed; safe manual placement is not defined) OpenAI Codex CLI
 ```
@@ -176,8 +195,30 @@ jira-tempo-mcp install-specialist --remove
 
 ```text
 jira-tempo-mcp install-specialist: error: unknown harness(es): nonexistent.
-Known: claude, codex, copilot, opencode. Use --list to show support status.
+Known: claude, codex, copilot, hermes, opencode, pi, zcode. Use --list to show support status.
 ```
+
+### 📄 Файл состояния специалиста (автообновление при update)
+
+Каждая успешная установка записывает имена установленных оболочек в файл
+состояния — `$XDG_STATE_HOME/jira-tempo-mcp/specialist-state.json`, если
+задан `XDG_STATE_HOME`, иначе
+`~/.local/state/jira-tempo-mcp/specialist-state.json`:
+
+```json
+{
+  "harnesses": ["copilot", "zcode", "claude"],
+  "specialist_version": "0.6.2",
+  "updated_at": "2026-10-02T18:00:00.000000+00:00"
+}
+```
+
+- Повторная установка (полная или через `--harness`) перезаписывает файл на
+  месте — набор записей только пополняется, дубликатов нет.
+- Успешный `--remove` удаляет файл.
+- `jira-tempo-mcp update` после успешного обновления читает файл и
+  переустанавливает специалиста из новых данных пакета в каждую записанную
+  оболочку — см. [`update`](#️-update).
 
 Работает при установке **из wheel** — интеграционные файлы поставляются внутри
 wheel (`jira_tempo_mcp.integration`), git clone не нужен. Прежний интерактивный

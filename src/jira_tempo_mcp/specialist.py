@@ -14,11 +14,23 @@ Harness              Layout (discovered on this host, 2026-10-02)
                      goes to the *skills* dir — ``~/.copilot/agents/`` is
                      scanned by VS Code and a stray md there would appear
                      as a second fake agent in the picker).
+``zcode``            ``~/.zcode/agents/jtm-jira-tempo-reports.md`` (markdown
+                     agent with frontmatter — the ``.agent.md`` artefact
+                     already carries the required ``name``/``description``/
+                     ``tools`` fields, so it is reused as-is, renamed to
+                     ``.md``) + ``~/.zcode/skills/jira-tempo-reports/``
+                     (``SKILL.md`` + ``JTM_AGENT.md``).
 ``claude``           ``~/.claude/skills/jira-tempo-reports/`` (``SKILL.md`` +
                      ``JTM_AGENT.md``) — skills-only, mirroring
                      ``opencode_plan()`` shape: VS Code cross-scans the
                      Claude agents dir, an extra agent file there would
                      show a duplicate picker entry.
+``pi``               ``~/.pi/agent/skills/jira-tempo-reports/`` (``SKILL.md``
+                     + ``JTM_AGENT.md``) — skills-only: pi has no agent-file
+                     convention (it skips subagents).
+``hermes``           ``~/.hermes/skills/jira-tempo-reports/`` (``SKILL.md`` +
+                     ``JTM_AGENT.md``) — skills-only: hermes agents are
+                     runtime delegation profiles, not markdown files.
 ``opencode``         ``~/.config/opencode/skills/jira-tempo-reports/``
                      (``SKILL.md`` — opencode only has a skills convention).
 ``codex``            UNSUPPORTED — ``~/.codex`` has no agent/skill file
@@ -34,6 +46,11 @@ Semantics:
 - **Reversible** — ``--remove`` deletes only the JTM-owned paths and
   purges legacy leftovers (JTM-named files in ``~/.claude/agents/``,
   stray ``.bak.*`` backups next to JTM files in harness dirs).
+- **Refreshable** — the install path records the installed harness names
+  in a state file (``$XDG_STATE_HOME`` or ``~/.local/state/`` — see
+  :func:`state_path`); ``jira-tempo-mcp update`` reads it to auto-refresh
+  the specialist after a package upgrade, and a successful ``--remove``
+  deletes it.
 - **Wheel + editable** — artefacts are read via ``importlib.resources``
   from ``jira_tempo_mcp.integration``, working in both install modes.
 
@@ -44,16 +61,21 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
+import os
 import shutil
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 PACKAGE = "jira_tempo_mcp"
 INTEGRATION_SUBPACKAGE = "integration"
 
 AGENT_FILE_NAME = "jtm-jira-tempo-reports.agent.md"
+ZCODE_AGENT_FILE_NAME = "jtm-jira-tempo-reports.md"  # zcode agent convention: plain .md
 SKILL_SOURCE_NAME = "jira-tempo-reports.skill.md"  # repo consolidated name
 SKILL_INSTALLED_NAME = "SKILL.md"  # harnesses expect this name
 KNOWLEDGE_DOC_NAME = "JTM_AGENT.md"
@@ -142,6 +164,78 @@ def _try_unlink(path: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Installed-harness state file (drives `update` specialist auto-refresh)
+# ---------------------------------------------------------------------------
+
+
+def state_path() -> Path:
+    """Path of the specialist state file.
+
+    ``$XDG_STATE_HOME/jira-tempo-mcp/specialist-state.json`` when
+    ``XDG_STATE_HOME`` is set, else ``~/.local/state/jira-tempo-mcp/
+    specialist-state.json``.
+    """
+    xdg = os.getenv("XDG_STATE_HOME", "").strip()
+    base = Path(xdg) if xdg else Path.home() / ".local" / "state"
+    return base / "jira-tempo-mcp" / "specialist-state.json"
+
+
+def read_state() -> dict[str, Any] | None:
+    """Read the state file. None when absent, unreadable or malformed.
+
+    A malformed file is reported as a warning and treated as absent — the
+    next successful install rewrites it from scratch.
+    """
+    path = state_path()
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"warned: specialist state file unreadable ({path}): {exc}")
+        return None
+    if not isinstance(data, dict):
+        print(f"warned: specialist state file malformed ({path}) — ignoring")
+        return None
+    return data
+
+
+def record_state(harnesses: list[str], version: str | None = None) -> None:
+    """Write the state file for the given installed harness names.
+
+    Idempotent: the file is overwritten (never appended to), names are
+    deduplicated preserving order. ``version`` defaults to the running
+    package ``__version__``; ``selfupdate`` passes the post-upgrade
+    version explicitly because the running process was started under the
+    OLD code and its in-memory ``__version__`` is stale.
+    """
+    if version is None:
+        from jira_tempo_mcp import __version__  # lazy: avoid import cost at module load
+
+        version = __version__
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "harnesses": list(dict.fromkeys(harnesses)),
+        "specialist_version": version,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def delete_state() -> bool:
+    """Delete the state file. True when it existed and was removed."""
+    try:
+        state_path().unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        print(f"warned: could not remove specialist state file {state_path()}: {exc}")
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Harness plan (data-driven): every supported harness describes its targets
 # ---------------------------------------------------------------------------
 
@@ -185,6 +279,30 @@ def copilot_plan() -> HarnessPlan:
     )
 
 
+def zcode_plan() -> HarnessPlan:
+    """ZCode layout: agent file + skills directory.
+
+    The agent lands as ``~/.zcode/agents/jtm-jira-tempo-reports.md`` —
+    zcode reads plain markdown with frontmatter and the ``.agent.md``
+    artefact already carries the required ``name``/``description``/
+    ``tools`` fields (copilot-only extras such as ``argument-hint`` are
+    ignored), so the artefact is reused unchanged. Skills follow the
+    standard skills-dir convention under ``~/.zcode/skills/``.
+    """
+    home = Path.home()
+    agents = home / ".zcode" / "agents"
+    skills = home / ".zcode" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="zcode",
+        description="ZCode (agents + skills)",
+        targets=(
+            Target(AGENT_FILE_NAME, agents / ZCODE_AGENT_FILE_NAME),
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
 def claude_plan() -> HarnessPlan:
     """Claude Code layout: skills-only under ``~/.claude/skills/``.
 
@@ -197,6 +315,43 @@ def claude_plan() -> HarnessPlan:
     return HarnessPlan(
         name="claude",
         description="Claude Code (skills directory)",
+        targets=(
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
+def pi_plan() -> HarnessPlan:
+    """pi (badlogic/pi-mono) layout: skills-only under ``~/.pi/agent/skills``.
+
+    pi has no agent-file convention — it skips subagents entirely — so the
+    knowledge doc rides along inside the skill dir (``SKILL.md`` already
+    references it). Mirrors ``opencode_plan()`` shape.
+    """
+    home = Path.home()
+    skills = home / ".pi" / "agent" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="pi",
+        description="pi coding agent (skills directory)",
+        targets=(
+            Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
+            Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
+        ),
+    )
+
+
+def hermes_plan() -> HarnessPlan:
+    """Hermes (NousResearch/hermes-agent) layout: skills-only under ``~/.hermes/skills``.
+
+    Hermes agents are runtime delegation profiles, not markdown files, so
+    there is no agent file to install. Mirrors ``opencode_plan()`` shape.
+    """
+    home = Path.home()
+    skills = home / ".hermes" / "skills" / SKILL_DIR_NAME
+    return HarnessPlan(
+        name="hermes",
+        description="Hermes agent (skills directory)",
         targets=(
             Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
             Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
@@ -236,7 +391,15 @@ def codex_plan() -> HarnessPlan:
 
 def registry() -> list[HarnessPlan]:
     """All harnesses in canonical order (copilot first, then discovery order)."""
-    return [copilot_plan(), claude_plan(), opencode_plan(), codex_plan()]
+    return [
+        copilot_plan(),
+        zcode_plan(),
+        claude_plan(),
+        pi_plan(),
+        hermes_plan(),
+        opencode_plan(),
+        codex_plan(),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +523,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "harnesses. Idempotent and reversible."
         ),
         epilog=(
-            "Supported harnesses: copilot, claude, opencode. "
+            "Supported harnesses: copilot, zcode, claude, pi, hermes, opencode. "
             "codex is registered but unsupported (no agent-file convention)."
         ),
     )
@@ -407,9 +570,7 @@ def run_specialist(argv: list[str] | None = None) -> int:
             print(f"  {plan.name:<10} {status:<55} {plan.description}")
         return 0
 
-    selected = (
-        [p for p in all_plans if p.name in set(args.harness)] if args.harness else all_plans
-    )
+    selected = [p for p in all_plans if p.name in set(args.harness)] if args.harness else all_plans
 
     try:
         artefacts = load_artefacts()
@@ -420,8 +581,22 @@ def run_specialist(argv: list[str] | None = None) -> int:
     if args.remove:
         results = {plan.name: remove_from(plan) for plan in selected}
         purge_legacy_noise()
+        if all(results.values()) and delete_state():
+            # Successful removal — drop the auto-refresh state. A selective
+            # removal also drops it (conservative: the next install recreates
+            # the file with the full set).
+            print(f"removed specialist state file: {state_path()}")
     else:
         results = {plan.name: install_into(plan, artefacts) for plan in selected}
+        # Record the harnesses actually installed (supported ones that
+        # succeeded) so `update` can auto-refresh the specialist. Merge with
+        # the existing state so a selective install never shrinks it.
+        supported = {p.name for p in selected if not p.note}
+        installed = [name for name, ok in results.items() if ok and name in supported]
+        state = read_state()
+        previous = [str(h) for h in (state or {}).get("harnesses", []) if isinstance(h, str)]
+        record_state(list(dict.fromkeys(previous + installed)))
+        print(f"specialist state recorded: {state_path()}")
     failed = [name for name, ok in results.items() if not ok]
     verb = "removed from" if args.remove else "installed into"
     summary = ", ".join(results) if results else "no harnesses selected"

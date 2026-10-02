@@ -110,7 +110,10 @@ Support status per harness — full flags and behavior in
 | Harness | Status | Install locations |
 | --- | --- | --- |
 | `copilot` | ✅ supported | `~/.copilot/agents/jtm-jira-tempo-reports.agent.md` + `~/.copilot/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
+| `zcode` | ✅ supported | `~/.zcode/agents/jtm-jira-tempo-reports.md` (agent) + `~/.zcode/skills/jira-tempo-reports/` (`SKILL.md` + `JTM_AGENT.md`) |
 | `claude` | ✅ supported | `~/.claude/skills/jira-tempo-reports/` — skills-only, no agents file (VS Code cross-scans the claude agents dir and shows a duplicate picker entry) |
+| `pi` | ✅ supported | `~/.pi/agent/skills/jira-tempo-reports/` (skills-only: no agent-file convention) |
+| `hermes` | ✅ supported | `~/.hermes/skills/jira-tempo-reports/` (skills-only: agents are runtime profiles) |
 | `opencode` | ✅ supported | `~/.config/opencode/skills/jira-tempo-reports/` (skills-only convention) |
 | `codex` | ⏭️ skipped | no agent-file convention — `AGENTS.md` is machine-managed |
 
