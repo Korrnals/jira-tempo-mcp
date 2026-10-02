@@ -15,7 +15,7 @@ Track time, list worklogs, and generate weekly reports from your AI agent
 | 📦 Install | [installation.md](installation.md) | `python install.py`, pip, Docker, venv |
 | ⚙️ Configure | [configuration.md](configuration.md) | env vars, `.env.local`, `.env`, examples |
 | 🔌 MCP integration | [mcp-integration.md](mcp-integration.md) | VS Code `mcp.json`, `envFile`, workspace config |
-| 🖥️ CLI | [cli.md](cli.md) | `serve`, `install`, `uninstall`, `--version` |
+| 🖥️ CLI | [cli.md](cli.md) | `serve`, `install`, `uninstall`, `update`, `install-specialist`, `--version` |
 | 🌐 API (MCP tools) | [api.md](api.md) | `list_worklogs`, `create_worklog`, `generate_weekly_report`, … |
 | 🏗️ Architecture | [architecture.md](architecture.md) | layers, data flow, security model |
 | 📝 Reports | [reports.md](reports.md) | weekly report, section mapping, stable order |

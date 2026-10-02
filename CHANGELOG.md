@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-02
+
+### Added
+
+- `jira-tempo-mcp update` subcommand — self-update with install-mode detection: editable installs update via `git pull --ff-only` + `pip install -e .` in the checkout; wheel/package-index installs run `pip install --upgrade jira-tempo-mcp`; Docker / bare-`PYTHONPATH` runs get explicit guidance (no silent no-op). All pip invocations go through the current interpreter (`sys.executable -m pip`) so the update lands in the active environment; `--check` mode reports available updates without applying them.
+- `jira-tempo-mcp install-specialist` subcommand with a harness registry — installs the preconfigured `jtm-jira-tempo-reports` agent + skill into the user's AI harness. Harnesses supported out of the box: `copilot` (`~/.copilot/agents/` + `~/.copilot/skills/`), `claude` (`~/.claude/agents/` + `~/.claude/skills/`), `opencode` (`~/.config/opencode/skills/`). `codex` is explicitly unsupported (no agent/skill file convention; `AGENTS.md` is machine-managed) — the refusal message is explicit rather than a silent `AGENTS.md` edit. Works from a wheel install (files ship inside the package via `importlib.resources`); no git clone required.
+- npm wrapper package `jira-tempo-mcp` (dir `npm/jira-tempo-mcp/`) — installs the Python package from PyPI and runs it via a Node bin shim (`bin/cli.js`) with a `postinstall` bootstrap; Node >= 18. Lets npm-centric harnesses install the MCP server with a single `npm i -g jira-tempo-mcp`.
+- Docs: `docs/cli.md` — `update` and `install-specialist` subcommand reference; `docs/installation.md` — PyPI / npm install paths and a harness-coverage table for `install-specialist`; README feature/quick-start lines updated to match.
+
 ## [0.5.0] — 2026-09-17
 
 ### Added
