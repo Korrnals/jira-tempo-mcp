@@ -14,8 +14,11 @@ Harness              Layout (discovered on this host, 2026-10-02)
                      goes to the *skills* dir — ``~/.copilot/agents/`` is
                      scanned by VS Code and a stray md there would appear
                      as a second fake agent in the picker).
-``claude``           ``~/.claude/agents/jtm-jira-tempo-reports.md`` +
-                     ``~/.claude/skills/jira-tempo-reports/SKILL.md``.
+``claude``           ``~/.claude/skills/jira-tempo-reports/`` (``SKILL.md`` +
+                     ``JTM_AGENT.md``) — skills-only, mirroring
+                     ``opencode_plan()`` shape: VS Code cross-scans the
+                     Claude agents dir, an extra agent file there would
+                     show a duplicate picker entry.
 ``opencode``         ``~/.config/opencode/skills/jira-tempo-reports/``
                      (``SKILL.md`` — opencode only has a skills convention).
 ``codex``            UNSUPPORTED — ``~/.codex`` has no agent/skill file
@@ -28,7 +31,9 @@ Harness              Layout (discovered on this host, 2026-10-02)
 Semantics:
 - **Idempotent** — re-install overwrites JTM-owned files (timestamped
   backups are created first), never touches other harness files.
-- **Reversible** — ``--remove`` deletes only the JTM-owned paths.
+- **Reversible** — ``--remove`` deletes only the JTM-owned paths and
+  purges legacy leftovers (JTM-named files in ``~/.claude/agents/``,
+  stray ``.bak.*`` backups next to JTM files in harness dirs).
 - **Wheel + editable** — artefacts are read via ``importlib.resources``
   from ``jira_tempo_mcp.integration``, working in both install modes.
 
@@ -96,14 +101,22 @@ def _write_file(target: Path, content: bytes) -> None:
 
 
 def _backup(path: Path) -> Path:
-    """Timestamped backup (``<name>.bak.YYYYMMDD-HHMMSS``); mirrors install.py."""
+    """Timestamped backup into ``~/.copilot/.backups/<name>.bak.YYYYMMDD-HHMMSS``.
+
+    Keeps the ``.bak.<ts>`` scheme of ``install.py`` but writes into a
+    dedicated out-of-tree directory: harness scan dirs (``~/.copilot/agents``,
+    the skills dirs) stay clean — a stray ``.bak`` sibling there would appear
+    as junk next to live files (and in the VS Code picker).
+    """
     import datetime
 
+    backup_dir = Path.home() / ".copilot" / ".backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup = path.with_suffix(path.suffix + f".bak.{stamp}")
+    backup = backup_dir / f"{path.name}.bak.{stamp}"
     counter = 1
     while backup.exists():
-        backup = path.with_suffix(path.suffix + f".bak.{stamp}-{counter}")
+        backup = backup_dir / f"{path.name}.bak.{stamp}-{counter}"
         counter += 1
     shutil.copy2(path, backup)
     return backup
@@ -116,6 +129,16 @@ def _overwrite(path: Path, content: bytes, label: str) -> None:
         print(f"  backed up existing {label} -> {backup}")
     _write_file(path, content)
     print(f"  installed {label}: {path}")
+
+
+def _try_unlink(path: Path) -> bool:
+    """Unlink, printing a warning on OSError. True when removed."""
+    try:
+        path.unlink()
+        return True
+    except OSError as exc:
+        print(f"  warned: could not remove {path}: {exc}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -163,16 +186,18 @@ def copilot_plan() -> HarnessPlan:
 
 
 def claude_plan() -> HarnessPlan:
-    """Claude Code layout: ``~/.claude/agents/*.md`` + ``~/.claude/skills/``."""
+    """Claude Code layout: skills-only under ``~/.claude/skills/``.
+
+    Mirrors ``opencode_plan()`` shape: no agent file. VS Code cross-scans
+    the Claude agents dir along with its own, so a JTM agent file there
+    would surface as a duplicate picker entry on this host.
+    """
     home = Path.home()
-    agents = home / ".claude" / "agents"
     skills = home / ".claude" / "skills" / SKILL_DIR_NAME
     return HarnessPlan(
         name="claude",
-        description="Claude Code (agents + skills)",
+        description="Claude Code (skills directory)",
         targets=(
-            # Claude discovers plain-named agent files under ~/.claude/agents/.
-            Target(AGENT_FILE_NAME, agents / "jtm-jira-tempo-reports.md"),
             Target(SKILL_SOURCE_NAME, skills / SKILL_INSTALLED_NAME),
             Target(KNOWLEDGE_DOC_NAME, skills / KNOWLEDGE_DOC_NAME),
         ),
@@ -279,6 +304,46 @@ def remove_from(harness: HarnessPlan) -> bool:
     return True
 
 
+def purge_legacy_noise() -> int:
+    """Purge leftovers of pre-skills-only installs. Idempotent; returns count.
+
+    Removes, counting each file:
+    - every ``jtm-``-prefixed file in ``~/.claude/agents/`` — the legacy claude
+      agent write that VS Code's cross-scan surfaces as a duplicate picker
+      entry, plus its ``.bak.*`` backups (the ``jtm-*`` glob covers both);
+    - ``<JTM-name>.bak.*`` backups sitting next to current JTM targets in
+      every supported harness dir (backups used to be written in-tree).
+
+    Foreign files are never touched.
+    """
+    purged: list[Path] = []
+
+    claude_agents = Path.home() / ".claude" / "agents"
+    if claude_agents.is_dir():
+        for leftover in sorted(claude_agents.glob("jtm-*")):
+            if leftover.is_file() and _try_unlink(leftover):
+                purged.append(leftover)
+
+    for plan in registry():
+        if plan.note:
+            continue
+        for target in plan.targets:
+            if target.dest is None:
+                continue
+            parent = target.dest.parent
+            if not parent.is_dir():
+                continue
+            for leftover in sorted(parent.glob(f"{target.dest.name}.bak.*")):
+                if leftover.is_file() and _try_unlink(leftover):
+                    purged.append(leftover)
+
+    if purged:
+        for leftover in purged:
+            print(f"  purged legacy: {leftover}")
+    print(f"purged {len(purged)} legacy file(s)")
+    return len(purged)
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -288,8 +353,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="jira-tempo-mcp install-specialist",
         description=(
-            "Install the JTM: Jira Tempo Reports specialist (agent md + skill + "
-            "knowledge doc) into AI harnesses. Idempotent and reversible."
+            "Install the JTM: Jira Tempo Reports specialist (skill + knowledge "
+            "doc, plus the agent file for harnesses that support one) into AI "
+            "harnesses. Idempotent and reversible."
         ),
         epilog=(
             "Supported harnesses: copilot, claude, opencode. "
@@ -311,7 +377,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     group.add_argument(
         "--remove",
         action="store_true",
-        help="uninstall the specialist from the selected harnesses (default: all)",
+        help=(
+            "uninstall the specialist from the selected harnesses (default: all); "
+            "also purges legacy JTM leftovers (claude agents dir, .bak backups)"
+        ),
     )
     args = parser.parse_args(argv)
     known = {h.name for h in registry()}
@@ -348,6 +417,7 @@ def run_specialist(argv: list[str] | None = None) -> int:
 
     if args.remove:
         results = {plan.name: remove_from(plan) for plan in selected}
+        purge_legacy_noise()
     else:
         results = {plan.name: install_into(plan, artefacts) for plan in selected}
     failed = [name for name, ok in results.items() if not ok]
