@@ -1,70 +1,99 @@
 """Tests for the CLI dispatcher (``jira_tempo_mcp.cli``).
 
-Covers ``_run_install_script``'s error path: when invoked outside a git clone
-(wheel / Docker install), neither the package-data ``install.py`` nor the
-editable-fallback ``install.py`` is present. The CLI must then print actionable
-guidance (``git clone`` + ``pip install -e .``) instead of a terse
-"install.py not found" message.
+Covers the ``install`` / ``uninstall`` routing (JTM-004):
+
+- a repo checkout (editable flow) keeps driving the repo-root ``install.py``
+  via runpy — unchanged behaviour;
+- a wheel / pip install (install.py unreachable) routes to the built-in
+  wheel-mode configurator (``jira_tempo_mcp.installer``) instead of failing
+  with the old "requires a git clone" error.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from jira_tempo_mcp import cli
 
 
-class TestRunInstallScriptGuidance:
-    """Error message when ``install.py`` is absent (wheel/Docker scenario)."""
+@pytest.fixture
+def saved_argv(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Pin sys.argv and restore it after the test (dispatch mutates it)."""
+    argv = ["jira-tempo-mcp", "install"]
+    monkeypatch.setattr(sys, "argv", list(argv))
+    return argv
 
-    def test_guidance_message_when_no_install_py(
+
+class TestEditableDispatch:
+    """When install.py is found, the runpy path is used — unchanged."""
+
+    def test_found_script_runs_via_runpy(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        saved_argv: list[str],  # noqa: ARG002
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Outside a git clone, the CLI returns 1 and prints actionable guidance.
+        fake_script = Path("/fake/repo/install.py")
+        monkeypatch.setattr(cli, "_find_install_script", lambda: fake_script)
+        run_calls: list[tuple[str, str]] = []
 
-        Simulates a wheel/Docker install where ``install.py`` is unreachable:
-        - package-data lookup raises (no ``install.py`` shipped in the wheel);
-        - the editable-fallback path points at a nonexistent location.
-        """
-        import importlib.resources
+        def fake_run_path(path: str, **_kwargs: Any) -> None:
+            run_calls.append((path, sys.argv[1]))
 
-        def _no_package_data(*_args: object, **_kwargs: object) -> Path:
-            raise ModuleNotFoundError("simulated wheel: no package-data install.py")
-
-        monkeypatch.setattr(importlib.resources, "files", _no_package_data)
-        monkeypatch.setattr(cli, "__file__", str(Path("/nonexistent/cli.py")))
+        monkeypatch.setattr("runpy.run_path", fake_run_path)
 
         rc = cli._run_install_script("install")
 
-        assert rc == 1
-        captured = capsys.readouterr()
-        # The guidance must name the precondition and the recovery recipe.
-        assert "git clone" in captured.err
-        assert "pip install -e ." in captured.err
-        assert "jira-tempo-mcp install" in captured.err
-        # The Docker alternative for users who do not need the dev setup.
-        assert "ghcr.io/korrnals/jira-tempo-mcp" in captured.err
+        assert rc == 0
+        assert run_calls == [(str(fake_script), "install")]
 
-    def test_guidance_message_for_uninstall_subcommand(
+    def test_find_install_script_finds_repo_root(self) -> None:
+        """In this repo checkout, the editable probe finds the real install.py."""
+        found = cli._find_install_script()
+        assert found is not None
+        assert found.name == "install.py"
+        assert found.is_file()
+
+
+class TestWheelDispatch:
+    """When install.py is unreachable (wheel/pip install), wheel mode runs."""
+
+    def test_install_routes_to_wheel_installer(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        saved_argv: list[str],
     ) -> None:
-        """The same guidance fires for 'uninstall' (shares the fallback)."""
-        import importlib.resources
+        monkeypatch.setattr(cli, "_find_install_script", lambda: None)
+        monkeypatch.setattr(sys, "argv", ["jira-tempo-mcp", "install", "--no-agent"])
+        calls: list[list[str]] = []
+        monkeypatch.setattr(
+            "jira_tempo_mcp.installer.install_wheel",
+            lambda argv: calls.append(argv) or 0,
+        )
 
-        def _no_package_data(*_args: object, **_kwargs: object) -> Path:
-            raise ModuleNotFoundError("simulated wheel: no package-data install.py")
+        rc = cli._run_install_script("install")
 
-        monkeypatch.setattr(importlib.resources, "files", _no_package_data)
-        monkeypatch.setattr(cli, "__file__", str(Path("/nonexistent/cli.py")))
+        assert rc == 0
+        assert calls == [["--no-agent"]]
+
+    def test_uninstall_routes_to_wheel_uninstaller(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        saved_argv: list[str],
+    ) -> None:
+        monkeypatch.setattr(cli, "_find_install_script", lambda: None)
+        monkeypatch.setattr(sys, "argv", ["jira-tempo-mcp", "uninstall"])
+        calls: list[list[str]] = []
+        monkeypatch.setattr(
+            "jira_tempo_mcp.installer.uninstall_wheel",
+            lambda argv: calls.append(argv) or 7,
+        )
 
         rc = cli._run_install_script("uninstall")
 
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "git clone" in captured.err
+        assert rc == 7
+        assert calls == [[]]
