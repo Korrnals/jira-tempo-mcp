@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `list_worklogs` aggregation parameters (P5): optional `group_by`
+  (`none` | `issue` | `day`, default `none`) and `include_totals`
+  (default `false`) aggregate the SAME rows the tool already renders —
+  `issue` gives hours per issue key (descending), `day` gives hours per
+  date, `include_totals` appends the period sum. Default output stays
+  byte-identical to the previous format (guarded by tests).
+- `create_worklogs` batch tool (P7): up to 20 entries
+  (`{issue_key, time_spent, comment?, date_started?}` each) in one call.
+  ALL entries are validated BEFORE the first write — an invalid input
+  writes nothing (and makes no network call at all). Valid entries are
+  written sequentially with NO retries (non-idempotent POST); one entry's
+  failure does not stop the rest. Response: per-entry OK (worklog ID) /
+  FAILED (reason) plus a written/failed summary.
+- `report_gaps` tool (P8, strictly read-only): lists the weeks (ISO,
+  Mon–Fri render window / Mon–Sun data window) since `since` (default
+  Jan 1st of the current year; look-back capped at 26 weeks, older values
+  clamped and disclosed) in which the user tracked hours > 0, and checks
+  each against the weekly report files (recursive
+  `*_<monday>_<friday>.*` glob under the report output root). Response:
+  per-week covered/missing with tracked hours, plus a summary line.
+
+### Fixed
+
+- `.gitignore` virtualenv patterns no longer end with a slash
+  (`.venv/` → `.venv`): a trailing-slash pattern matches directories only
+  and silently misses a `.venv` SYMLINK — the abc55c8 incident class. A
+  guard test now fails CI if `git ls-files` or `git check-ignore` ever
+  reports a virtualenv path again.
+
 ## [0.7.0] — 2026-10-30
 
 ### Added
