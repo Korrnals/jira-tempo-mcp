@@ -25,12 +25,21 @@ from .._shared import (
 
 
 class DefaultTemplate:
-    """Default weekly report template (issue-grouped, stable sections)."""
+    """Default weekly report template (issue-grouped, stable sections).
+
+    Description contract (ArchComm 2026-10-30, slice B1): ``description``
+    below documents the canonical rendered form of this builtin template and
+    is surfaced to agents via ``list_report_templates``. ANY change to this
+    template's rendering MUST be accompanied by an update to ``description``
+    in the same commit — the description is the agent-facing contract of the
+    output shape, and a stale description is treated as a docs-reality
+    regression.
+    """
 
     name: str = "default"
     description: str = (
-        "Weekly report grouped by issue with stable sections, non-issue "
-        "sections, and remaining issues sorted by total time."
+        "Canonical Komus/Golikhin weekly report — [Голихин Л.С.] Отчет работы "
+        "за неделю, Mon–Fri, issue-grouped with stable sections"
     )
     kind: str = "builtin"
     engine: str = "Python"
