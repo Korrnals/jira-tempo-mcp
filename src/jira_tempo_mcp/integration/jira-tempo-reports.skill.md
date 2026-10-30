@@ -15,7 +15,10 @@ parameter semantics, work scenarios — including the two write
 scenarios, time tracking with a summary comment and task creation
 + decomposition —, the worklog-comment style contract, and fallback
 rules) lives in `JTM_AGENT.md`. **Do not duplicate that
-content here.**
+content here.** Time tracking covers a single `create_worklog` entry
+and the `create_worklogs` batch (retrospective week, ≤20 entries,
+per-entry confirmation and per-entry result) — the batch contract
+lives in `JTM_AGENT.md` §Scenario 5.
 
 ## When to apply
 
@@ -25,7 +28,9 @@ content here.**
 - A clarification is needed on type / format / period / user before
   calling a `jira-tempo` MCP generator (report requests), or on the
   project key for task creation (§Scenario 6 of `JTM_AGENT.md`).
-- A confirmation is needed before `create_issue_from_template` runs
+- A confirmation is needed before `create_worklogs` runs (batch
+  write — the per-entry breakdown is confirmed with the user first)
+  or before `create_issue_from_template` runs
   (it is not idempotent — a rerun duplicates the task tree).
 
 ## When NOT to apply
@@ -53,7 +58,7 @@ A `pick` (single-select) question with these options:
 
 | Label (click) | Effect |
 |---|---|
-| **📊 Недельный отчёт (по умолчанию)** | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, date_from=<Mon>, date_to=<Sun>)` immediately. Skips follow-up questions. Handles the 80% case (single user, current week, basic report) in one click. |
+| **📊 Недельный отчёт (по умолчанию)** | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, target_date=<today>)` immediately — the generator resolves the week (Mon–Fri) itself. Skips follow-up questions. Handles the 80% case (single user, current week, basic report) in one click. |
 | **🎯 Настроить параметры** | Shows follow-up questions (type, format, period, user, path). |
 | **👥 Командный отчёт** | Shows users (multi-select) + type/format/period follow-ups for a team report. |
 
@@ -67,8 +72,8 @@ interaction.
 |---|---|---|---|
 | 1 | `pick` | Тип отчёта (see `JTM_AGENT.md` §7-type matrix) | `basic` |
 | 2 | `pick` | Формат (txt, md, json) | follows type |
-| 3a | `input` | Период начала (ISO YYYY-MM-DD) | Monday of current work week |
-| 3b | `input` | Период конца (ISO YYYY-MM-DD) | Sunday of current work week |
+| 3a | `input` | Целевая неделя — любая дата внутри неё (ISO YYYY-MM-DD); генератор развернёт её в пн–пт сам | today (current week) |
+| 3b | `input` | Период team-отчёта — начало и конец через запятую (ISO YYYY-MM-DD) | Monday and Friday of the current week |
 | 4 | `input` | Пользователь (Jira username; comma-separated for team) | `get_current_user` |
 | 5 | `input` | Путь сохранения (абсолютный) | `REPORT_OUTPUT_DIR` from config |
 
@@ -97,7 +102,8 @@ accept silently.
 ## Hard rules
 
 The hard rules (only `jira-tempo` MCP tools; writes scoped to
-`create_worklog` with a style-contract comment and issue creation;
+`create_worklog` / batch `create_worklogs` with a style-contract
+comment on every entry, and issue creation;
 no secrets; state the file path; fallback explicit; match type to
 audience) live in `JTM_AGENT.md` §Hard rules and in the
 `JTM: Jira Tempo Reports` agent body. This skill does not re-state
