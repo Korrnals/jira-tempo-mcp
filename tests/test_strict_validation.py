@@ -31,6 +31,10 @@ _STRICT_TOOLS = (
     "preview_report_template",
 )
 
+# Tools born in this wave (B6 health_check) that are strict BY CONSTRUCTION —
+# the B5 guard only protects the pre-wave non-generator surface.
+_NEW_IN_WAVE = ("health_check",)
+
 
 def _make_config(**overrides: Any) -> Config:
     defaults: dict[str, Any] = {
@@ -72,7 +76,7 @@ class TestStrictSchemas:
         """Handlers outside the generator set stay non-strict in this wave."""
         schemas = {t.name: t.inputSchema for t in TOOLS}
         for name, schema in schemas.items():
-            if name in _STRICT_TOOLS:
+            if name in _STRICT_TOOLS or name in _NEW_IN_WAVE:
                 continue
             # Not asserted False — the wave contract leaves them as-is.
             assert schema.get("additionalProperties") is not False, (

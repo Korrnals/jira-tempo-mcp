@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import platform
 import re
 import sys
 from datetime import date, datetime
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -552,6 +554,34 @@ TOOLS: list[Tool] = [
                         "File extension matches the format."
                     ),
                     "default": "md",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="health_check",
+        description=(
+            "Diagnostics for the MCP server itself (B6): server/SDK versions, "
+            "configuration paths, and credential presence flags "
+            "(e.g. 'JIRA_PAT: set'). Secret values are NEVER included — "
+            "presence flags only. With probe_apis=true, additionally probes "
+            "Jira and Tempo connectivity with read-only calls and reports "
+            "ok/FAILED per API (failure reason limited to the exception "
+            "class name)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "probe_apis": {
+                    "type": "boolean",
+                    "description": (
+                        "Also probe Jira (get_myself) and Tempo "
+                        "(find_worker_key) with read-only calls. "
+                        "Defaults to false (offline diagnostics only)."
+                    ),
+                    "default": False,
                 },
             },
             "required": [],
@@ -1537,6 +1567,63 @@ async def _handle_generate_tasks_report(
     return f"{result.summary}\nReports directory: {result.file_path.parent}"
 
 
+async def _handle_health_check(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """B6 diagnostics (ArchComm 2026-10-30, contract §2 item 2).
+
+    Reports versions, configuration paths, and credential PRESENCE flags.
+    Red line: neither this response nor any log line may contain a secret
+    VALUE — only ``<VAR>: set`` style flags; API probe failures report the
+    exception CLASS name only (error bodies can echo response payloads).
+    """
+    _reject_unknown_keys(arguments, ("probe_apis",))
+    probe_apis = bool(arguments.get("probe_apis", False))
+
+    mcp_version = "unknown"
+    with contextlib.suppress(importlib_metadata.PackageNotFoundError):
+        mcp_version = importlib_metadata.version("mcp")
+
+    lines: list[str] = [
+        f"Health check — jira-tempo-mcp {__version__}",
+        f"Python: {platform.python_version()}",
+        f"MCP SDK: {mcp_version}",
+        f"Config: loaded (timezone={config.timezone}, log_level={config.log_level})",
+        # Presence flags — names only, never values (config fields are
+        # validated non-empty at load, so a loaded Config implies set).
+        "JIRA_BASE_URL: set",
+        "JIRA_USER: set",
+        "JIRA_PAT: set",
+        (
+            "TEMPO_API_TOKEN: set"
+            if config.tempo_api_token
+            else "TEMPO_API_TOKEN: not set (falls back to JIRA_PAT)"
+        ),
+        "Paths:",
+        f"  report_output_dir: {config.report_output_dir or '(default ~/.mcp/jira-tempo-mcp/reports)'}",
+        f"  team_output_dir: {config.team_output_dir or '(default: report_output_dir)'}",
+        f"  template_dir: {config.template_dir_resolved}",
+        f"  task_template_dir: {config.task_template_dir or '(builtin only)'}",
+    ]
+
+    if probe_apis:
+        lines.append("API probes:")
+        try:
+            await client.get_myself()
+            lines.append("  Jira (get_myself): ok")
+        except JiraTempoError as exc:
+            logger.warning("Health check: Jira probe failed (%s)", exc.__class__.__name__)
+            lines.append(f"  Jira (get_myself): FAILED ({exc.__class__.__name__})")
+        try:
+            await client.find_worker_key(config.jira_user)
+            lines.append("  Tempo (find_worker_key): ok")
+        except JiraTempoError as exc:
+            logger.warning("Health check: Tempo probe failed (%s)", exc.__class__.__name__)
+            lines.append(f"  Tempo (find_worker_key): FAILED ({exc.__class__.__name__})")
+
+    return "\n".join(lines)
+
+
 # Dispatch table (m3).
 _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
@@ -1558,6 +1645,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "list_issues_by_jql": _handle_list_issues_by_jql,
     "get_current_user": _handle_get_current_user,
     "generate_tasks_report": _handle_generate_tasks_report,
+    "health_check": _handle_health_check,
 }
 
 
