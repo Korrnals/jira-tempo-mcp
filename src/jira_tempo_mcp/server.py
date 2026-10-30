@@ -11,9 +11,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import platform
 import re
 import sys
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timedelta
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +33,7 @@ from .client import (
     WorkerKeyResolutionError,
 )
 from .config import Config, load_config
-from .report import generate_weekly_report
+from .report import fetch_week_context, generate_weekly_report
 from .task_templates import (
     TEMPLATE_ERRORS,
     TaskTemplate,
@@ -41,6 +44,7 @@ from .tasks_report import generate_tasks_report
 from .team_report import generate_team_report
 from .templates.loader import build_registry, resolve_template
 from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
+from .week_status import week_status_text
 
 logger = logging.getLogger("jira-tempo-mcp")
 
@@ -313,8 +317,23 @@ TOOLS: list[Tool] = [
                         "configured JIRA_USER). If provided, worklogs are filtered to this user."
                     ),
                 },
+                "include_dropped": {
+                    "type": "boolean",
+                    "description": (
+                        "Also report the lines the txt renderer drops as title echoes (B4). "
+                        "txt: a 'Dropped lines (N)' section WITH the dropped content is appended "
+                        "to this tool's response — the report file itself is unchanged. "
+                        "md: always 'Dropped lines (0)' by construction (documented behaviour). "
+                        "json: the JSON output gains a (currently always empty) 'dropped' field. "
+                        "Default false — output is identical to previous versions. The dropped "
+                        "content goes to this response only; server logs carry the counter, "
+                        "never the content."
+                    ),
+                    "default": False,
+                },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -367,8 +386,23 @@ TOOLS: list[Tool] = [
                     ),
                     "default": "txt",
                 },
+                "include_dropped": {
+                    "type": "boolean",
+                    "description": (
+                        "Also report the lines the txt renderer drops as title echoes (B4). "
+                        "txt: a 'Dropped lines (N)' section WITH the dropped content is appended "
+                        "to this tool's response — the report file itself is unchanged. "
+                        "md: always 'Dropped lines (0)' by construction (documented behaviour). "
+                        "json: the JSON output gains a (currently always empty) 'dropped' field. "
+                        "Default false — output is identical to previous versions. The dropped "
+                        "content goes to this response only; server logs carry the counter, "
+                        "never the content."
+                    ),
+                    "default": False,
+                },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -383,10 +417,15 @@ TOOLS: list[Tool] = [
     Tool(
         name="preview_report_template",
         description=(
-            "Preview a report template rendered with sample data. "
-            "Useful for exploring templates before generating a real report. "
-            "Returns the rendered text without writing a file. "
-            "Does NOT call Jira/Tempo — uses built-in mock worklogs."
+            "Preview a report template rendered with sample data (mock mode, "
+            "default) — useful for exploring templates before generating a "
+            "real report. Returns the rendered text WITHOUT writing a file. "
+            "Mock mode does NOT call Jira/Tempo. "
+            "With live=true (B3) renders the REAL worklogs of the target "
+            "week (read-only Jira/Tempo calls) instead of mock data; no file "
+            "is written. live works for every template, including custom "
+            ".py ones (those additionally require REPORT_TEMPLATE_ALLOW_PY=1 "
+            "— they already execute in-process, no new execution surface)."
         ),
         inputSchema={
             "type": "object",
@@ -402,15 +441,35 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["default", "minimal", "empty"],
                     "description": (
-                        "Preset sample-data profile: 'default' = realistic worklogs "
+                        "Preset sample-data profile (mock mode only, ignored "
+                        "when live=true): 'default' = realistic worklogs "
                         "(several issues, varied times), 'minimal' = a single worklog, "
                         "'empty' = no worklogs (tests empty-state rendering). "
                         "Defaults to 'default'."
                     ),
                     "default": "default",
                 },
+                "live": {
+                    "type": "boolean",
+                    "description": (
+                        "Render the REAL worklogs of the target week instead "
+                        "of mock data (read-only Jira/Tempo calls). No file "
+                        "is ever written. sample_data is ignored in live "
+                        "mode. Defaults to false (mock)."
+                    ),
+                    "default": False,
+                },
+                "target_date": {
+                    "type": "string",
+                    "description": (
+                        "Any date within the target week (ISO YYYY-MM-DD); "
+                        "defaults to today. Used by live mode to pick the "
+                        "week; ignored in mock mode."
+                    ),
+                },
             },
             "required": ["template_name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -552,6 +611,77 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="health_check",
+        description=(
+            "Diagnostics for the MCP server itself (B6): server/SDK versions, "
+            "configuration paths, and credential presence flags "
+            "(e.g. 'JIRA_PAT: set'). Secret values are NEVER included — "
+            "presence flags only. With probe_apis=true, additionally probes "
+            "Jira and Tempo connectivity with read-only calls and reports "
+            "ok/FAILED per API (failure reason limited to the exception "
+            "class name)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "probe_apis": {
+                    "type": "boolean",
+                    "description": (
+                        "Also probe Jira (get_myself) and Tempo "
+                        "(find_worker_key) with read-only calls. "
+                        "Defaults to false (offline diagnostics only)."
+                    ),
+                    "default": False,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="week_status",
+        description=(
+            "Read-only weekly status (B2): per-day tracked hours over the "
+            "Mon–Sun data window of the target week, days without entries in "
+            "the render window (Mon–Fri), totals vs the expected_hours norm "
+            "(default 40), and per-day overtime flags (a day over 8 tracked "
+            "hours). Sat/Sun entries are marked 'вне окна рендера' (outside "
+            "the render window — the txt report renders Mon–Fri only). "
+            "Reports tracked TIME only: issue keys and comments are never "
+            "included."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "description": (
+                        "Jira username to check. Defaults to the configured "
+                        "JIRA_USER."
+                    ),
+                },
+                "target_date": {
+                    "type": "string",
+                    "description": (
+                        "Any date within the target week (ISO YYYY-MM-DD). "
+                        "Defaults to today."
+                    ),
+                },
+                "expected_hours": {
+                    "type": "number",
+                    "description": (
+                        "Weekly work norm in hours used for the norm check. "
+                        "Defaults to 40."
+                    ),
+                    "default": 40,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
         },
     ),
 ]
@@ -593,6 +723,29 @@ def _validate_date(date_str: str, field_name: str) -> date:
         raise ValueError(
             f"Invalid date for {field_name}: {date_str!r}. Expected ISO format YYYY-MM-DD."
         ) from None
+
+
+# --- Strict parameter validation for generator tools (B5, ArchComm 2026-10-30) ---
+
+
+def _reject_unknown_keys(arguments: dict[str, Any], allowed: tuple[str, ...]) -> None:
+    """Reject unknown parameter names in generator tool calls (B5, strict).
+
+    The generator inputSchemas declare ``additionalProperties: false``; MCP
+    hosts are expected to enforce it, but host enforcement varies. The
+    handler layer is the second line of defence against the
+    "silently ignored parameter" bug class (JTM feedback, 2026-10-30: docs
+    advertised ``date_from``/``date_to`` on generate_weekly_report and the
+    calls quietly did nothing). Any key outside ``allowed`` raises a
+    ValueError naming the offending keys and every valid parameter.
+    """
+    unknown = sorted(k for k in arguments if k not in allowed)
+    if unknown:
+        raise ValueError(
+            f"Unknown parameter(s): {', '.join(repr(k) for k in unknown)}. "
+            f"Valid parameters for this tool: {', '.join(allowed)}. "
+            "Extra parameters are rejected, not silently ignored."
+        )
 
 
 # Matches a numeric timezone offset WITHOUT a colon at end of string,
@@ -673,6 +826,31 @@ def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) ->
             f"Path traversal is not permitted."
         ) from None
     return resolved
+
+
+# --- include_dropped response channel (B4, ArchComm 2026-10-30 §2 item 4) ---
+
+
+def _format_dropped_section(dropped: list[str], fmt: str) -> str:
+    """Appendix for generator tool responses when ``include_dropped`` is set.
+
+    Channel contract: the tool RESPONSE is the owner channel, so the txt
+    section carries the dropped line CONTENT; the report FILE stays
+    unchanged and server logs carry the ``Dropped %d lines`` counter only
+    (red line §2 item 9 — dropped content never reaches any log). md always
+    reports (0) by construction (committee decision — documented in the
+    tool schema); json reports through the file's ``dropped`` field instead
+    of a response section.
+    """
+    if fmt == "txt":
+        if not dropped:
+            return "\n\nDropped lines (0)"
+        lines = [f"Dropped lines ({len(dropped)})"]
+        lines.extend(f"  - {line}" for line in dropped)
+        return "\n\n" + "\n".join(lines)
+    if fmt == "md":
+        return "\n\nDropped lines (0)"
+    return ""
 
 
 # --- Worklog formatting helper (UX-4, UX-10) ---
@@ -1121,6 +1299,10 @@ async def _handle_list_favorites(
 async def _handle_generate_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(
+        arguments,
+        ("target_date", "output_dir", "template", "format", "username", "include_dropped"),
+    )
     target = None
     if td := arguments.get("target_date"):
         # m8: validate date format with helpful error.
@@ -1148,6 +1330,9 @@ async def _handle_generate_report(
     if username is not None and (not isinstance(username, str) or not username.strip()):
         raise ValueError("'username' must be a non-empty string.")
 
+    fmt = arguments.get("format", "txt")
+    include_dropped = bool(arguments.get("include_dropped", False))
+    dropped: list[str] = []
     path = await generate_weekly_report(
         client,
         config,
@@ -1155,15 +1340,33 @@ async def _handle_generate_report(
         output_dir=out_dir,
         template=template,
         registry=registry,
-        fmt=arguments.get("format", "txt"),
+        fmt=fmt,
         username=username,
+        include_dropped=include_dropped,
+        dropped_out=dropped if include_dropped else None,
     )
-    return f"Weekly report generated: {path}\nReports directory: {Path(path).parent}"
+    response = f"Weekly report generated: {path}\nReports directory: {Path(path).parent}"
+    if include_dropped:
+        response += _format_dropped_section(dropped, fmt)
+    return response
 
 
 async def _handle_generate_team_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(
+        arguments,
+        (
+            "users",
+            "date_from",
+            "date_to",
+            "section_map",
+            "template",
+            "output_dir",
+            "format",
+            "include_dropped",
+        ),
+    )
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
         users = config.team_users_resolved
@@ -1198,6 +1401,8 @@ async def _handle_generate_team_report(
             f"Available: {', '.join(registry.names()) or '(none)'}."
         )
 
+    fmt = arguments.get("format", "txt")
+    include_dropped = bool(arguments.get("include_dropped", False))
     result = await generate_team_report(
         client,
         config,
@@ -1208,9 +1413,13 @@ async def _handle_generate_team_report(
         template=template,
         registry=registry,
         output_dir=out_dir,
-        fmt=arguments.get("format", "txt"),
+        fmt=fmt,
+        include_dropped=include_dropped,
     )
-    return f"{result.summary}\nReports directory: {result.file_path.parent}"
+    response = f"{result.summary}\nReports directory: {result.file_path.parent}"
+    if include_dropped:
+        response += _format_dropped_section(result.dropped_lines, fmt)
+    return response
 
 
 async def _handle_list_report_templates(
@@ -1309,11 +1518,12 @@ def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
 
 
 async def _handle_preview_report_template(
-    arguments: dict[str, Any], config: Config, _client: JiraTempoClient
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
-    # _client is intentionally unused: preview never calls Jira/Tempo. The
-    # leading underscore documents intent; the dispatch table in
-    # _TOOL_HANDLERS passes it positionally, so renaming is safe.
+    # The client is unused in mock mode (preview never called Jira/Tempo
+    # before B3) and used read-only in live mode. The dispatch table in
+    # _TOOL_HANDLERS passes it positionally.
+    _reject_unknown_keys(arguments, ("template_name", "sample_data", "live", "target_date"))
     template_name = arguments.get("template_name")
     if not isinstance(template_name, str) or not template_name.strip():
         raise ValueError("'template_name' must be a non-empty string.")
@@ -1322,6 +1532,8 @@ async def _handle_preview_report_template(
     if profile not in ("default", "minimal", "empty"):
         raise ValueError(f"'sample_data' must be one of default, minimal, empty — got {profile!r}.")
 
+    live = bool(arguments.get("live", False))
+
     registry = build_registry(config)
     template = registry.get(template_name)
     if template is None:
@@ -1329,6 +1541,39 @@ async def _handle_preview_report_template(
             f"Unknown template {template_name!r}. "
             f"Available: {', '.join(registry.names()) or '(none)'}."
         )
+
+    if live:
+        # B3 live preview: render the REAL worklogs of the target week,
+        # reusing the exact fetch context of generate_weekly_report.
+        if td := arguments.get("target_date"):
+            target = _validate_date(td, "target_date")
+        else:
+            target = datetime.now(pytz.timezone(config.timezone)).date()
+        started = time.monotonic()
+        ctx = await fetch_week_context(client, config, target=target)
+        author = config.report_author_header
+        rendered = template.render(
+            ctx.worklogs,
+            config,
+            monday=ctx.monday,
+            friday=ctx.friday,
+            issue_titles=ctx.issue_titles,
+            author=author,
+            # team_report consumes per-user groupings; default /
+            # weekly_summary accept **kwargs and ignore these keys.
+            per_user_worklogs={ctx.worker_key: ctx.worklogs},
+            users=[(ctx.worker_key, author)],
+        )
+        duration_ms = int((time.monotonic() - started) * 1000)
+        # Metadata only — the render body NEVER reaches the log (red line,
+        # ArchComm contract §2 item 9).
+        logger.info(
+            "Preview live render: template=%s worklogs=%d duration_ms=%d",
+            template.name,
+            len(ctx.worklogs),
+            duration_ms,
+        )
+        return rendered or "(template rendered an empty string for the live week)"
 
     worklogs = _sample_worklogs(profile)
     rendered = template.render(
@@ -1474,6 +1719,7 @@ async def _handle_get_current_user(
 async def _handle_generate_tasks_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(arguments, ("users", "active_only", "output_dir", "format"))
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
         users = config.team_users_resolved
@@ -1501,6 +1747,101 @@ async def _handle_generate_tasks_report(
     return f"{result.summary}\nReports directory: {result.file_path.parent}"
 
 
+async def _handle_health_check(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """B6 diagnostics (ArchComm 2026-10-30, contract §2 item 2).
+
+    Reports versions, configuration paths, and credential PRESENCE flags.
+    Red line: neither this response nor any log line may contain a secret
+    VALUE — only ``<VAR>: set`` style flags; API probe failures report the
+    exception CLASS name only (error bodies can echo response payloads).
+    """
+    _reject_unknown_keys(arguments, ("probe_apis",))
+    probe_apis = bool(arguments.get("probe_apis", False))
+
+    mcp_version = "unknown"
+    with contextlib.suppress(importlib_metadata.PackageNotFoundError):
+        mcp_version = importlib_metadata.version("mcp")
+
+    lines: list[str] = [
+        f"Health check — jira-tempo-mcp {__version__}",
+        f"Python: {platform.python_version()}",
+        f"MCP SDK: {mcp_version}",
+        f"Config: loaded (timezone={config.timezone}, log_level={config.log_level})",
+        # Presence flags — names only, never values (config fields are
+        # validated non-empty at load, so a loaded Config implies set).
+        "JIRA_BASE_URL: set",
+        "JIRA_USER: set",
+        "JIRA_PAT: set",
+        (
+            "TEMPO_API_TOKEN: set"
+            if config.tempo_api_token
+            else "TEMPO_API_TOKEN: not set (falls back to JIRA_PAT)"
+        ),
+        "Paths:",
+        f"  report_output_dir: {config.report_output_dir or '(default ~/.mcp/jira-tempo-mcp/reports)'}",
+        f"  team_output_dir: {config.team_output_dir or '(default: report_output_dir)'}",
+        f"  template_dir: {config.template_dir_resolved}",
+        f"  task_template_dir: {config.task_template_dir or '(builtin only)'}",
+    ]
+
+    if probe_apis:
+        lines.append("API probes:")
+        try:
+            await client.get_myself()
+            lines.append("  Jira (get_myself): ok")
+        except JiraTempoError as exc:
+            logger.warning("Health check: Jira probe failed (%s)", exc.__class__.__name__)
+            lines.append(f"  Jira (get_myself): FAILED ({exc.__class__.__name__})")
+        try:
+            await client.find_worker_key(config.jira_user)
+            lines.append("  Tempo (find_worker_key): ok")
+        except JiraTempoError as exc:
+            logger.warning("Health check: Tempo probe failed (%s)", exc.__class__.__name__)
+            lines.append(f"  Tempo (find_worker_key): FAILED ({exc.__class__.__name__})")
+
+    return "\n".join(lines)
+
+
+async def _handle_week_status(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """B2 read-only week status (ArchComm contract §2 item 1).
+
+    Data window Mon–Sun (the render window is Mon–Fri; Sat/Sun entries get
+    the «вне окна рендера» marker). Strictly read-only: worker-key
+    resolution + one worklog search, nothing else.
+    """
+    _reject_unknown_keys(arguments, ("username", "target_date", "expected_hours"))
+
+    username = arguments.get("username") or config.jira_user
+    if not isinstance(username, str) or not username.strip():
+        raise ValueError("'username' must be a non-empty string.")
+
+    if td := arguments.get("target_date"):
+        target = _validate_date(td, "target_date")
+    else:
+        target = datetime.now(pytz.timezone(config.timezone)).date()
+
+    expected_hours = arguments.get("expected_hours", 40)
+    if isinstance(expected_hours, bool) or not isinstance(expected_hours, (int, float)):
+        raise ValueError("'expected_hours' must be a positive number of hours.")
+    if expected_hours <= 0:
+        raise ValueError("'expected_hours' must be a positive number of hours.")
+
+    monday = target - timedelta(days=target.weekday())
+    sunday = monday + timedelta(days=6)
+
+    worker_key = await client.find_worker_key(username)
+    worklogs = await client.search_worklogs(
+        monday.isoformat(), sunday.isoformat(), worker_keys=[worker_key]
+    )
+    return week_status_text(
+        worklogs, target=target, username=username, expected_hours=expected_hours
+    )
+
+
 # Dispatch table (m3).
 _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
@@ -1522,6 +1863,8 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "list_issues_by_jql": _handle_list_issues_by_jql,
     "get_current_user": _handle_get_current_user,
     "generate_tasks_report": _handle_generate_tasks_report,
+    "health_check": _handle_health_check,
+    "week_status": _handle_week_status,
 }
 
 

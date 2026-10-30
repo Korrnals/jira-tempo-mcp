@@ -18,7 +18,7 @@ import logging
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytz
 
@@ -148,11 +148,16 @@ def _render_weekly_json(
     friday: date,
     issue_titles: dict[str, str],
     author: str | None = None,
+    include_dropped: bool = False,
 ) -> str:
     """Render weekly report as structured JSON.
 
     author: optional override for the report ``author`` field (e.g. when
         generating a report for a different user via ``username``).
+    include_dropped: when True, adds a ``dropped`` field (currently always an
+        empty list — the JSON renderer keeps raw comments, so nothing is
+        ever dropped). Absent when False so default output stays
+        byte-identical (B4, ArchComm contract §2 item 4).
     """
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     total_seconds = 0
@@ -229,60 +234,54 @@ def _render_weekly_json(
         "total_human": format_seconds_to_human(total_seconds),
         "issues": issues,
     }
+    if include_dropped:
+        # Structured output never drops content, so the field is always
+        # empty today; it exists so consumers can rely on the key.
+        data["dropped"] = []
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-async def generate_weekly_report(
+class WeekContext(NamedTuple):
+    """Everything the weekly render paths need about one target week (B3)."""
+
+    monday: date
+    friday: date
+    worklogs: list[dict[str, Any]]
+    issue_titles: dict[str, str]
+    worker_key: str
+
+
+async def fetch_week_context(
     client: JiraTempoClient,
     config: Config,
     *,
-    target_date: date | None = None,
-    output_dir: Path | None = None,
-    author_filter: str | None = None,
-    template: ReportTemplate | None = None,
-    registry: TemplateRegistry | None = None,
-    fmt: str = "txt",
+    target: date,
     username: str | None = None,
-) -> str:
-    """Generate a weekly report file and return its path.
+    author_filter: str | None = None,
+) -> WeekContext:
+    """Resolve the target week and fetch its clean worklogs + issue titles.
 
-    target_date: any date within the target week (default: today).
-    output_dir: directory to write the report file. If None, uses
-                config.report_output_dir or falls back to ./reports.
-    author_filter: if set, only include worklogs from this worker key.
-    template: explicit template instance. If None, the template named in
-              ``config.report_template`` is resolved via ``registry`` (or
-              the ``default`` builtin if the registry lacks it).
-              Only used when ``fmt="txt"``.
-    registry: optional template registry for template name resolution.
-              Only used when ``fmt="txt"``.
-    fmt: output format — ``txt`` (default, uses template system),
-         ``md`` (Markdown), ``json`` (structured JSON).
-    username: optional Jira username to generate the report for (instead of
-              ``config.jira_user``). If provided, worklogs are filtered to
-              this user's worker key.
+    Shared fetch context (B3): one code path for week bounds (Mon–Fri),
+    worker-key resolution, fetch-level dedupe, week filtering, and
+    issue-title resolution — used by :func:`generate_weekly_report` and by
+    the live mode of ``preview_report_template`` so both see identical data.
     """
-    if fmt not in _VALID_FORMATS:
-        raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
-
-    tz = pytz.timezone(config.timezone)
-    today = datetime.now(tz).date()
-    target = target_date or today
     monday, friday = week_range(target)
-
     date_from = monday.isoformat()
     date_to = friday.isoformat()
 
     logger.info("Fetching worklogs %s .. %s", date_from, date_to)
 
-    worker_keys: list[str] | None = None
+    worker_keys: list[str]
+    worker_key: str
     if author_filter:
+        worker_key = author_filter
         worker_keys = [author_filter]
     else:
         # UX-7: use username override if provided, else config.jira_user.
         target_user = username if username else config.jira_user
-        wk = await client.find_worker_key(target_user)
-        worker_keys = [wk]
+        worker_key = await client.find_worker_key(target_user)
+        worker_keys = [worker_key]
 
     worklogs = await client.search_worklogs(date_from, date_to, worker_keys=worker_keys)
 
@@ -325,6 +324,68 @@ async def generate_weekly_report(
                     logger.warning("Could not fetch issue %s, using key as title", key)
                     issue_titles[key] = key
 
+    return WeekContext(
+        monday=monday,
+        friday=friday,
+        worklogs=filtered,
+        issue_titles=issue_titles,
+        worker_key=worker_key,
+    )
+
+
+async def generate_weekly_report(
+    client: JiraTempoClient,
+    config: Config,
+    *,
+    target_date: date | None = None,
+    output_dir: Path | None = None,
+    author_filter: str | None = None,
+    template: ReportTemplate | None = None,
+    registry: TemplateRegistry | None = None,
+    fmt: str = "txt",
+    username: str | None = None,
+    include_dropped: bool = False,
+    dropped_out: list[str] | None = None,
+) -> str:
+    """Generate a weekly report file and return its path.
+
+    target_date: any date within the target week (default: today).
+    output_dir: directory to write the report file. If None, uses
+                config.report_output_dir or falls back to ./reports.
+    author_filter: if set, only include worklogs from this worker key.
+    template: explicit template instance. If None, the template named in
+              ``config.report_template`` is resolved via ``registry`` (or
+              the ``default`` builtin if the registry lacks it).
+              Only used when ``fmt="txt"``.
+    registry: optional template registry for template name resolution.
+              Only used when ``fmt="txt"``.
+    fmt: output format — ``txt`` (default, uses template system),
+         ``md`` (Markdown), ``json`` (structured JSON).
+    username: optional Jira username to generate the report for (instead of
+              ``config.jira_user``). If provided, worklogs are filtered to
+              this user's worker key.
+    include_dropped: when True (B4), collects the lines the txt renderer
+              drops as title echoes. The report FILE is unchanged; the
+              collected content is delivered via ``dropped_out`` and the log
+              carries the counter only (never the content).
+    dropped_out: optional output list receiving the dropped lines when
+              ``include_dropped`` is True (owner-channel data — the MCP tool
+              response; never log it).
+    """
+    if fmt not in _VALID_FORMATS:
+        raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
+
+    tz = pytz.timezone(config.timezone)
+    today = datetime.now(tz).date()
+    target = target_date or today
+
+    ctx = await fetch_week_context(
+        client, config, target=target, username=username, author_filter=author_filter
+    )
+    monday, friday = ctx.monday, ctx.friday
+    filtered = ctx.worklogs
+    issue_titles = ctx.issue_titles
+
     # UX-7: when a username override is provided, use it as the report
     # header author label too, so the header matches the report subject.
     # Fall back to report_author_header (not report_filename_header) to
@@ -339,7 +400,13 @@ async def generate_weekly_report(
         )
     elif fmt == "json":
         report_text = _render_weekly_json(
-            filtered, config, monday, friday, issue_titles, author=header_author
+            filtered,
+            config,
+            monday,
+            friday,
+            issue_titles,
+            author=header_author,
+            include_dropped=include_dropped,
         )
     else:
         # txt: use the template system (backward compatible).
@@ -351,6 +418,10 @@ async def generate_weekly_report(
 
                 template = DefaultTemplate()
 
+        collector: list[str] = []
+        render_kwargs: dict[str, Any] = {}
+        if include_dropped:
+            render_kwargs["dropped_lines"] = collector
         report_text = template.render(
             filtered,
             config,
@@ -358,7 +429,14 @@ async def generate_weekly_report(
             friday=friday,
             issue_titles=issue_titles,
             author=header_author,
+            **render_kwargs,
         )
+        if include_dropped:
+            if dropped_out is not None:
+                dropped_out.extend(collector)
+            # Counter only — dropped CONTENT never goes to logs (red line,
+            # ArchComm contract §2 item 9).
+            logger.info("Dropped %d lines", len(collector))
 
     # --- Determine output path ---
     if output_dir is None:

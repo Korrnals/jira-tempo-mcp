@@ -72,6 +72,33 @@ class TestListReportTemplatesKind:
             )
 
 
+# --- B1: canonical description of the default builtin template ---
+
+
+class TestDefaultTemplateCanonicalDescription:
+    """B1 (ArchComm 2026-10-30): list_report_templates returns the canonical
+    description of the default builtin template.
+
+    Rule (also pinned in DefaultTemplate's docstring): any change to the
+    builtin template's rendering MUST update ``description`` in the same
+    commit — agents read it via list_report_templates as the output contract.
+    """
+
+    async def test_list_templates_shows_canonical_description(self) -> None:
+        config = _make_config()
+        result = await _handle_list_report_templates({}, config, cast(JiraTempoClient, _make_mock_client()))
+        assert (
+            "Canonical Komus/Golikhin weekly report — [Голихин Л.С.] Отчет работы "
+            "за неделю, Mon–Fri, issue-grouped with stable sections" in result
+        )
+
+    async def test_default_template_description_attribute(self) -> None:
+        from jira_tempo_mcp.templates.builtin.default import DefaultTemplate
+
+        assert DefaultTemplate.description.startswith("Canonical Komus/Golikhin weekly report")
+        assert "Mon–Fri" in DefaultTemplate.description
+
+
 # --- preview_report_template ---
 
 

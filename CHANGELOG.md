@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `health_check` tool: server/Python/MCP SDK versions, configuration paths
+  (report/team output dirs, template dir, task template dir), and credential
+  PRESENCE flags (`JIRA_PAT: set`) — secret values are never included in the
+  response or logs; optional `probe_apis=true` probes Jira (`get_myself`) and
+  Tempo (`find_worker_key`) read-only and reports `ok`/`FAILED` per API with
+  the exception class name only.
+- `include_dropped` flag on `generate_weekly_report` / `generate_team_report`:
+  surfaces the lines the txt renderer drops as title echoes. txt — a
+  `Dropped lines (N)` section WITH the dropped content is appended to the
+  tool response (the report file stays byte-identical); json — a (currently
+  always empty) `dropped` field; md — always `Dropped lines (0)` by
+  construction. Server logs carry the `Dropped %d lines` counter only, never
+  the content.
+- `preview_report_template` live mode: new `live` (default `false`) and
+  `target_date` parameters render the REAL worklogs of the target week in the
+  tool response via the same fetch context as `generate_weekly_report` — no
+  file is written; mock mode stays the default and never calls Jira/Tempo.
+  Live works for every template, including custom `.py` ones (pre-existing
+  in-process surface, gated by `REPORT_TEMPLATE_ALLOW_PY`).
+- `week_status` tool (read-only): per-day tracked hours over the Mon–Sun data
+  window of the target week, days without entries in the render window
+  (Mon–Fri), totals vs the `expected_hours` norm (default 40), per-day
+  overtime flags (day >8h); Sat/Sun entries are marked «вне окна рендера».
+  Tracked TIME only — issue keys and comments are never included.
+
+### Fixed
+
+- Generator tools (`generate_weekly_report`, `generate_team_report`,
+  `generate_tasks_report`, `preview_report_template`) now reject unknown
+  parameters with an explicit error listing the valid names
+  (`additionalProperties: false` in the schema + handler-side check).
+  Previously extra keys (e.g. `date_from` on `generate_weekly_report`) were
+  silently ignored, masking misconfigured calls.
+- `default` template description now states the canonical output contract
+  («Canonical Komus/Golikhin weekly report — [Голихин Л.С.] Отчет работы за
+  неделю, Mon–Fri, issue-grouped with stable sections») and the rule that
+  any change to a builtin template's render must update its description.
+
 ## [0.6.4] — 2026-10-02
 
 ### Added

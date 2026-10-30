@@ -13,7 +13,7 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
-    drop_lines_matching_title,
+    drop_lines_matching_title_counted,
     extract_issue_key,
     extract_seconds,
     format_date,
@@ -50,6 +50,11 @@ class TeamReportTemplate:
                 in the summary. If absent, a single anonymous section is used.
             per_user_worklogs: dict[str, list[dict]] mapping username -> worklogs.
                 If absent, all worklogs are rendered under one section.
+            dropped_lines: optional list[str] — when provided (B4
+                ``include_dropped``), collects every line the renderer drops
+                as a title echo across all users. Owner-channel data; never
+                logged. When absent, rendering is byte-identical to the
+                pre-B4 output.
         """
         from datetime import date
 
@@ -61,6 +66,9 @@ class TeamReportTemplate:
         issue_titles: dict[str, str] = kwargs.get("issue_titles") or {}
         users: list[tuple[str, str]] = kwargs.get("users") or []
         per_user_worklogs: dict[str, list[dict[str, Any]]] = kwargs.get("per_user_worklogs") or {}
+        collector: list[str] | None = kwargs.get("dropped_lines")
+        discard: list[str] = []
+        dropped_sink = collector if collector is not None else discard
 
         lines: list[str] = []
         lines.append(f"Командный отчёт за неделю ({format_date(monday)} - {format_date(friday)}):")
@@ -103,7 +111,7 @@ class TeamReportTemplate:
                     if comment:
                         lines.extend(
                             render_comment_lines(
-                                drop_lines_matching_title(comment, title),
+                                drop_lines_matching_title_counted(comment, title, dropped_sink),
                                 indent="      ",
                                 marker="+",
                                 time_human=human,
@@ -125,7 +133,7 @@ class TeamReportTemplate:
                     if comment:
                         lines.extend(
                             render_comment_lines(
-                                drop_lines_matching_title(comment, title),
+                                drop_lines_matching_title_counted(comment, title, dropped_sink),
                                 indent="      ",
                                 marker="+",
                                 time_human=human,

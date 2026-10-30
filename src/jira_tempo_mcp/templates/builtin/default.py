@@ -13,7 +13,7 @@ from typing import Any
 from ...config import Config
 from ...utils import format_seconds_to_human
 from .._shared import (
-    drop_lines_matching_title,
+    drop_lines_matching_title_counted,
     extract_issue_key,
     extract_seconds,
     format_date,
@@ -25,12 +25,21 @@ from .._shared import (
 
 
 class DefaultTemplate:
-    """Default weekly report template (issue-grouped, stable sections)."""
+    """Default weekly report template (issue-grouped, stable sections).
+
+    Description contract (ArchComm 2026-10-30, slice B1): ``description``
+    below documents the canonical rendered form of this builtin template and
+    is surfaced to agents via ``list_report_templates``. ANY change to this
+    template's rendering MUST be accompanied by an update to ``description``
+    in the same commit — the description is the agent-facing contract of the
+    output shape, and a stale description is treated as a docs-reality
+    regression.
+    """
 
     name: str = "default"
     description: str = (
-        "Weekly report grouped by issue with stable sections, non-issue "
-        "sections, and remaining issues sorted by total time."
+        "Canonical Komus/Golikhin weekly report — [Голихин Л.С.] Отчет работы "
+        "за неделю, Mon–Fri, issue-grouped with stable sections"
     )
     kind: str = "builtin"
     engine: str = "Python"
@@ -48,6 +57,11 @@ class DefaultTemplate:
                 the week is derived from the first worklog date or today.
             friday: optional date — the Friday of the target week.
             issue_titles: optional dict[str, str] — pre-resolved issue titles.
+            dropped_lines: optional list[str] — when provided (B4
+                ``include_dropped``), collects every line the renderer drops
+                as a title echo. Owner-channel data; never logged. When
+                absent, drops are collected into a discard list and the
+                rendering is byte-identical to the pre-B4 output.
         """
         from datetime import date
 
@@ -57,6 +71,9 @@ class DefaultTemplate:
             today = date.today()
             monday, friday = week_range(today)
         issue_titles: dict[str, str] = kwargs.get("issue_titles") or {}
+        collector: list[str] | None = kwargs.get("dropped_lines")
+        discard: list[str] = []
+        dropped_sink = collector if collector is not None else discard
 
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         total_seconds = 0
@@ -91,7 +108,7 @@ class DefaultTemplate:
                 if comment:
                     lines.extend(
                         render_comment_lines(
-                            drop_lines_matching_title(comment, title),
+                            drop_lines_matching_title_counted(comment, title, dropped_sink),
                             indent="\t",
                             marker="+",
                             time_human=human,
@@ -123,7 +140,7 @@ class DefaultTemplate:
                 if comment:
                     lines.extend(
                         render_comment_lines(
-                            drop_lines_matching_title(comment, title),
+                            drop_lines_matching_title_counted(comment, title, dropped_sink),
                             indent="\t",
                             marker="+",
                             time_human=human,
