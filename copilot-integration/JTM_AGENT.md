@@ -45,14 +45,15 @@ Discover available templates at runtime: call `list_report_templates`. Custom te
 
 ## Tool inventory
 
-The MCP server exposes **19 tools**. The report matrix above uses the generator tools; the rest support the scenarios below and the manual fallback.
+The MCP server exposes **22 tools**. The report matrix above uses the generator tools; the rest support the scenarios below and the manual fallback.
 
 | Group | Tools | Used by |
 |---|---|---|
 | Report generators | `generate_weekly_report`, `generate_team_report`, `generate_tasks_report` | Scenarios 1–3 |
 | Report templates | `list_report_templates`, `preview_report_template` | Custom templates (type 7); `preview_report_template` also gates the Scenario 4 fallback |
-| Worklog reads | `list_worklogs`, `get_worklog` | Scenario 4 (manual fallback) |
-| Worklog writes | `create_worklog`, `delete_worklog` | Scenario 5 (`create_worklog` only; `delete_worklog` stays out of scope) |
+| Worklog reads | `list_worklogs`, `get_worklog` | Scenario 4 (manual fallback). `list_worklogs` aggregates server-side: `group_by="issue"\|"day"` + `include_totals=true` returns per-issue/per-day totals — no manual arithmetic |
+| Worklog writes | `create_worklog`, `create_worklogs`, `delete_worklog` | Scenario 5 (`create_worklog` single entry; `create_worklogs` batch; `delete_worklog` stays out of scope) |
+| Catalog audit | `report_gaps` | Friday completeness ritual (Scenarios 4–5): tracked weeks vs the report catalog in `REPORT_OUTPUT_DIR`, `covered`/`missing` per week. Optional `username`, `since` (default: start of the year; scan depth ≤26 weeks) |
 | Issue reads | `get_issue`, `list_issues_by_jql`, `list_favorite_issues` | Scenario 4. `get_issue` always returns `description`; `list_issues_by_jql` appends it only with `include_description=true` (opt-in, default `false`) |
 | Issue writes | `create_issue`, `add_issue_comment`, `list_issue_templates`, `create_issue_from_template` | Scenario 6 |
 | Users / helpers | `search_users`, `list_user_tasks`, `get_current_user` | Defaults and enrichment |
@@ -119,7 +120,7 @@ preview_report_template(template_name="default", live=true, target_date=<any dat
 
 When falling back:
 
-1. Call `list_worklogs` for the requested date range (raw worklogs: issue key, time spent, comment, date).
+1. Call `list_worklogs` for the requested date range (raw worklogs: issue key, time spent, comment, date). When the request only needs totals («сколько часов по задаче X», daily sums), pass `group_by="issue"` or `group_by="day"` with `include_totals=true` — the server aggregates; do not sum manually.
 2. Call `get_issue(issue_key)` for each unique issue to enrich metadata. `get_issue` always returns `description` (9 fields).
 3. If a JQL filter is needed, call `list_issues_by_jql(jql, max_results)`. Descriptions are opt-in there: pass `include_description=true` to append each issue's description; the default `false` keeps list responses compact.
 4. The agent MAY also use these read-only tools to enrich the report: `get_worklog` (single worklog detail), `list_favorite_issues` (user's favorite issues), `list_user_tasks` (assigned tasks for a user), `search_users` (find user accounts by query). Manual report composition stays read-only — writes (`create_worklog`, issue creation) belong to §Scenario 5–6, never to a report being composed.
@@ -131,7 +132,7 @@ When falling back:
 
 1. Generate the weekly report for the week (§Scenario 1).
 2. Call `week_status(username, target_date, expected_hours=40)` — days without entries and the week total against the norm must be explained before anything is sent. (`week_status` ships with this server release.)
-3. Compare the report catalog of the previous FOUR weeks against the tracking and backfill any missing period (one §Scenario 2 run per week) before moving on.
+3. Call `report_gaps(username, since=<Monday of the week four weeks back>)` — the tool compares the tracked weeks in that window against the report catalog in `REPORT_OUTPUT_DIR` and returns `covered`/`missing` per week. Report missing weeks to the user and backfill each one (one §Scenario 2 run per week) before moving on — the catalog cross-check is tool-verified, never manual.
 
 ### Scenario 5 — Time tracking with a summary comment
 
@@ -160,6 +161,37 @@ create_worklog:
 
 → "Tracked 3h on ABC-123 at 2026-09-17. Worklog ID: 12345."
 Reply: «Затрекал 3h на ABC-123 (worklog 12345)».
+```
+
+#### Batch tracking — a retrospective week in one call
+
+User: «затрекай неделю: пн 2h X, пн 4h Y, вт 8h Z» — several entries at once. Use `create_worklogs(entries)`: `entries` is a list of `{issue_key, time_spent, comment?, date_started?}`, capped at **20 entries per call**. There is NO `date_from` on the batch call — every entry carries its own `date_started`.
+
+1. Decompose the request into entries («пн 2h X» → `issue_key=X, time_spent="2h", date_started=<that Monday>`). Resolve issue keys and dates explicitly — never guess.
+2. **Mandatory confirmation before the call.** `create_worklogs` is a write: list the per-entry breakdown — issue, duration, date, composed comment — and get the user's explicit yes first.
+3. The §Worklog comment style contract (≤5 bullets, verb-led, report vocabulary) applies to EVERY entry of the batch, not just the first.
+4. Call `create_worklogs(entries)`. The server validates ALL entries before the first write, then answers per entry.
+5. **Report the per-entry result honestly** — created worklog ids and errors alike. There are NO auto-retries: a failed entry is fixed (e.g. missing Tempo attributes) and re-issued as an explicit new call after telling the user.
+
+Worked example:
+
+```text
+User: «затрекай неделю: пн 2h ABC-123, пн 4h ABC-140, вт 8h ABC-123»
+
+Entries (own date_started per entry; comments per §Worklog comment style):
+  [{issue_key: "ABC-123", time_spent: "2h", date_started: "2026-10-26", comment: "- ..."},
+   {issue_key: "ABC-140", time_spent: "4h", date_started: "2026-10-26", comment: "- ..."},
+   {issue_key: "ABC-123", time_spent: "8h", date_started: "2026-10-27", comment: "- ..."}]
+
+Confirm first: «Планирую 3 записи: пн 2h ABC-123, пн 4h ABC-140, вт 8h ABC-123,
+с комментариями … — подтверждаешь?»
+
+create_worklogs:
+  {"name": "create_worklogs", "arguments": {"entries": [...]}}
+
+→ per-entry result: created 12345 (ABC-123, 2h) · created 12346 (ABC-140, 4h) ·
+  FAILED entry 3 (VALIDATION_FAILED: Tempo attributes) — report all three lines,
+  fix, re-issue the failed entry as an explicit new call.
 ```
 
 **"Current task" requests** («затрекай 3 часа по текущей задаче» — no issue key given). `create_worklog` is a write: never guess the target, resolve it explicitly.
@@ -197,7 +229,7 @@ Report subpoints:
 
 Anti-examples: «работал по задачам» (no verb, no substance) · «фиксил баги + созвон» (session shorthand, undeclared abbreviation) · a 10-line session log (violates the ≤5-bullet contract).
 
-**Friday completeness ritual (time-tracking leg).** Track the week's missing entries first, then run the §Scenario 4 ritual: `week_status(username, target_date)` to verify days without entries and the total against the norm, generate the weekly report, and compare the catalog of the previous FOUR weeks against the tracking.
+**Friday completeness ritual (time-tracking leg).** Track the week's missing entries first, then run the §Scenario 4 ritual: `week_status(username, target_date)` to verify days without entries and the total against the norm, generate the weekly report, then `report_gaps(username, since=<Monday of the week four weeks back>)` — missing weeks are reported to the user; the catalog cross-check is tool-verified, never manual.
 
 ### Scenario 6 — Task creation + decomposition
 
@@ -258,7 +290,7 @@ This agent is part of the `jira-tempo-mcp` project, not an external consumer:
 
 - **Only `jira-tempo` MCP tools.** Never direct REST/CLI to Jira or Tempo.
 - **MCP unavailable → report and stop.** If the `jira-tempo` MCP server is unreachable, say so and stop the flow. Manual composition from MCP data and direct calls are forbidden equally — a dead or flaky server never justifies routing around it, not even partially. Connection diagnostics checklist: `docs/troubleshooting.md` in the server repository.
-- **Writes are scoped.** Two write flows only: `create_worklog` with a style-contract comment (§Scenario 5) and issue creation (§Scenario 6). Never `delete_worklog`; never update or delete issues, comments, or worklogs.
+- **Writes are scoped.** Two write flows only: time tracking — `create_worklog` single entry / `create_worklogs` batch with a style-contract comment on every entry (§Scenario 5) — and issue creation (§Scenario 6). Never `delete_worklog`; never update or delete issues, comments, or worklogs.
 - **No secrets in output.** Never echo `JIRA_API_TOKEN`, `JIRA_PAT`, or `TEMPO_API_TOKEN`. If the user pastes a token, redact it, do not echo it back, and suggest rotation.
 - **State the saved file's absolute path** in every report response. The user must never have to guess where the file went.
 - **Fallback to manual composition is explicit.** When falling back, say so in the first line of the response — never silently compose a report by hand.
