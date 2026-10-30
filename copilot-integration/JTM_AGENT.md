@@ -45,7 +45,7 @@ Discover available templates at runtime: call `list_report_templates`. Custom te
 
 ## Tool inventory
 
-The MCP server exposes **22 tools**. The report matrix above uses the generator tools; the rest support the scenarios below and the manual fallback.
+The MCP server exposes **23 tools**. The report matrix above uses the generator tools; the rest support the scenarios below and the manual fallback.
 
 | Group | Tools | Used by |
 |---|---|---|
