@@ -4,7 +4,7 @@
 # each recipe calls .venv/bin/<tool> directly, falling back to `python` on PATH
 # if the venv is absent.
 
-.PHONY: help ci lint format format-check typecheck test build clean install
+.PHONY: help ci lint format format-check typecheck test build sync-integration clean install
 
 PY      := .venv/bin/python
 PY_FALLBACK := python
@@ -58,8 +58,15 @@ typecheck:  ## mypy src
 test:  ## pytest -q
 	@$(PYTEST) -q
 
-build:  ## python -m build (produces dist/)
+build: sync-integration  ## python -m build (produces dist/); syncs integration docs first
 	@$(PY_BUILD) -m build
+
+sync-integration:  ## Copy agent docs from copilot-integration/ into package data
+	@echo "==> sync-integration: copying agent docs into src/jira_tempo_mcp/integration/"
+	@for f in JTM_AGENT.md jira-tempo-reports.skill.md jtm-jira-tempo-reports.agent.md; do \
+		cp copilot-integration/$$f src/jira_tempo_mcp/integration/$$f && \
+		echo "  copied copilot-integration/$$f -> src/jira_tempo_mcp/integration/$$f"; \
+	done
 
 clean:  ## Remove build artefacts (NOT .venv)
 	rm -rf dist/ build/ *.egg-info
