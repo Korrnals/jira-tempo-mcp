@@ -1,6 +1,6 @@
 # 🌐 API — MCP-инструменты
 
-Сервер открывает 19 инструментов через Model Context Protocol. Каждый
+Сервер открывает 21 инструмент через Model Context Protocol. Каждый
 инструмент определён в `src/jira_tempo_mcp/server.py` и диспетчеризуется
 через таблицу (`_TOOL_HANDLERS`).
 
@@ -27,8 +27,10 @@
 | [`generate_weekly_report`](#-generate_weekly_report) | Отчёты | Сгенерировать еженедельный отчёт (`txt`/`md`/`json`) |
 | [`generate_team_report`](#-generate_team_report) | Отчёты | Сгенерировать командный отчёт для нескольких пользователей |
 | [`generate_tasks_report`](#-generate_tasks_report) | Отчёты | Сгенерировать отчёт по задачам, сгруппированный по статусу |
+| [`week_status`](#-week_status) | Отчёты | Статус недели: часы по дням, пустые дни, сверка с нормой (только чтение) |
 | [`list_report_templates`](#-list_report_templates) | Отчёты | Показать доступные шаблоны отчётов |
-| [`preview_report_template`](#-preview_report_template) | Отчёты | Предпросмотр шаблона с тестовыми данными |
+| [`preview_report_template`](#-preview_report_template) | Отчёты | Предпросмотр шаблона на тестовых или реальных данных |
+| [`health_check`](#-health_check) | Диагностика | Состояние сервера/конфига/доступности API (только presence, без секретов) |
 
 ---
 
@@ -421,6 +423,12 @@ Favorite issues (3):
 | `template` | string | нет | Имя шаблона (напр. `default`, `weekly_summary`). По умолч. `REPORT_TEMPLATE` или `default`. Используется только при `format='txt'`. |
 | `format` | string | нет | Формат вывода: `txt` (текст, по умолч.), `md` (Markdown), `json` (структурированный JSON). Расширение файла соответствует формату. |
 | `username` | string | нет | Опциональное имя пользователя Jira для отчёта (вместо настроенного `JIRA_USER`). Если указано, worklog'и фильтруются по этому пользователю. |
+| `include_dropped` | boolean | нет | Включить в ответ инструмента строки, отсечённые движком маппинга секций: `txt` — секция `Dropped lines (N)`, `json` — поле `dropped`, `md` — конструкционно `Dropped lines (0)` (детали отсечения доступны только в каналах `txt`/`json`). В лог попадает только счётчик `Dropped %d lines`, без содержимого. По умолч. `false`; рендер по умолчанию не меняется. |
+
+> 🛡️ **Строгая валидация аргументов.** Генераторы (`generate_weekly_report`,
+> `generate_team_report`, `generate_tasks_report`) отклоняют неизвестные
+> параметры явной ошибкой `unknown parameter '<name>'` с перечнем валидных
+> имён — опечатки больше не игнорируются молча.
 
 **Пример вызова:**
 
@@ -464,6 +472,7 @@ Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 | `template` | string | нет | Имя шаблона. По умолч. `team_report`. Используется только при `format='txt'`. |
 | `output_dir` | string | нет | Директория вывода. По умолч. `REPORT_TEAM_OUTPUT_DIR` или `REPORT_OUTPUT_DIR`. Должна быть внутри разрешённого корня. |
 | `format` | string | нет | Формат вывода: `txt` (текст, по умолч.), `md` (Markdown), `json` (структурированный JSON). Расширение файла соответствует формату. |
+| `include_dropped` | boolean | нет | Тот же контракт, что в [`generate_weekly_report`](#-generate_weekly_report): `txt` — секция `Dropped lines (N)`, `json` — поле `dropped`, `md` — конструкционное `Dropped lines (0)`. По умолч. `false`. |
 
 > 🛡️ **Ограничение скорости (rate-limiting):** параллельные запросы к Tempo
 > ограничены `TEMPO_MAX_CONCURRENT_REQUESTS` (по умолч. 3). Между пакетами
@@ -516,7 +525,7 @@ Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 
 ```text
 Report templates (4):
-- default (builtin, Jinja2): Weekly report grouped by issue with stable sections
+- default (builtin, Jinja2): Canonical Komus/Golikhin weekly report — header [Голихин Л.С.] Отчет работы за неделю, Mon–Fri, issue-grouped with stable sections
 - team_report (builtin, Jinja2): Team report: per-user sections with issue breakdown
 - weekly_summary (builtin, Jinja2): Compact weekly summary: total hours, top 5 issues
 - my_custom (custom, Jinja2): My custom Jinja2 template
@@ -564,24 +573,78 @@ Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 
 ---
 
+## 📈 `week_status`
+
+Статус недели пользователя (только чтение): часы по дням, дни без записей и
+сумма против ожидаемой нормы. Дополняет пятничный ритуал отчёта — запускайте
+перед отправкой, чтобы поймать недозатреканные дни.
+
+**Параметры:**
+
+| Имя | Тип | Обяз. | Описание |
+| --- | --- | --- | --- |
+| `username` | string | да | Имя пользователя Jira (напр. `golikhin`) |
+| `target_date` | string | нет | Любая дата целевой недели (ISO `YYYY-MM-DD`). По умолч. сегодня. |
+| `expected_hours` | integer | нет | Ожидаемая недельная норма в часах. По умолч. `40`. |
+
+**Семантика:**
+
+- Окно данных — пн–вс; записи сб/вс учитываются в сумме, но помечаются как
+  **вне окна рендера** (еженедельный отчёт рендерит только пн–пт).
+- Рабочие дни — пн–пт; норма — параметр вызова (`expected_hours`, по умолч.
+  `40`), а не серверная константа.
+- Рабочий день с более чем 8 часами помечается как переработка.
+- Только чтение: инструмент ничего не пишет и не вызывает write-API.
+
+**Пример вызова:**
+
+```json
+{
+  "name": "week_status",
+  "arguments": { "username": "golikhin", "target_date": "2026-10-28" }
+}
+```
+
+**Возвращает:**
+
+```text
+Week status for golikhin (2026-10-26 .. 2026-11-01):
+- Mon 2026-10-26: 8h
+- Tue 2026-10-27: 8h 30m (over 8h)
+- Wed 2026-10-28: 7h
+- Thu 2026-10-29: 8h
+- Fri 2026-10-30: 8h
+- Sat 2026-10-31: 0h
+- Sun 2026-11-01: 0h
+Total tracked: 39h 30m of 40h expected (short by 30m)
+Days without entries (Mon-Fri): none
+```
+
+---
+
 ## 👁️ `preview_report_template`
 
-Предпросмотр шаблона отчёта, отрендеренного на **тестовых данных** — запросы
-к Jira/Tempo не выполняются. Полезно для изучения шаблонов перед
-генерацией реального отчёта. Возвращает отрендеренный текст без записи файла.
+Предпросмотр шаблона отчёта без записи файла — на встроенных **тестовых**
+worklog'ах (по умолчанию) или на **реальных** worklog'ах Tempo за целевую
+неделю (`live=true`). Полезно для изучения шаблонов перед генерацией отчёта
+и как обязательный пре-чек перед любым ручным fallback.
 
-> 🆕 **Новое в v0.4.0.** Этот инструмент не вызывает Jira или Tempo — он
-> использует встроенные тестовые worklog'и, поэтому шаблон можно
-> посмотреть офлайн.
+> 🆕 **Новое в v0.4.0** (mock-режим); параметры `live` и `target_date`
+> расширяют тот же инструмент — новой поверхности исполнения нет: кастомные
+> `.py`-шаблоны и раньше исполнялись in-process, гейт —
+> `REPORT_TEMPLATE_ALLOW_PY` (по умолч. `false`), см.
+> [templates.ru.md](templates.ru.md#-безопасность-только-по-явному-включению).
 
 **Параметры:**
 
 | Имя | Тип | Обяз. | Описание |
 | --- | --- | --- | --- |
 | `template_name` | string | да | Имя шаблона (используйте `list_report_templates` для просмотра доступных) |
-| `sample_data` | string | нет | Профиль тестовых данных: `default` (реалистичная неделя, несколько задач), `minimal` (один worklog), `empty` (без worklog'ов — проверяет рендер пустого состояния). По умолч. `default`. |
+| `sample_data` | string | нет | Профиль тестовых данных (используется, когда `live` не задан): `default` (реалистичная неделя, несколько задач), `minimal` (один worklog), `empty` (без worklog'ов — проверяет рендер пустого состояния). По умолч. `default`. |
+| `live` | boolean | нет | Рендерить **реальные** worklog'и целевой недели вместо тестовых. По умолч. `false` (mock). Текст возвращается в ответе инструмента; файл не пишется. |
+| `target_date` | string | нет | Любая дата целевой недели (ISO `YYYY-MM-DD`). Выбирает реальную неделю для `live=true`; в mock-режиме игнорируется. |
 
-**Пример вызова:**
+**Пример вызова (mock, по умолчанию):**
 
 ```json
 {
@@ -590,7 +653,16 @@ Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 }
 ```
 
-**Возвращает:** отрендеренный текст шаблона:
+**Пример вызова (live):**
+
+```json
+{
+  "name": "preview_report_template",
+  "arguments": { "template_name": "default", "live": true, "target_date": "2026-10-28" }
+}
+```
+
+**Возвращает:** отрендеренный текст шаблона (пример mock):
 
 ```text
 Weekly report: 2026-06-15 — 2026-06-19
@@ -744,6 +816,42 @@ Issues matching JQL (1):
 
 ---
 
+## 🩺 `health_check`
+
+Быстрая проверка «жив ли сервер» — рекомендуемый первый шаг, когда
+MCP-клиент не видит инструменты (см.
+[troubleshooting.ru.md](troubleshooting.ru.md#-диагностика-подключения)).
+Сообщает версию сервера, пути конфига и доступность API Jira/Tempo в
+**presence-схеме**: установлен ли секрет (`JIRA_PAT: set`) — но никогда
+его значение. Значения секретов исключены из ответа и из логов на
+любом уровне логирования.
+
+**Параметры:** нет.
+
+**Пример вызова:**
+
+```json
+{
+  "name": "health_check",
+  "arguments": {}
+}
+```
+
+**Возвращает:**
+
+```text
+jira-tempo-mcp health check:
+  Server version: <x.y.z>
+  Jira API: reachable (https://jira.example.com)
+  Tempo API: reachable
+  Reports root: /home/user/.mcp/jira-tempo-mcp/reports (exists)
+  Template dir: (default)
+  JIRA_PAT: set
+  TEMPO_API_TOKEN: not set (falls back to JIRA_PAT)
+```
+
+---
+
 ## ❌ Обработка ошибок
 
 Все инструменты при сбое возвращают пользовательскую строку ошибки (не
@@ -757,6 +865,7 @@ Issues matching JQL (1):
 | `Jira/Tempo API error: 401 ...` | невалидный или истёкший PAT |
 | `output_dir '...' resolves outside the allowed root` | попытка path traversal |
 | `Could not identify your Tempo worker key` | несоответствие `JIRA_USER` или связь с Tempo |
+| `unknown parameter '<name>'. Valid parameters: ...` | генератор получил ключ, которого нет в его схеме (строгая валидация) |
 
 ---
 

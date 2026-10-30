@@ -52,7 +52,7 @@ JIRA_PAT (Jira Personal Access Token (PAT)) не найден в окружен�
 
 | Переменная | Обяз. | По умолч. | Описание |
 | --- | --- | --- | --- |
-| `REPORT_OUTPUT_DIR` | нет | `~/.mcp/jira-tempo-mcp/reports/` | Базовая директория для файлов отчётов; вложенные `год/месяц/weekly/` создаются молчаливо |
+| `REPORT_OUTPUT_DIR` | нет | `~/.mcp/jira-tempo-mcp/reports/` | Корень разрешённого дерева отчётов. Штатная конвенция развёртывания (Komus): указывает на **корень дерева отчётов** (напр. `~/WORK/Komus/Отчеты`) — вызовы отчётов передают `output_dir` как `<корень>/<год>/<месяц>/weekly/`; вложенные подкаталоги создаются молчаливо. Если переменная не задана, fallback-корень — `~/.mcp/jira-tempo-mcp/reports/`. `output_dir`, разрешающийся вне корня, отклоняется (containment-проверка). |
 | `REPORT_AUTHOR_NAME` | нет | `JIRA_USER` | Имя автора в заголовке отчёта |
 | `REPORT_SECTION_MAP` | нет | пусто | JSON-словарь: ключ задачи → заголовок секции |
 | `REPORT_SECTION_MAP_FILE` | нет | пусто | Путь к JSON-файлу с маппингом секций |
@@ -61,6 +61,13 @@ JIRA_PAT (Jira Personal Access Token (PAT)) не найден в окружен�
 | `REPORT_NON_ISSUE_SECTIONS` | нет | пусто | JSON-список заголовков секций без ключей задач |
 
 Подробнее о переменных отчёта — в [reports.ru.md](reports.ru.md).
+
+> 🔗 **Где задавать:** `REPORT_OUTPUT_DIR` читается через
+> [приоритет источников конфигурации](#-приоритет-источников-конфигурации) —
+> process env → `.env.local` → репо-`.env`. Значение, уже заданное в
+> **окружении процесса, сильнее файлов** — устаревшая запись там молчаливо
+> перебивает `.env.local` (см.
+> [troubleshooting.ru.md](troubleshooting.ru.md#-диагностика-подключения)).
 
 ### 👥 Rate-limiting командного отчёта (опциональные)
 
@@ -205,6 +212,30 @@ REPORT_STABLE_ORDER='["PROJECT-100", "PROJECT-101"]'
 REPORT_NON_ISSUE_SECTIONS='["Совещания команды", "Jira triage"]'
 REPORT_FILENAME_PREFIX=your-username
 ```
+
+### Дерево отчётов Komus (штатное развёртывание)
+
+Укажите `REPORT_OUTPUT_DIR` на корень дерева отчётов; вызов генератора
+передаёт подкаталог недели внутри этого корня:
+
+```bash
+# .env.local / process env
+REPORT_OUTPUT_DIR=/home/your-username/WORK/Komus/Отчеты
+```
+
+```json
+{
+  "name": "generate_weekly_report",
+  "arguments": {
+    "target_date": "2026-10-30",
+    "output_dir": "/home/your-username/WORK/Komus/Отчеты/2026/октябрь/weekly"
+  }
+}
+```
+
+Файл ляжет как `golikhin_2026-10-26_2026-10-30.txt` в этом каталоге `weekly/`.
+Пути вне `REPORT_OUTPUT_DIR` (включая `/tmp`) отклоняются
+containment-проверкой — см. [api.ru.md](api.ru.md#-generate_weekly_report).
 
 ---
 

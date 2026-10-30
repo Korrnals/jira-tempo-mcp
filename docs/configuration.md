@@ -28,7 +28,7 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `REPORT_OUTPUT_DIR` | no | `~/.mcp/jira-tempo-mcp/reports/` | Base directory for report files; nested `year/month/weekly/` subdirectories are created silently |
+| `REPORT_OUTPUT_DIR` | no | `~/.mcp/jira-tempo-mcp/reports/` | Root of the allowed report tree. Standard deployment convention (Komus): point it at the **root of the reports tree** (e.g. `~/WORK/Komus/Отчеты`) — report calls then pass `output_dir` as `<root>/<year>/<month>/weekly/`; nested subdirectories are created silently. When unset, the fallback root is `~/.mcp/jira-tempo-mcp/reports/`. An `output_dir` that resolves outside the root is rejected (containment check). |
 | `REPORT_AUTHOR_NAME` | no | `JIRA_USER` | Author display name in the report header |
 | `REPORT_SECTION_MAP` | no | empty | JSON dict mapping issue keys to section titles |
 | `REPORT_SECTION_MAP_FILE` | no | empty | Path to a JSON file with the section mapping |
@@ -37,6 +37,13 @@ startup through `config.py` (pydantic-validated, secrets masked in repr).
 | `REPORT_NON_ISSUE_SECTIONS` | no | empty | JSON list of section titles without issue keys |
 
 See [reports.md](reports.md) for details on the report-related variables.
+
+> 🔗 **Where to set it:** `REPORT_OUTPUT_DIR` is read through the
+> [configuration source priority](#-configuration-source-priority) chain —
+> process env → `.env.local` → repo `.env`. Note that a value already set in
+> the **process environment wins over the files** — a stale entry there
+> silently overrides your `.env.local` (see
+> [troubleshooting.md](troubleshooting.md#-connection-diagnostics)).
 
 ### 👥 Team report rate-limiting (optional)
 
@@ -182,6 +189,31 @@ REPORT_STABLE_ORDER='["PROJECT-100", "PROJECT-101"]'
 REPORT_NON_ISSUE_SECTIONS='["Team meetings", "Jira triage"]'
 REPORT_FILENAME_PREFIX=your-username
 ```
+
+### Komus reports tree (standard deployment)
+
+Point `REPORT_OUTPUT_DIR` at the root of the reports tree; the generator
+call passes the week's subdirectory inside that root:
+
+```bash
+# .env.local / process env
+REPORT_OUTPUT_DIR=/home/your-username/WORK/Komus/Отчеты
+```
+
+```json
+{
+  "name": "generate_weekly_report",
+  "arguments": {
+    "target_date": "2026-10-30",
+    "output_dir": "/home/your-username/WORK/Komus/Отчеты/2026/октябрь/weekly"
+  }
+}
+```
+
+The file lands as
+`golikhin_2026-10-26_2026-10-30.txt` in that `weekly/` directory. Paths
+outside `REPORT_OUTPUT_DIR` (including `/tmp`) are rejected by the
+containment check — see [api.md](api.md#-generate_weekly_report).
 
 ---
 

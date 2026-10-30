@@ -223,6 +223,16 @@ Without this flag, every `.py` file in the template directory is **skipped**
 with a warning. A warning is also logged on each load as a reminder to audit
 the file. **Only load `.py` templates from a trusted source.**
 
+> 🔒 **Trust boundary.** A `.py` template runs **in-process**, inside the
+> server that holds `JIRA_PAT` / `TEMPO_API_TOKEN`. Writing a file into
+> `REPORT_TEMPLATE_DIR` **and** setting `REPORT_TEMPLATE_ALLOW_PY=1` is
+> therefore equivalent to granting that code access to the server's
+> credentials — treat the combination as a trust decision, not a
+> convenience. This applies to every execution path, including
+> `preview_report_template` in mock and live mode: live-preview adds **no
+> new execution surface** — templates already ran in-process before the
+> `live` parameter existed.
+
 > If a module fails to load (syntax error, missing `TEMPLATE`, protocol
 > mismatch), it is skipped with a warning — the rest of the registry keeps
 > working. One broken template never breaks report generation.
@@ -258,7 +268,8 @@ call. `REPORT_TEMPLATE_PATH` always wins if set.
    preview_report_template(template_name="standup", sample_data="default")
    ```
 
-   `sample_data` is `default`, `minimal`, or `empty`.
+   `sample_data` is `default`, `minimal`, or `empty`. For real week worklogs
+   use `live=true` with `target_date` (still no file written).
 
 4. **Generate** a real report:
 
@@ -272,12 +283,19 @@ call. `REPORT_TEMPLATE_PATH` always wins if set.
 
 | Name | Description |
 | --- | --- |
-| `default` | Weekly report grouped by issue with stable sections (original layout). |
+| `default` | Canonical Komus/Golikhin weekly report — header `[Голихин Л.С.] Отчет работы за неделю`, Mon–Fri, issue-grouped with stable sections. |
 | `weekly_summary` | Compact summary: total hours, top 5 issues, no per-issue detail. |
 | `team_report` | Team report: per-user sections + aggregate summary. |
 
 These are always available; custom templates are added alongside them. See
 [reports.md](reports.md#-custom-templates) for rendered examples.
+
+> 📜 **Description sync rule.** The `description` of a builtin template is
+> part of its public contract: `list_report_templates` and
+> `preview_report_template` are how callers learn a template's canonical
+> shape. Any change to a builtin template's **render** must be accompanied
+> by an update of its **description** in the same change — a render that
+> drifts from its description is treated as a documentation defect.
 
 ---
 
