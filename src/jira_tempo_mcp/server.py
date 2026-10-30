@@ -14,6 +14,7 @@ import logging
 import platform
 import re
 import sys
+import time
 from datetime import date, datetime
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -32,7 +33,7 @@ from .client import (
     WorkerKeyResolutionError,
 )
 from .config import Config, load_config
-from .report import generate_weekly_report
+from .report import fetch_week_context, generate_weekly_report
 from .task_templates import (
     TEMPLATE_ERRORS,
     TaskTemplate,
@@ -415,10 +416,15 @@ TOOLS: list[Tool] = [
     Tool(
         name="preview_report_template",
         description=(
-            "Preview a report template rendered with sample data. "
-            "Useful for exploring templates before generating a real report. "
-            "Returns the rendered text without writing a file. "
-            "Does NOT call Jira/Tempo — uses built-in mock worklogs."
+            "Preview a report template rendered with sample data (mock mode, "
+            "default) — useful for exploring templates before generating a "
+            "real report. Returns the rendered text WITHOUT writing a file. "
+            "Mock mode does NOT call Jira/Tempo. "
+            "With live=true (B3) renders the REAL worklogs of the target "
+            "week (read-only Jira/Tempo calls) instead of mock data; no file "
+            "is written. live works for every template, including custom "
+            ".py ones (those additionally require REPORT_TEMPLATE_ALLOW_PY=1 "
+            "— they already execute in-process, no new execution surface)."
         ),
         inputSchema={
             "type": "object",
@@ -434,12 +440,31 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "enum": ["default", "minimal", "empty"],
                     "description": (
-                        "Preset sample-data profile: 'default' = realistic worklogs "
+                        "Preset sample-data profile (mock mode only, ignored "
+                        "when live=true): 'default' = realistic worklogs "
                         "(several issues, varied times), 'minimal' = a single worklog, "
                         "'empty' = no worklogs (tests empty-state rendering). "
                         "Defaults to 'default'."
                     ),
                     "default": "default",
+                },
+                "live": {
+                    "type": "boolean",
+                    "description": (
+                        "Render the REAL worklogs of the target week instead "
+                        "of mock data (read-only Jira/Tempo calls). No file "
+                        "is ever written. sample_data is ignored in live "
+                        "mode. Defaults to false (mock)."
+                    ),
+                    "default": False,
+                },
+                "target_date": {
+                    "type": "string",
+                    "description": (
+                        "Any date within the target week (ISO YYYY-MM-DD); "
+                        "defaults to today. Used by live mode to pick the "
+                        "week; ignored in mock mode."
+                    ),
                 },
             },
             "required": ["template_name"],
@@ -1450,12 +1475,12 @@ def _sample_worklogs(profile: str) -> list[dict[str, Any]]:
 
 
 async def _handle_preview_report_template(
-    arguments: dict[str, Any], config: Config, _client: JiraTempoClient
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
-    # _client is intentionally unused: preview never calls Jira/Tempo. The
-    # leading underscore documents intent; the dispatch table in
-    # _TOOL_HANDLERS passes it positionally, so renaming is safe.
-    _reject_unknown_keys(arguments, ("template_name", "sample_data"))
+    # The client is unused in mock mode (preview never called Jira/Tempo
+    # before B3) and used read-only in live mode. The dispatch table in
+    # _TOOL_HANDLERS passes it positionally.
+    _reject_unknown_keys(arguments, ("template_name", "sample_data", "live", "target_date"))
     template_name = arguments.get("template_name")
     if not isinstance(template_name, str) or not template_name.strip():
         raise ValueError("'template_name' must be a non-empty string.")
@@ -1464,6 +1489,8 @@ async def _handle_preview_report_template(
     if profile not in ("default", "minimal", "empty"):
         raise ValueError(f"'sample_data' must be one of default, minimal, empty — got {profile!r}.")
 
+    live = bool(arguments.get("live", False))
+
     registry = build_registry(config)
     template = registry.get(template_name)
     if template is None:
@@ -1471,6 +1498,39 @@ async def _handle_preview_report_template(
             f"Unknown template {template_name!r}. "
             f"Available: {', '.join(registry.names()) or '(none)'}."
         )
+
+    if live:
+        # B3 live preview: render the REAL worklogs of the target week,
+        # reusing the exact fetch context of generate_weekly_report.
+        if td := arguments.get("target_date"):
+            target = _validate_date(td, "target_date")
+        else:
+            target = datetime.now(pytz.timezone(config.timezone)).date()
+        started = time.monotonic()
+        ctx = await fetch_week_context(client, config, target=target)
+        author = config.report_author_header
+        rendered = template.render(
+            ctx.worklogs,
+            config,
+            monday=ctx.monday,
+            friday=ctx.friday,
+            issue_titles=ctx.issue_titles,
+            author=author,
+            # team_report consumes per-user groupings; default /
+            # weekly_summary accept **kwargs and ignore these keys.
+            per_user_worklogs={ctx.worker_key: ctx.worklogs},
+            users=[(ctx.worker_key, author)],
+        )
+        duration_ms = int((time.monotonic() - started) * 1000)
+        # Metadata only — the render body NEVER reaches the log (red line,
+        # ArchComm contract §2 item 9).
+        logger.info(
+            "Preview live render: template=%s worklogs=%d duration_ms=%d",
+            template.name,
+            len(ctx.worklogs),
+            duration_ms,
+        )
+        return rendered or "(template rendered an empty string for the live week)"
 
     worklogs = _sample_worklogs(profile)
     rendered = template.render(

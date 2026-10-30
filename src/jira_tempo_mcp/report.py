@@ -18,7 +18,7 @@ import logging
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytz
 
@@ -241,6 +241,98 @@ def _render_weekly_json(
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+class WeekContext(NamedTuple):
+    """Everything the weekly render paths need about one target week (B3)."""
+
+    monday: date
+    friday: date
+    worklogs: list[dict[str, Any]]
+    issue_titles: dict[str, str]
+    worker_key: str
+
+
+async def fetch_week_context(
+    client: JiraTempoClient,
+    config: Config,
+    *,
+    target: date,
+    username: str | None = None,
+    author_filter: str | None = None,
+) -> WeekContext:
+    """Resolve the target week and fetch its clean worklogs + issue titles.
+
+    Shared fetch context (B3): one code path for week bounds (Mon–Fri),
+    worker-key resolution, fetch-level dedupe, week filtering, and
+    issue-title resolution — used by :func:`generate_weekly_report` and by
+    the live mode of ``preview_report_template`` so both see identical data.
+    """
+    monday, friday = week_range(target)
+    date_from = monday.isoformat()
+    date_to = friday.isoformat()
+
+    logger.info("Fetching worklogs %s .. %s", date_from, date_to)
+
+    worker_keys: list[str]
+    worker_key: str
+    if author_filter:
+        worker_key = author_filter
+        worker_keys = [author_filter]
+    else:
+        # UX-7: use username override if provided, else config.jira_user.
+        target_user = username if username else config.jira_user
+        worker_key = await client.find_worker_key(target_user)
+        worker_keys = [worker_key]
+
+    worklogs = await client.search_worklogs(date_from, date_to, worker_keys=worker_keys)
+
+    # Fetch-level dedupe: Tempo guarantees unique worklog ids, so a repeated
+    # id inside one response is a fetch/pagination defect. Drop it here so
+    # every render path (txt/md/json) works from clean data.
+    worklogs, duplicate_ids = dedupe_worklogs_by_id(list(worklogs))
+    for dup_id in duplicate_ids:
+        logger.warning("Weekly report: dropped duplicate worklog id %s from Tempo response", dup_id)
+    logger.info("Got %d worklogs", len(worklogs))
+
+    # Filter worklogs to the target week (Tempo may return slightly out-of-range).
+    # Tempo API returns "started" field (e.g. "2026-06-08 00:00:00.000"),
+    # not "startDate" — handle both for compatibility.
+    filtered: list[dict[str, Any]] = []
+    for wl in worklogs:
+        raw_date = wl.get("started") or wl.get("startDate")
+        wl_date = parse_tempo_date(raw_date)
+        if wl_date is None or not (monday <= wl_date <= friday):
+            continue
+        filtered.append(wl)
+
+    # Build issue summaries cache (fetch from Jira for unknown titles).
+    issue_titles: dict[str, str] = {}
+    seen_keys: set[str] = set()
+    for wl in filtered:
+        key = _extract_issue_key(wl)
+        if key and key not in seen_keys:
+            seen_keys.add(key)
+            if key in config.section_map:
+                issue_titles[key] = config.section_map[key]
+            else:
+                try:
+                    issue = await client.get_issue(key)
+                    fields = issue.get("fields", {})
+                    issue_titles[key] = (
+                        str(fields.get("summary", key)) if isinstance(fields, dict) else key
+                    )
+                except JiraTempoError:
+                    logger.warning("Could not fetch issue %s, using key as title", key)
+                    issue_titles[key] = key
+
+    return WeekContext(
+        monday=monday,
+        friday=friday,
+        worklogs=filtered,
+        issue_titles=issue_titles,
+        worker_key=worker_key,
+    )
+
+
 async def generate_weekly_report(
     client: JiraTempoClient,
     config: Config,
@@ -286,62 +378,13 @@ async def generate_weekly_report(
     tz = pytz.timezone(config.timezone)
     today = datetime.now(tz).date()
     target = target_date or today
-    monday, friday = week_range(target)
 
-    date_from = monday.isoformat()
-    date_to = friday.isoformat()
-
-    logger.info("Fetching worklogs %s .. %s", date_from, date_to)
-
-    worker_keys: list[str] | None = None
-    if author_filter:
-        worker_keys = [author_filter]
-    else:
-        # UX-7: use username override if provided, else config.jira_user.
-        target_user = username if username else config.jira_user
-        wk = await client.find_worker_key(target_user)
-        worker_keys = [wk]
-
-    worklogs = await client.search_worklogs(date_from, date_to, worker_keys=worker_keys)
-
-    # Fetch-level dedupe: Tempo guarantees unique worklog ids, so a repeated
-    # id inside one response is a fetch/pagination defect. Drop it here so
-    # every render path (txt/md/json) works from clean data.
-    worklogs, duplicate_ids = dedupe_worklogs_by_id(list(worklogs))
-    for dup_id in duplicate_ids:
-        logger.warning("Weekly report: dropped duplicate worklog id %s from Tempo response", dup_id)
-    logger.info("Got %d worklogs", len(worklogs))
-
-    # Filter worklogs to the target week (Tempo may return slightly out-of-range).
-    # Tempo API returns "started" field (e.g. "2026-06-08 00:00:00.000"),
-    # not "startDate" — handle both for compatibility.
-    filtered: list[dict[str, Any]] = []
-    for wl in worklogs:
-        raw_date = wl.get("started") or wl.get("startDate")
-        wl_date = parse_tempo_date(raw_date)
-        if wl_date is None or not (monday <= wl_date <= friday):
-            continue
-        filtered.append(wl)
-
-    # Build issue summaries cache (fetch from Jira for unknown titles).
-    issue_titles: dict[str, str] = {}
-    seen_keys: set[str] = set()
-    for wl in filtered:
-        key = _extract_issue_key(wl)
-        if key and key not in seen_keys:
-            seen_keys.add(key)
-            if key in config.section_map:
-                issue_titles[key] = config.section_map[key]
-            else:
-                try:
-                    issue = await client.get_issue(key)
-                    fields = issue.get("fields", {})
-                    issue_titles[key] = (
-                        str(fields.get("summary", key)) if isinstance(fields, dict) else key
-                    )
-                except JiraTempoError:
-                    logger.warning("Could not fetch issue %s, using key as title", key)
-                    issue_titles[key] = key
+    ctx = await fetch_week_context(
+        client, config, target=target, username=username, author_filter=author_filter
+    )
+    monday, friday = ctx.monday, ctx.friday
+    filtered = ctx.worklogs
+    issue_titles = ctx.issue_titles
 
     # UX-7: when a username override is provided, use it as the report
     # header author label too, so the header matches the report subject.
