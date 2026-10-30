@@ -12,7 +12,6 @@ import asyncio
 import contextlib
 import logging
 import platform
-import re
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -43,7 +42,17 @@ from .task_templates import (
 from .tasks_report import generate_tasks_report
 from .team_report import generate_team_report
 from .templates.loader import build_registry, resolve_template
-from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
+from .utils import (
+    format_seconds_to_human,
+    iso_now,
+    parse_duration_to_seconds,
+)
+from .utils import (
+    parse_iso_datetime as _parse_iso_datetime,  # noqa: F401 — re-export alias
+)
+from .utils import (
+    validate_issue_key as _validate_issue_key,  # noqa: F401 — re-export alias
+)
 from .week_status import week_status_text
 from .worklog_aggregates import (
     aggregate_sections,
@@ -51,11 +60,13 @@ from .worklog_aggregates import (
     validate_group_by,
     validate_include_totals,
 )
+from .worklog_batch import (
+    BatchEntryResult,
+    render_batch_results,
+    validate_batch_entries,
+)
 
 logger = logging.getLogger("jira-tempo-mcp")
-
-# Regex for validating Jira issue keys (m10).
-_ISSUE_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 
 # --- Tool definitions ---
 
@@ -93,9 +104,7 @@ TOOLS: list[Tool] = [
                 },
                 "include_totals": {
                     "type": "boolean",
-                    "description": (
-                        "Append a total-hours line for the period. Default false."
-                    ),
+                    "description": ("Append a total-hours line for the period. Default false."),
                     "default": False,
                 },
             },
@@ -150,6 +159,59 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["issue_key", "time_spent"],
+        },
+    ),
+    Tool(
+        name="create_worklogs",
+        description=(
+            "Track SEVERAL time entries in one batch call (P7). "
+            "entries: array of {issue_key, time_spent, comment?, date_started?}, "
+            "max 20. ALL entries are validated BEFORE the first write — if any "
+            "entry is invalid, NOTHING is written. Valid entries are then "
+            "written sequentially with NO retries (retries could duplicate "
+            "hours); one entry's failure does not stop the rest. The response "
+            "lists each entry as OK (worklog ID) or FAILED (reason) plus a "
+            "written/failed summary."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "issue_key": {
+                                "type": "string",
+                                "description": "Jira issue key (e.g. PROJECT-100). Required.",
+                            },
+                            "time_spent": {
+                                "type": "string",
+                                "description": (
+                                    "Human duration in Tempo format: "
+                                    "'1h 30m', '2h', '45m'. Required."
+                                ),
+                            },
+                            "comment": {
+                                "type": "string",
+                                "description": "Optional worklog comment.",
+                            },
+                            "date_started": {
+                                "type": "string",
+                                "description": (
+                                    "ISO date or datetime (YYYY-MM-DD or "
+                                    "2026-06-19T10:00:00+03:00). Defaults to today."
+                                ),
+                            },
+                        },
+                        "required": ["issue_key", "time_spent"],
+                    },
+                    "description": "1–20 worklog entries to create.",
+                },
+            },
+            "required": ["entries"],
         },
     ),
     Tool(
@@ -211,8 +273,7 @@ TOOLS: list[Tool] = [
                 "parent_key": {
                     "type": "string",
                     "description": (
-                        "Optional parent issue key (e.g. 'DEVOPS-100') for subtasks "
-                        "or epic links."
+                        "Optional parent issue key (e.g. 'DEVOPS-100') for subtasks or epic links."
                     ),
                 },
             },
@@ -686,22 +747,19 @@ TOOLS: list[Tool] = [
                 "username": {
                     "type": "string",
                     "description": (
-                        "Jira username to check. Defaults to the configured "
-                        "JIRA_USER."
+                        "Jira username to check. Defaults to the configured JIRA_USER."
                     ),
                 },
                 "target_date": {
                     "type": "string",
                     "description": (
-                        "Any date within the target week (ISO YYYY-MM-DD). "
-                        "Defaults to today."
+                        "Any date within the target week (ISO YYYY-MM-DD). Defaults to today."
                     ),
                 },
                 "expected_hours": {
                     "type": "number",
                     "description": (
-                        "Weekly work norm in hours used for the norm check. "
-                        "Defaults to 40."
+                        "Weekly work norm in hours used for the norm check. Defaults to 40."
                     ),
                     "default": 40,
                 },
@@ -730,15 +788,6 @@ def _json_safe(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
     return str(obj)
-
-
-def _validate_issue_key(key: str) -> str:
-    """Validate Jira issue key format. Raises ValueError if invalid."""
-    if not _ISSUE_KEY_RE.match(key):
-        raise ValueError(
-            f"Invalid issue key {key!r}. Expected format: PROJECT-NUMBER (e.g. PROJECT-100)."
-        )
-    return key
 
 
 def _validate_date(date_str: str, field_name: str) -> date:
@@ -774,34 +823,9 @@ def _reject_unknown_keys(arguments: dict[str, Any], allowed: tuple[str, ...]) ->
         )
 
 
-# Matches a numeric timezone offset WITHOUT a colon at end of string,
-# e.g. "...+0300" or "...-0500". Used to normalise such offsets so that
-# datetime.fromisoformat accepts them (it requires "+03:00").
-_TZ_OFFSET_NO_COLON_RE = re.compile(r"([+-]\d{2})(\d{2})$")
-
-
-def _parse_iso_datetime(value: str) -> datetime:
-    """Parse an ISO-8601 datetime tolerantly.
-
-    Handles variants that ``datetime.fromisoformat`` rejects on Python 3.11:
-    a numeric offset without a colon (``+0300``) and a trailing ``Z``.
-    Microseconds (``.000``) are already accepted on 3.11+.
-
-    Raises :class:`ValueError` with an actionable message if the value
-    cannot be parsed by any known shape.
-    """
-    normalized = value.strip()
-    if normalized.endswith("Z"):
-        normalized = normalized[:-1] + "+00:00"
-    # Insert the colon a numeric offset lacks: "+0300" -> "+03:00".
-    normalized = _TZ_OFFSET_NO_COLON_RE.sub(r"\1:\2", normalized)
-    try:
-        return datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValueError(
-            f"Could not parse date_started {value!r}: expected ISO-8601 "
-            f"(e.g. '2026-06-19T10:00:00+03:00'). Details: {exc}"
-        ) from exc
+# _validate_issue_key and _parse_iso_datetime moved to utils.py (P7: the
+# batch create_worklogs shares them with the single create_worklog);
+# imported above under the same local names.
 
 
 def _user_friendly_error(exc: Exception) -> str:
@@ -1099,6 +1123,76 @@ async def _handle_create_worklog(
     return msg
 
 
+async def _handle_create_worklogs(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """P7: batch worklog creation.
+
+    Contract: (1) full validation of ALL entries BEFORE the first write —
+    an invalid input raises before even the worker-key lookup, nothing is
+    written; (2) sequential writes with NO auto-retries (POST /worklogs is
+    not idempotent); (3) one entry's failure does not stop the rest;
+    (4) per-entry ok(id)/error(reason) plus a written/failed summary.
+    """
+    entries = validate_batch_entries(arguments.get("entries"), timezone=config.timezone)
+
+    # One worker resolution for the whole batch (first network call —
+    # happens only after every entry passed validation).
+    worker = await client.find_worker_key(config.jira_user)
+
+    results: list[BatchEntryResult] = []
+    for idx, entry in enumerate(entries, start=1):
+        hours = format_seconds_to_human(entry.seconds)
+        try:
+            created = await client.create_worklog(
+                issue_key=entry.issue_key,
+                time_spent_seconds=entry.seconds,
+                date_started=entry.date_started,
+                comment=entry.comment,
+                author_account_id=worker,
+            )
+            wl_id = str(created.get("tempoWorklogId") or created.get("id") or "?")
+            results.append(
+                BatchEntryResult(
+                    index=idx,
+                    issue_key=entry.issue_key,
+                    hours=hours,
+                    date_started=entry.date_started,
+                    ok=True,
+                    worklog_id=wl_id,
+                )
+            )
+            logger.info(
+                "Batch create: recorded %s (%s on %s), worklog %s",
+                entry.issue_key,
+                hours,
+                entry.date_started,
+                wl_id,
+            )
+        except JiraTempoError as exc:
+            # No retry — a POST retry could duplicate the hours. Report and
+            # continue with the remaining entries (contract §3.3).
+            reason = _user_friendly_error(exc)
+            results.append(
+                BatchEntryResult(
+                    index=idx,
+                    issue_key=entry.issue_key,
+                    hours=hours,
+                    date_started=entry.date_started,
+                    ok=False,
+                    error=reason,
+                )
+            )
+            logger.warning(
+                "Batch create: FAILED %s (%s on %s): %s",
+                entry.issue_key,
+                hours,
+                entry.date_started,
+                reason,
+            )
+    return render_batch_results(results)
+
+
 async def _handle_delete_worklog(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
@@ -1210,9 +1304,7 @@ async def _handle_list_issue_templates(
     return "\n".join(lines)
 
 
-def _select_task_template(
-    name: str, config: Config
-) -> TaskTemplate:
+def _select_task_template(name: str, config: Config) -> TaskTemplate:
     """Resolve a task template by name from the registry.
 
     Raises ``ValueError`` listing the available names when not found —
@@ -1885,6 +1977,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
     "get_worklog": _handle_get_worklog,
     "create_worklog": _handle_create_worklog,
+    "create_worklogs": _handle_create_worklogs,
     "delete_worklog": _handle_delete_worklog,
     "get_issue": _handle_get_issue,
     "create_issue": _handle_create_issue,
