@@ -315,6 +315,20 @@ TOOLS: list[Tool] = [
                         "configured JIRA_USER). If provided, worklogs are filtered to this user."
                     ),
                 },
+                "include_dropped": {
+                    "type": "boolean",
+                    "description": (
+                        "Also report the lines the txt renderer drops as title echoes (B4). "
+                        "txt: a 'Dropped lines (N)' section WITH the dropped content is appended "
+                        "to this tool's response — the report file itself is unchanged. "
+                        "md: always 'Dropped lines (0)' by construction (documented behaviour). "
+                        "json: the JSON output gains a (currently always empty) 'dropped' field. "
+                        "Default false — output is identical to previous versions. The dropped "
+                        "content goes to this response only; server logs carry the counter, "
+                        "never the content."
+                    ),
+                    "default": False,
+                },
             },
             "required": [],
             "additionalProperties": False,
@@ -369,6 +383,20 @@ TOOLS: list[Tool] = [
                         "File extension matches the format."
                     ),
                     "default": "txt",
+                },
+                "include_dropped": {
+                    "type": "boolean",
+                    "description": (
+                        "Also report the lines the txt renderer drops as title echoes (B4). "
+                        "txt: a 'Dropped lines (N)' section WITH the dropped content is appended "
+                        "to this tool's response — the report file itself is unchanged. "
+                        "md: always 'Dropped lines (0)' by construction (documented behaviour). "
+                        "json: the JSON output gains a (currently always empty) 'dropped' field. "
+                        "Default false — output is identical to previous versions. The dropped "
+                        "content goes to this response only; server logs carry the counter, "
+                        "never the content."
+                    ),
+                    "default": False,
                 },
             },
             "required": [],
@@ -730,6 +758,31 @@ def _validate_output_dir(raw_dir: str, config: Config, *, team: bool = False) ->
             f"Path traversal is not permitted."
         ) from None
     return resolved
+
+
+# --- include_dropped response channel (B4, ArchComm 2026-10-30 §2 item 4) ---
+
+
+def _format_dropped_section(dropped: list[str], fmt: str) -> str:
+    """Appendix for generator tool responses when ``include_dropped`` is set.
+
+    Channel contract: the tool RESPONSE is the owner channel, so the txt
+    section carries the dropped line CONTENT; the report FILE stays
+    unchanged and server logs carry the ``Dropped %d lines`` counter only
+    (red line §2 item 9 — dropped content never reaches any log). md always
+    reports (0) by construction (committee decision — documented in the
+    tool schema); json reports through the file's ``dropped`` field instead
+    of a response section.
+    """
+    if fmt == "txt":
+        if not dropped:
+            return "\n\nDropped lines (0)"
+        lines = [f"Dropped lines ({len(dropped)})"]
+        lines.extend(f"  - {line}" for line in dropped)
+        return "\n\n" + "\n".join(lines)
+    if fmt == "md":
+        return "\n\nDropped lines (0)"
+    return ""
 
 
 # --- Worklog formatting helper (UX-4, UX-10) ---
@@ -1179,7 +1232,8 @@ async def _handle_generate_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
     _reject_unknown_keys(
-        arguments, ("target_date", "output_dir", "template", "format", "username")
+        arguments,
+        ("target_date", "output_dir", "template", "format", "username", "include_dropped"),
     )
     target = None
     if td := arguments.get("target_date"):
@@ -1208,6 +1262,9 @@ async def _handle_generate_report(
     if username is not None and (not isinstance(username, str) or not username.strip()):
         raise ValueError("'username' must be a non-empty string.")
 
+    fmt = arguments.get("format", "txt")
+    include_dropped = bool(arguments.get("include_dropped", False))
+    dropped: list[str] = []
     path = await generate_weekly_report(
         client,
         config,
@@ -1215,10 +1272,15 @@ async def _handle_generate_report(
         output_dir=out_dir,
         template=template,
         registry=registry,
-        fmt=arguments.get("format", "txt"),
+        fmt=fmt,
         username=username,
+        include_dropped=include_dropped,
+        dropped_out=dropped if include_dropped else None,
     )
-    return f"Weekly report generated: {path}\nReports directory: {Path(path).parent}"
+    response = f"Weekly report generated: {path}\nReports directory: {Path(path).parent}"
+    if include_dropped:
+        response += _format_dropped_section(dropped, fmt)
+    return response
 
 
 async def _handle_generate_team_report(
@@ -1226,7 +1288,16 @@ async def _handle_generate_team_report(
 ) -> str:
     _reject_unknown_keys(
         arguments,
-        ("users", "date_from", "date_to", "section_map", "template", "output_dir", "format"),
+        (
+            "users",
+            "date_from",
+            "date_to",
+            "section_map",
+            "template",
+            "output_dir",
+            "format",
+            "include_dropped",
+        ),
     )
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
@@ -1262,6 +1333,8 @@ async def _handle_generate_team_report(
             f"Available: {', '.join(registry.names()) or '(none)'}."
         )
 
+    fmt = arguments.get("format", "txt")
+    include_dropped = bool(arguments.get("include_dropped", False))
     result = await generate_team_report(
         client,
         config,
@@ -1272,9 +1345,13 @@ async def _handle_generate_team_report(
         template=template,
         registry=registry,
         output_dir=out_dir,
-        fmt=arguments.get("format", "txt"),
+        fmt=fmt,
+        include_dropped=include_dropped,
     )
-    return f"{result.summary}\nReports directory: {result.file_path.parent}"
+    response = f"{result.summary}\nReports directory: {result.file_path.parent}"
+    if include_dropped:
+        response += _format_dropped_section(result.dropped_lines, fmt)
+    return response
 
 
 async def _handle_list_report_templates(

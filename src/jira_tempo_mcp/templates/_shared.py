@@ -317,6 +317,51 @@ def _group_identity_key(comment: str | None) -> str:
     return ""
 
 
+def drop_lines_matching_title_counted(
+    comment: str | None,
+    title: str | None,
+    dropped_out: list[str],
+) -> str:
+    """Title-echo drop with parallel collection of removed lines (B4).
+
+    Applies exactly the :func:`drop_lines_matching_title` filtering and, in
+    addition, appends every line actually removed (a title echo the reader
+    would otherwise no longer see) to ``dropped_out`` in source order. Lines
+    restored by the never-orphan-hours fallbacks (all-echo comment,
+    whitespace-only remainder) are NOT recorded — nothing was hidden in
+    those cases, so counting them would overstate the loss.
+
+    The plain :func:`drop_lines_matching_title` delegates here with a
+    discard list, so the two filters cannot drift apart. ``dropped_out``
+    content is owner-channel data (tool response): it must never be logged.
+    """
+    if not comment:
+        return ""
+    if not title:
+        return comment
+    title_key = normalize_comment(strip_bullet_marker(title))
+    if not title_key:
+        return comment
+    normalized = str(comment).replace("\r\n", "\n").replace("\r", "\n")
+    kept: list[str] = []
+    removed: list[str] = []
+    for line in normalized.split("\n"):
+        if normalize_comment(strip_bullet_marker(line)) == title_key:
+            removed.append(line)
+        else:
+            kept.append(line)
+    if not kept:
+        # Every line echoed the title — keep the original so hours render.
+        return comment
+    # `or comment`: a kept remainder of whitespace-only lines strips to ""
+    # and orphans the group's hours downstream — fall back to the original.
+    result = "\n".join(kept).strip()
+    if not result:
+        return comment
+    dropped_out.extend(removed)
+    return result
+
+
 def drop_lines_matching_title(comment: str | None, title: str | None) -> str:
     """Drop comment lines that merely echo the block title (presentation fix).
 
@@ -344,26 +389,10 @@ def drop_lines_matching_title(comment: str | None, title: str | None) -> str:
     Presentation-level helper: only the txt renderers (where the block title
     is printed above the detail lines) wire this in; md/json renderers keep
     the raw comment untouched so no information is lost in structured output.
+    Callers that need to KNOW what was removed (B4 ``include_dropped``) use
+    :func:`drop_lines_matching_title_counted` instead.
     """
-    if not comment:
-        return ""
-    if not title:
-        return comment
-    title_key = normalize_comment(strip_bullet_marker(title))
-    if not title_key:
-        return comment
-    normalized = str(comment).replace("\r\n", "\n").replace("\r", "\n")
-    kept = [
-        line
-        for line in normalized.split("\n")
-        if normalize_comment(strip_bullet_marker(line)) != title_key
-    ]
-    if not kept:
-        # Every line echoed the title — keep the original so hours render.
-        return comment
-    # `or comment`: a kept remainder of whitespace-only lines strips to ""
-    # and orphans the group's hours downstream — fall back to the original.
-    return "\n".join(kept).strip() or comment
+    return drop_lines_matching_title_counted(comment, title, [])
 
 
 def render_comment_lines(
@@ -442,6 +471,7 @@ def md_escape_cell(text: str) -> str:
 __all__ = [
     "dedupe_worklogs_by_id",
     "drop_lines_matching_title",
+    "drop_lines_matching_title_counted",
     "extract_comment",
     "extract_issue_key",
     "extract_seconds",

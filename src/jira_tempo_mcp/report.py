@@ -148,11 +148,16 @@ def _render_weekly_json(
     friday: date,
     issue_titles: dict[str, str],
     author: str | None = None,
+    include_dropped: bool = False,
 ) -> str:
     """Render weekly report as structured JSON.
 
     author: optional override for the report ``author`` field (e.g. when
         generating a report for a different user via ``username``).
+    include_dropped: when True, adds a ``dropped`` field (currently always an
+        empty list — the JSON renderer keeps raw comments, so nothing is
+        ever dropped). Absent when False so default output stays
+        byte-identical (B4, ArchComm contract §2 item 4).
     """
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     total_seconds = 0
@@ -229,6 +234,10 @@ def _render_weekly_json(
         "total_human": format_seconds_to_human(total_seconds),
         "issues": issues,
     }
+    if include_dropped:
+        # Structured output never drops content, so the field is always
+        # empty today; it exists so consumers can rely on the key.
+        data["dropped"] = []
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -243,6 +252,8 @@ async def generate_weekly_report(
     registry: TemplateRegistry | None = None,
     fmt: str = "txt",
     username: str | None = None,
+    include_dropped: bool = False,
+    dropped_out: list[str] | None = None,
 ) -> str:
     """Generate a weekly report file and return its path.
 
@@ -261,6 +272,13 @@ async def generate_weekly_report(
     username: optional Jira username to generate the report for (instead of
               ``config.jira_user``). If provided, worklogs are filtered to
               this user's worker key.
+    include_dropped: when True (B4), collects the lines the txt renderer
+              drops as title echoes. The report FILE is unchanged; the
+              collected content is delivered via ``dropped_out`` and the log
+              carries the counter only (never the content).
+    dropped_out: optional output list receiving the dropped lines when
+              ``include_dropped`` is True (owner-channel data — the MCP tool
+              response; never log it).
     """
     if fmt not in _VALID_FORMATS:
         raise ValueError(f"Invalid format {fmt!r}. Supported: {', '.join(_VALID_FORMATS)}.")
@@ -339,7 +357,13 @@ async def generate_weekly_report(
         )
     elif fmt == "json":
         report_text = _render_weekly_json(
-            filtered, config, monday, friday, issue_titles, author=header_author
+            filtered,
+            config,
+            monday,
+            friday,
+            issue_titles,
+            author=header_author,
+            include_dropped=include_dropped,
         )
     else:
         # txt: use the template system (backward compatible).
@@ -351,6 +375,10 @@ async def generate_weekly_report(
 
                 template = DefaultTemplate()
 
+        collector: list[str] = []
+        render_kwargs: dict[str, Any] = {}
+        if include_dropped:
+            render_kwargs["dropped_lines"] = collector
         report_text = template.render(
             filtered,
             config,
@@ -358,7 +386,14 @@ async def generate_weekly_report(
             friday=friday,
             issue_titles=issue_titles,
             author=header_author,
+            **render_kwargs,
         )
+        if include_dropped:
+            if dropped_out is not None:
+                dropped_out.extend(collector)
+            # Counter only — dropped CONTENT never goes to logs (red line,
+            # ArchComm contract §2 item 9).
+            logger.info("Dropped %d lines", len(collector))
 
     # --- Determine output path ---
     if output_dir is None:

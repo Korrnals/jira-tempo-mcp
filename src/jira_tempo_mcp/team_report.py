@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -61,6 +61,9 @@ class TeamReportResult:
     file_path: Path
     summary: str
     per_user_totals: dict[str, int]
+    # B4 (include_dropped): lines the txt renderer dropped as title echoes.
+    # Owner-channel data (tool response) — never log the content.
+    dropped_lines: list[str] = field(default_factory=list)
 
 
 class RateLimitError(JiraTempoError):
@@ -343,8 +346,15 @@ def _render_team_json(
     friday: date,
     issue_titles: dict[str, str],
     user_order: list[tuple[str, str]],
+    include_dropped: bool = False,
 ) -> str:
-    """Render team report as structured JSON."""
+    """Render team report as structured JSON.
+
+    include_dropped: when True, adds a ``dropped`` field (currently always an
+        empty list — the JSON renderer keeps raw comments, so nothing is
+        ever dropped). Absent when False so default output stays
+        byte-identical (B4).
+    """
     per_user: list[dict[str, Any]] = []
     cross_issue_totals: dict[str, int] = defaultdict(int)
     grand_total = 0
@@ -449,6 +459,10 @@ def _render_team_json(
         "per_user": per_user,
         "top_issues": top_issues_data,
     }
+    if include_dropped:
+        # Structured output never drops content — the key exists so
+        # consumers can rely on it.
+        data["dropped"] = []
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -464,6 +478,7 @@ async def generate_team_report(
     registry: TemplateRegistry | None = None,
     output_dir: Path | None = None,
     fmt: str = "txt",
+    include_dropped: bool = False,
 ) -> TeamReportResult:
     """Generate a team report file and return its path + summary.
 
@@ -480,6 +495,10 @@ async def generate_team_report(
         ``config.team_output_dir`` or ``./reports``.
     fmt: output format — ``txt`` (default, uses template system),
          ``md`` (Markdown), ``json`` (structured JSON).
+    include_dropped: when True (B4), collects the lines the txt renderer
+        drops as title echoes into ``TeamReportResult.dropped_lines``. The
+        report FILE is unchanged; the log carries the counter only (never
+        the content). json gains a ``dropped`` field; md is a no-op.
     """
     if not users:
         raise ValueError("users must be a non-empty list of Jira usernames.")
@@ -514,13 +533,20 @@ async def generate_team_report(
         all_worklogs.extend(worklogs_by_user.get(u, []))
 
     # Render based on format.
+    collector: list[str] = []
     if fmt == "md":
         report_text = _render_team_md(
             worklogs_by_user, effective_config, monday, friday, issue_titles, user_order
         )
     elif fmt == "json":
         report_text = _render_team_json(
-            worklogs_by_user, effective_config, monday, friday, issue_titles, user_order
+            worklogs_by_user,
+            effective_config,
+            monday,
+            friday,
+            issue_titles,
+            user_order,
+            include_dropped=include_dropped,
         )
     else:
         # txt: use the template system (backward compatible).
@@ -532,6 +558,9 @@ async def generate_team_report(
 
                 template = TeamReportTemplate()
 
+        render_kwargs: dict[str, Any] = {}
+        if include_dropped:
+            render_kwargs["dropped_lines"] = collector
         report_text = template.render(
             all_worklogs,
             effective_config,
@@ -540,7 +569,12 @@ async def generate_team_report(
             issue_titles=issue_titles,
             users=user_order,
             per_user_worklogs=worklogs_by_user,
+            **render_kwargs,
         )
+    if include_dropped:
+        # Counter only — dropped CONTENT never goes to logs (red line,
+        # ArchComm contract §2 item 9).
+        logger.info("Dropped %d lines", len(collector))
 
     # --- Output path ---
     if output_dir is None:
@@ -599,6 +633,7 @@ async def generate_team_report(
         file_path=out_path,
         summary="\n".join(summary_lines),
         per_user_totals=per_user_totals,
+        dropped_lines=collector,
     )
 
 
