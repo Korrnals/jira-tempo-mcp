@@ -53,7 +53,7 @@ A `pick` (single-select) question with these options:
 
 | Label (click) | Effect |
 |---|---|
-| **📊 Недельный отчёт (по умолчанию)** | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, date_from=<Mon>, date_to=<Sun>)` immediately. Skips follow-up questions. Handles the 80% case (single user, current week, basic report) in one click. |
+| **📊 Недельный отчёт (по умолчанию)** | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, target_date=<today>)` immediately — the generator resolves the week (Mon–Fri) itself. Skips follow-up questions. Handles the 80% case (single user, current week, basic report) in one click. |
 | **🎯 Настроить параметры** | Shows follow-up questions (type, format, period, user, path). |
 | **👥 Командный отчёт** | Shows users (multi-select) + type/format/period follow-ups for a team report. |
 
@@ -67,8 +67,8 @@ interaction.
 |---|---|---|---|
 | 1 | `pick` | Тип отчёта (see `JTM_AGENT.md` §7-type matrix) | `basic` |
 | 2 | `pick` | Формат (txt, md, json) | follows type |
-| 3a | `input` | Период начала (ISO YYYY-MM-DD) | Monday of current work week |
-| 3b | `input` | Период конца (ISO YYYY-MM-DD) | Sunday of current work week |
+| 3a | `input` | Целевая неделя — любая дата внутри неё (ISO YYYY-MM-DD); генератор развернёт её в пн–пт сам | today (current week) |
+| 3b | `input` | Период team-отчёта — начало и конец через запятую (ISO YYYY-MM-DD) | Monday and Friday of the current week |
 | 4 | `input` | Пользователь (Jira username; comma-separated for team) | `get_current_user` |
 | 5 | `input` | Путь сохранения (абсолютный) | `REPORT_OUTPUT_DIR` from config |
 
