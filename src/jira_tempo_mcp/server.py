@@ -33,6 +33,7 @@ from .client import (
 )
 from .config import Config, load_config
 from .report import fetch_week_context, generate_weekly_report
+from .report_gaps import build_week_gaps, render_week_gaps, resolve_since
 from .task_templates import (
     TEMPLATE_ERRORS,
     TaskTemplate,
@@ -762,6 +763,41 @@ TOOLS: list[Tool] = [
                         "Weekly work norm in hours used for the norm check. Defaults to 40."
                     ),
                     "default": 40,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="report_gaps",
+        description=(
+            "Read-only report gap finder (P8): lists the weeks (ISO, "
+            "Mon–Fri render window) since the given date in which the user "
+            "actually tracked time (hours > 0), and checks each against the "
+            "weekly report files (recursive *_<monday>_<friday>.* glob under "
+            "the report output dir). since defaults to January 1st of the "
+            "current year; the look-back is capped at 26 weeks (older values "
+            "are clamped, the clamp is disclosed). Response: per-week "
+            "covered/missing with tracked hours, plus a summary line. Writes "
+            "nothing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "description": (
+                        "Jira username to check. Defaults to the configured JIRA_USER."
+                    ),
+                },
+                "since": {
+                    "type": "string",
+                    "description": (
+                        "Start of the look-back window (ISO YYYY-MM-DD). "
+                        "Defaults to the start of the current year; capped "
+                        "at 26 weeks back."
+                    ),
                 },
             },
             "required": [],
@@ -1972,6 +2008,41 @@ async def _handle_week_status(
     )
 
 
+async def _handle_report_gaps(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """P8: report gap finder — strictly READ-ONLY.
+
+    Weeks (ISO, Mon–Fri render window / Mon–Sun data window) starting at
+    ``since`` (default: January 1st of the current year; look-back capped
+    at 26 weeks — older values are clamped and the clamp is disclosed) in
+    which the user tracked hours > 0 are checked against weekly report
+    files (recursive ``*_<monday>_<friday>.*`` glob) under the report
+    output root (same root as _validate_output_dir). Response: per-week
+    covered/missing + hours, then a summary line.
+    """
+    _reject_unknown_keys(arguments, ("username", "since"))
+
+    username = arguments.get("username") or config.jira_user
+    if not isinstance(username, str) or not username.strip():
+        raise ValueError("'username' must be a non-empty string.")
+
+    today = datetime.now(pytz.timezone(config.timezone)).date()
+    since, clamped = resolve_since(arguments.get("since"), today=today)
+
+    root_raw = config.report_output_dir or str(Path.home() / ".mcp" / "jira-tempo-mcp" / "reports")
+    root = Path(root_raw).resolve()
+
+    worker_key = await client.find_worker_key(username)
+    worklogs = await client.search_worklogs(
+        since.isoformat(), today.isoformat(), worker_keys=[worker_key]
+    )
+    gaps = build_week_gaps(worklogs, root=root, window_start=since, window_end=today)
+    return render_week_gaps(
+        gaps, username=username, since=since, today=today, clamped=clamped, root=root
+    )
+
+
 # Dispatch table (m3).
 _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
@@ -1996,6 +2067,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "generate_tasks_report": _handle_generate_tasks_report,
     "health_check": _handle_health_check,
     "week_status": _handle_week_status,
+    "report_gaps": _handle_report_gaps,
 }
 
 
