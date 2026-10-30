@@ -801,7 +801,9 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
-            "additionalProperties": False,
+            # No additionalProperties=false here: the B5 wave contract keeps
+            # strict schemas on the generator set only. Handler-level
+            # strictness comes from _reject_unknown_keys instead.
         },
     ),
 ]

@@ -282,5 +282,7 @@ class TestRenderAndSchema:
     def test_schema_registered(self) -> None:
         tool = next(t for t in TOOLS if t.name == "report_gaps")
         assert tool.inputSchema["required"] == []
-        assert tool.inputSchema["additionalProperties"] is False
+        # B5 wave contract: strict additionalProperties=false stays on the
+        # generator set — report_gaps is handler-strict instead.
+        assert "additionalProperties" not in tool.inputSchema
         assert set(tool.inputSchema["properties"]) == {"username", "since"}
