@@ -50,7 +50,7 @@ The MCP server exposes **19 tools**. The report matrix above uses the generator 
 | Group | Tools | Used by |
 |---|---|---|
 | Report generators | `generate_weekly_report`, `generate_team_report`, `generate_tasks_report` | Scenarios 1–3 |
-| Report templates | `list_report_templates`, `preview_report_template` | Custom templates (type 7) |
+| Report templates | `list_report_templates`, `preview_report_template` | Custom templates (type 7); `preview_report_template` also gates the Scenario 4 fallback |
 | Worklog reads | `list_worklogs`, `get_worklog` | Scenario 4 (manual fallback) |
 | Worklog writes | `create_worklog`, `delete_worklog` | Scenario 5 (`create_worklog` only; `delete_worklog` stays out of scope) |
 | Issue reads | `get_issue`, `list_issues_by_jql`, `list_favorite_issues` | Scenario 4. `get_issue` always returns `description`; `list_issues_by_jql` appends it only with `include_description=true` (opt-in, default `false`) |
@@ -107,6 +107,16 @@ The user asks for something no generator produces in one call: an arbitrary JQL 
 2. The request cannot be decomposed into a sequence of generator calls (e.g. one `generate_weekly_report` per user, then concatenated), AND
 3. The user explicitly needs the non-standard shape (a hard requirement, not a preference).
 
+**Preview gate (mandatory before any fallback).** Before composing anything by hand, render the closest built-in template against the real week and compare its form with the request:
+
+```text
+preview_report_template(template_name="default", live=true, target_date=<any date of the target week>)
+```
+
+`live=true` renders the week's real worklogs into the tool response without writing a file (mock sample data is the tool's default; the live mode ships with this server release). Fallback is allowed ONLY when the preview confirms a form mismatch — a shape the generator demonstrably cannot produce. An untested "the generator probably won't fit" is not a mismatch.
+
+**Fallback evidence (mandatory).** The fallback response must contain one line of evidence: which template was previewed and what mismatch was confirmed — e.g. «Previewed `default` live for the week: the generator renders Mon–Fri issue-grouped stable sections; the request needs per-sprint grouping, which no built-in template produces». A fallback without this line is treated as improvisation (see §Hard rules).
+
 When falling back:
 
 1. Call `list_worklogs` for the requested date range (raw worklogs: issue key, time spent, comment, date).
@@ -116,6 +126,12 @@ When falling back:
 5. Compose the report manually, preserving the structure of the closest built-in template.
 6. Save the file to the same `REPORT_OUTPUT_DIR` the generators use, or the user-specified path.
 7. **State explicitly in the response** that manual composition was used, and why no generator fit.
+
+**Friday completeness ritual (mandatory steps of every Friday report run).** Catalog gaps are found by ritual, not by memory:
+
+1. Generate the weekly report for the week (§Scenario 1).
+2. Call `week_status(username, target_date, expected_hours=40)` — days without entries and the week total against the norm must be explained before anything is sent. (`week_status` ships with this server release.)
+3. Compare the report catalog of the previous FOUR weeks against the tracking and backfill any missing period (one §Scenario 2 run per week) before moving on.
 
 ### Scenario 5 — Time tracking with a summary comment
 
@@ -146,6 +162,43 @@ create_worklog:
 Reply: «Затрекал 3h на ABC-123 (worklog 12345)».
 ```
 
+**"Current task" requests** («затрекай 3 часа по текущей задаче» — no issue key given). `create_worklog` is a write: never guess the target, resolve it explicitly.
+
+1. Call `list_user_tasks(status="В работе")` and pick a **project task, not a service tracker**. Recurring tracker/overhead tickets (e.g. the permanent Q4 tracker issues) are always "In Progress" and always freshly updated — they win any "most recent" heuristic and must be excluded explicitly.
+2. Prefer the project task with the most recent meaningful activity. If two or more candidates are equally plausible — or only trackers remain — ask the owner which issue to book the time on.
+3. Confirm before writing: state the resolved issue, the duration, and the composed comment («Затрекать 3h на DEVOPS-11023 с комментарием … — подтверждаешь?»). Call `create_worklog` only after an explicit yes.
+
+#### Template: time-tracking comment
+
+The worklog comment is the raw material of the weekly report: the renderer copies comment lines into the report's "+"-subpoints almost verbatim. Write the comment in the same vocabulary the report subpoints use — a good comment makes the report write itself, a vague one becomes water in the report. Style contract: §Worklog comment style (≤5 bullets, verb-led, plain professional language, no secrets).
+
+Worked examples (comment bullets → how they land as report subpoints):
+
+```text
+Comment:
+  - Реализовал агента haproxy-agent для платформы KAP: конфигурация генерируется из шаблона
+Report subpoint:
+  + реализация агента haproxy-agent для платформы KAP
+
+Comment:
+  - Настроил ежедневное резервное копирование PostgreSQL на стенде dev-03
+  - Проверил восстановление из бэкапа на чистом томе
+Report subpoints:
+  + настройка резервного копирования PostgreSQL на стенде dev-03
+  + проверка восстановления из бэкапа
+
+Comment:
+  - Локализовал причину задержки пайплайна отчётов — очередь на стороне Tempo API
+  - Добавил повторные запросы к Tempo API с экспоненциальной паузой
+Report subpoints:
+  + диагностика задержек в пайплайне отчётов
+  + стабилизация запросов к Tempo API
+```
+
+Anti-examples: «работал по задачам» (no verb, no substance) · «фиксил баги + созвон» (session shorthand, undeclared abbreviation) · a 10-line session log (violates the ≤5-bullet contract).
+
+**Friday completeness ritual (time-tracking leg).** Track the week's missing entries first, then run the §Scenario 4 ritual: `week_status(username, target_date)` to verify days without entries and the total against the norm, generate the weekly report, and compare the catalog of the previous FOUR weeks against the tracking.
+
 ### Scenario 6 — Task creation + decomposition
 
 The user describes a task in free form («подготовь новый стенд для пилота») and expects a Jira issue — with subtasks when a template covers the task shape.
@@ -173,9 +226,10 @@ Save path is rarely asked — default to `REPORT_OUTPUT_DIR` and state the path 
 
 ## Save paths
 
-- **Default:** `REPORT_OUTPUT_DIR` from the MCP server config. The generator writes the file; the agent reports the absolute path.
-- **User-specified path:** if the user gives an absolute path, pass it to the generator's output parameter if supported. Otherwise save to `REPORT_OUTPUT_DIR` and report the actual path back.
-- The agent does NOT create directories manually to satisfy a custom layout. If the target directory does not exist, save to `REPORT_OUTPUT_DIR` and tell the user where the file landed.
+- **Default root:** `REPORT_OUTPUT_DIR` from the MCP server config; when the variable is unset, the root falls back to `~/.mcp/jira-tempo-mcp/reports/`. The generator writes the file; the agent reports the absolute path.
+- **`output_dir` containment (hard rule).** An `output_dir` argument must resolve INSIDE the report root. The server rejects anything else — `../` traversal, absolute escapes outside the root, symlink chains — with an explicit error (containment check against path traversal; a security boundary, not a preference). Missing subdirectories under the root are created by the generator itself (`mkdir -p` semantics) — the agent never creates directories manually to satisfy a layout.
+- **Komus convention** (`<Komus>/Отчеты/<ГГГГ>/<месяц>/weekly/`) therefore works only when `REPORT_OUTPUT_DIR` points at the root of the Komus reports tree — a one-time config step in the server's environment, not a per-call workaround. Inside the root, pass the week's subdirectory via `output_dir`.
+- **User-specified path:** if the user gives an absolute path under the root, pass it as `output_dir`. If the requested path lies outside the root, explain the containment rule and save under the root instead — then report the actual landing path.
 
 ## Custom templates
 
@@ -192,9 +246,18 @@ To use a custom template (type 7):
 
 The agent does NOT author template files. If the user wants a custom template that does not exist yet, tell them to create it manually in `REPORT_TEMPLATE_DIR` (a `.j2` file is recommended).
 
+## Project coupling
+
+This agent is part of the `jira-tempo-mcp` project, not an external consumer:
+
+- The server repository lives in the same workspace (`LABs/MCP/jira-tempo-mcp`) and is maintained locally — questions about tool behavior are answered by reading its source, never by guessing.
+- The built-in report templates are customized to the owner's canonical format (the Komus/Golikhin weekly report); their `list_report_templates` descriptions are the contract for what they produce.
+- When in doubt about a tool's parameters or a template's output form: call `preview_report_template` (§Scenario 4) or read `src/jira_tempo_mcp/templates/` in the server repository. Tool-level contracts live in that repository's `docs/api.md`.
+
 ## Hard rules
 
-- **Only `jira-tempo` MCP tools.** Never direct REST/CLI to Jira or Tempo. If the MCP server is unavailable, say so and point to installation — do not attempt raw HTTP.
+- **Only `jira-tempo` MCP tools.** Never direct REST/CLI to Jira or Tempo.
+- **MCP unavailable → report and stop.** If the `jira-tempo` MCP server is unreachable, say so and stop the flow. Manual composition from MCP data and direct calls are forbidden equally — a dead or flaky server never justifies routing around it, not even partially. Connection diagnostics checklist: `docs/troubleshooting.md` in the server repository.
 - **Writes are scoped.** Two write flows only: `create_worklog` with a style-contract comment (§Scenario 5) and issue creation (§Scenario 6). Never `delete_worklog`; never update or delete issues, comments, or worklogs.
 - **No secrets in output.** Never echo `JIRA_API_TOKEN`, `JIRA_PAT`, or `TEMPO_API_TOKEN`. If the user pastes a token, redact it, do not echo it back, and suggest rotation.
 - **State the saved file's absolute path** in every report response. The user must never have to guess where the file went.
@@ -203,6 +266,8 @@ The agent does NOT author template files. If the user wants a custom template th
 ## Anti-patterns
 
 - **Improvising report composition** when a generator fits. Always check the 7-type matrix first.
+- **Routing around a dead MCP server** — hand-composing a report from MCP data or calling Jira/Tempo directly when the server is unreachable. Report the outage and stop; the diagnostics checklist lives in `docs/troubleshooting.md`.
+- **Manual fallback without the preview gate** — composing by hand before a live `preview_report_template` has confirmed the form mismatch, or falling back without the one-line evidence (§Scenario 4).
 - **Asking 5+ questions.** Max 2, with defaults — the matrix and parameter table give enough to default most parameters.
 - **Silently choosing the wrong type for the audience.** Match type to the stated audience (summary for management, basic for the canonical team format).
 - **Hardcoding usernames.** Use `get_current_user` or the `username` parameter; never assume a specific user is the default.

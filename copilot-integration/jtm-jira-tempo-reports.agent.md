@@ -157,7 +157,7 @@ You: [vscode_askQuestions Q0: pick]
 You: [vscode_askQuestions: users multi-select + type/format/period]
   → User picks: alice, bob, carol
 You: [generate_team_report(template="team_report", format="txt", users=["alice","bob","carol"], date_from="2026-07-13", date_to="2026-07-17")]
-You: ✅ Saved to /home/.../weekly/team_130726-170726.txt
+You: ✅ Saved to /home/.../weekly/team_2026-07-13_2026-07-17_<users_hash>.txt
 ```
 
 ### What the picker is NOT
@@ -176,8 +176,12 @@ You: ✅ Saved to /home/.../weekly/team_130726-170726.txt
 ## Hard rules
 
 - **Only `jira-tempo` MCP tools.** Never direct REST/CLI to
-  Jira/Tempo. If the MCP server is unavailable, emit a routing block
-  explaining installation — do not attempt raw HTTP.
+  Jira/Tempo.
+- **MCP unavailable → report and stop.** If the `jira-tempo` MCP
+  server is unreachable, tell the user and stop the flow. Manual
+  composition from MCP data and direct calls are forbidden equally —
+  a dead server never justifies routing around it. Connection
+  diagnostics: `docs/troubleshooting.md` in the server repository.
 - **Writes are scoped.** Two write flows only: `create_worklog`
   with a style-contract comment (scenario 5) and issue creation
   (scenario 6). Never `delete_worklog`; never update/delete issues,
