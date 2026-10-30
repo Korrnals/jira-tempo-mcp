@@ -10,23 +10,28 @@ Pick the report type from user intent. The table is the decision matrix; the MCP
 
 | # | Type | Template | Format | MCP generator + parameters | Use when |
 |---|------|----------|--------|----------------------------|---------|
-| 1 | **basic** | `default` | `txt` | `generate_weekly_report(template="default", format="txt", username?, date_from, date_to)` | Weekly report grouped by issue with per-task work items and hours. The canonical default — one-click for the common case. |
-| 2 | **summary** | `weekly_summary` | `txt` | `generate_weekly_report(template="weekly_summary", format="txt", username?, date_from, date_to)` | Compact: total hours, top-5 tasks, no per-issue detail. For stand-up, quick overview, or management. |
-| 3 | **formatted** | `default` | `md` | `generate_weekly_report(template="default", format="md", username?, date_from, date_to)` | Markdown with tables and bold formatting. For wiki, presentations, or Confluence. |
-| 4 | **structured** | `default` | `json` | `generate_weekly_report(format="json", username?, date_from, date_to)` | Structured JSON for downstream scripts, dashboards, or ETL. |
-| 5 | **team** | `team_report` | `txt`/`md` | `generate_team_report(template="team_report", format="txt"\|"md", users?, date_from, date_to)` | Collective report for multiple users in one file. |
-| 6 | **by-tasks** | — | `md` | `generate_tasks_report(format="md", users?, date_from, date_to)` | Report grouped by tasks (not by days). For task-centric review. |
-| 7 | **custom-template** | `<custom>` | any | `generate_weekly_report(template=<custom-name>, format=<fmt>, username?, date_from, date_to)` | User-supplied template from `REPORT_TEMPLATE_DIR` (see §Custom templates). |
+| 1 | **basic** | `default` | `txt` | `generate_weekly_report(template="default", format="txt", username?, target_date?, output_dir?)` | Weekly report grouped by issue with per-task work items and hours. The canonical default — one-click for the common case. |
+| 2 | **summary** | `weekly_summary` | `txt` | `generate_weekly_report(template="weekly_summary", format="txt", username?, target_date?, output_dir?)` | Compact: total hours, top-5 tasks, no per-issue detail. For stand-up, quick overview, or management. |
+| 3 | **formatted** | `default` | `md` | `generate_weekly_report(template="default", format="md", username?, target_date?, output_dir?)` | Markdown with tables and bold formatting. For wiki, presentations, or Confluence. |
+| 4 | **structured** | `default` | `json` | `generate_weekly_report(format="json", username?, target_date?, output_dir?)` | Structured JSON for downstream scripts, dashboards, or ETL. |
+| 5 | **team** | `team_report` | `txt`/`md` | `generate_team_report(template="team_report", format="txt"\|"md", users?, date_from?, date_to?, output_dir?)` | Collective report for multiple users in one file. |
+| 6 | **by-tasks** | — | `md` | `generate_tasks_report(users?, active_only?, format?, output_dir?)` | **Snapshot of the user's current tasks** grouped by status — NOT a period report (the tool takes no period parameters). Single user: all tasks; multiple users: active tasks only. For task-centric review and stand-up prep. |
+| 7 | **custom-template** | `<custom>` | any | `generate_weekly_report(template=<custom-name>, format=<fmt>, username?, target_date?, output_dir?)` | User-supplied template from `REPORT_TEMPLATE_DIR` (see §Custom templates). |
 
 ### Parameter semantics
 
+The two generators have **different period signatures** — do not mix them:
+
 | Parameter | Required? | Default | Notes |
 |-----------|-----------|---------|-------|
+| `target_date` | optional | today | `generate_weekly_report` only — the tool has NO `date_from`/`date_to`. ISO `YYYY-MM-DD`; **any date inside the target week**. The generator resolves that week itself and renders Monday–Friday. "W29" or "this week" → pass any date of that week (e.g. its Monday). Unknown parameters are rejected with an explicit error — never send `date_from`/`date_to` to the weekly generator. |
+| `date_from`, `date_to` | optional | current week's Monday / Friday | `generate_team_report` only. ISO `YYYY-MM-DD`. |
 | `username` | optional | `JIRA_USER` from MCP config | One user. Omit for the configured default user. |
-| `users` | optional | `REPORT_TEAM_USERS` env var, or current user | List of usernames for team reports. |
-| `date_from`, `date_to` | **required** | — | ISO date `YYYY-MM-DD`. If the user says "W29" or "this week", resolve to that week's Monday–Sunday. |
-| `template` | optional | `default` for weekly, `team_report` for team | See §Built-in templates. |
-| `format` | optional | `txt` | One of `txt`, `md`, `json`. |
+| `users` | optional | `REPORT_TEAM_USERS` env var, or current user | List of usernames for team and by-tasks reports. |
+| `active_only` | optional | `false` | `generate_tasks_report` only: keep tasks in the "In Progress" status category. Forced `true` for multiple users. |
+| `template` | optional | `default` for weekly, `team_report` for team | Applied to `txt` output. See §Built-in templates. |
+| `format` | optional | `txt` (weekly, team), `md` (by-tasks) | One of `txt`, `md`, `json`. |
+| `output_dir` | optional | `REPORT_OUTPUT_DIR` root; fallback `~/.mcp/jira-tempo-mcp/reports/` | Must resolve INSIDE that root — anything else is rejected by the server's containment check (see §Save paths). |
 
 ### Built-in templates
 
@@ -72,8 +77,8 @@ The agent composes the comment from the work actually done; it never pastes raw 
 
 User: "Weekly report for alice for W29."
 
-1. Resolve dates: W29 2026 → `date_from=2026-07-13`, `date_to=2026-07-19` (Mon–Sun).
-2. Call `generate_weekly_report(template="default", format="txt", username="alice", date_from="2026-07-13", date_to="2026-07-19")`.
+1. Resolve the target week: W29 2026 → pass any date inside it, e.g. `target_date=2026-07-13` (its Monday). The generator resolves the week and renders Monday–Friday — no manual Mon/Fri arithmetic.
+2. Call `generate_weekly_report(template="default", format="txt", username="alice", target_date="2026-07-13")`.
 3. Report the saved file's absolute path to the user.
 
 ### Scenario 2 — Multiple users, individual reports
@@ -81,7 +86,7 @@ User: "Weekly report for alice for W29."
 User: "Weekly reports for W29 for alice, bob, carol."
 
 1. Clarify the type once (applies to all N reports). Default: `basic`.
-2. For each user, call `generate_weekly_report(...)` separately → N files.
+2. For each user, call `generate_weekly_report(...)` separately with the same `target_date` → N files.
 3. Report all N file paths.
 
 ### Scenario 3 — Multiple users, collective/team report
@@ -104,7 +109,7 @@ The user asks for something no generator produces in one call: an arbitrary JQL 
 
 When falling back:
 
-1. Call `list_worklogs(date_from, date_to)` for raw worklogs.
+1. Call `list_worklogs` for the requested date range (raw worklogs: issue key, time spent, comment, date).
 2. Call `get_issue(issue_key)` for each unique issue to enrich metadata. `get_issue` always returns `description` (9 fields).
 3. If a JQL filter is needed, call `list_issues_by_jql(jql, max_results)`. Descriptions are opt-in there: pass `include_description=true` to append each issue's description; the default `false` keeps list responses compact.
 4. The agent MAY also use these read-only tools to enrich the report: `get_worklog` (single worklog detail), `list_favorite_issues` (user's favorite issues), `list_user_tasks` (assigned tasks for a user), `search_users` (find user accounts by query). Manual report composition stays read-only — writes (`create_worklog`, issue creation) belong to §Scenario 5–6, never to a report being composed.
@@ -161,7 +166,7 @@ When the user request is ambiguous, ask at most 2 questions, each with a recomme
 | Axis | Question | Default |
 |------|----------|---------|
 | **Type + format** | "Which type (basic, summary, formatted, structured, team, by-tasks, custom) and format (txt, md, json)?" | `basic` + `txt` — the canonical weekly format. `summary` if the user said "short" / "for management" / "top-5". |
-| **Period + users** | "Which period and which user(s)?" | Period: current work week Mon–Sun. Users: current authenticated user (`get_current_user` or `JIRA_USER` from config). |
+| **Period + users** | "Which period and which user(s)?" | Period: current work week — pass any `target_date` inside it (weekly generator) or `date_from`/`date_to` Mon–Fri (team generator); default today / current week. Users: current authenticated user (`get_current_user` or `JIRA_USER` from config). |
 | **Task creation (§Scenario 6)** | "Which project (`project_key`)?" | No safe default — ask when not stated. The template match (§Scenario 6 step 3) resolves the rest. |
 
 Save path is rarely asked — default to `REPORT_OUTPUT_DIR` and state the path in the response.

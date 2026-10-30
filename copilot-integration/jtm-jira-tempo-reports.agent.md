@@ -96,7 +96,7 @@ A `pick` (single-select) question with these options:
 
 | Label (click) | Description | Effect |
 |---|---|---|
-| **📊 Недельный отчёт (по умолчанию)** | Тип: basic (template=default), формат: txt, период: текущая рабочая неделя пн–вс, пользователь: текущий аутентифицированный. Самый частый кейс — один клик. | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, date_from=<Mon>, date_to=<Sun>)` immediately. **Skips questions 1–5.** |
+| **📊 Недельный отчёт (по умолчанию)** | Тип: basic (template=default), формат: txt, период: текущая рабочая неделя пн–пт, пользователь: текущий аутентифицированный. Самый частый кейс — один клик. | Runs `generate_weekly_report(template="default", format="txt", username=<get_current_user>, target_date=<today>)` immediately — the generator resolves the week itself. **Skips questions 1–5.** |
 | **🎯 Настроить параметры** | Выбрать тип, формат, период, пользователя вручную. | Shows questions 1–5. |
 | **👥 Командный отчёт** | Сводный отчёт по нескольким пользователям. | Shows users (multi-select) + type/format/period follow-ups. |
 
@@ -111,8 +111,8 @@ one click.
 |---|---|---|---|
 | 1 | `pick` | Тип отчёта (basic, summary, formatted, structured, by-tasks, custom-template — see `JTM_AGENT.md` §7-type matrix) | `basic` |
 | 2 | `pick` | Формат (txt, md, json) | follows type (txt for basic/summary, md for formatted, json for structured) |
-| 3a | `input` | Период начала (ISO YYYY-MM-DD) | Monday of current work week |
-| 3b | `input` | Период конца (ISO YYYY-MM-DD) | Sunday of current work week |
+| 3a | `input` | Целевая неделя — любая дата внутри неё (ISO YYYY-MM-DD); генератор развернёт её в пн–пт сам | today (current week) |
+| 3b | `input` | Период team-отчёта — начало и конец через запятую (ISO YYYY-MM-DD) | Monday and Friday of the current week |
 | 4 | `input` | Пользователь (Jira username) — для командного отчёта: список через запятую | `get_current_user` |
 | 5 | `input` | Путь сохранения (абсолютный) | `REPORT_OUTPUT_DIR` from config |
 
@@ -128,9 +128,9 @@ path next time to override").
 User: "Сделай отчёт W29 для alice"
 You: [vscode_askQuestions Q0: pick]
   → User clicks "📊 Недельный отчёт (по умолчанию)"
-You: [resolves W29 → 2026-07-13..2026-07-19, username=alice]
-You: [generate_weekly_report(template="default", format="txt", username="alice", date_from="2026-07-13", date_to="2026-07-19")]
-You: ✅ Saved to /home/.../weekly/alice_2026-07-13_2026-07-19.txt
+You: [resolves W29 → any date inside the week, e.g. target_date=2026-07-13; username=alice]
+You: [generate_weekly_report(template="default", format="txt", username="alice", target_date="2026-07-13")]
+You: ✅ Saved to /home/.../weekly/alice_2026-07-13_2026-07-17.txt
 ```
 
 > The user said "W29", so you resolved the period without asking. The
@@ -156,8 +156,8 @@ You: [vscode_askQuestions Q0: pick]
   → User clicks "👥 Командный отчёт"
 You: [vscode_askQuestions: users multi-select + type/format/period]
   → User picks: alice, bob, carol
-You: [generate_team_report(template="team_report", format="txt", users=["alice","bob","carol"], date_from, date_to)]
-You: ✅ Saved to /home/.../weekly/team_130726-190726.txt
+You: [generate_team_report(template="team_report", format="txt", users=["alice","bob","carol"], date_from="2026-07-13", date_to="2026-07-17")]
+You: ✅ Saved to /home/.../weekly/team_130726-170726.txt
 ```
 
 ### What the picker is NOT
