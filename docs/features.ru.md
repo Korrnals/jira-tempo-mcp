@@ -1,6 +1,6 @@
 # ✨ Возможности — что умеет jira-tempo-mcp
 
-`jira-tempo-mcp` — один пакет с тремя лицами: **MCP-сервер** с 19
+`jira-tempo-mcp` — один пакет с тремя лицами: **MCP-сервер** с 23
 инструментами поверх самохостинг-инстанса Jira (Server / Data Center) +
 Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обновления и
 управления специалистом, и **standalone AI-агент-специалист**, который
@@ -16,9 +16,10 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 | Группа возможностей | Инструменты | Подробнее |
 | --- | --- | --- |
 | 🔍 [Чтение Jira и Tempo](#-чтение-jira-и-tempo) | 8 | [api.ru.md](api.ru.md) |
-| ⏱️ [Учёт времени](#-учёт-времени) | 2 | [api.ru.md](api.ru.md) |
+| ⏱️ [Учёт времени](#-учёт-времени) | 3 | [api.ru.md](api.ru.md) |
 | 🧩 [Создание задач и декомпозиция по шаблонам](#-создание-задач-и-декомпозиция-по-шаблонам) | 4 | [task-templates.ru.md](task-templates.ru.md) |
-| 📊 [Отчёты](#-отчёты) | 5 | [reports.ru.md](reports.ru.md), [templates.ru.md](templates.ru.md) |
+| 📊 [Отчёты](#-отчёты) | 7 | [reports.ru.md](reports.ru.md), [templates.ru.md](templates.ru.md) |
+| 🩺 [Диагностика](#-диагностика) | 1 | [api.ru.md](api.ru.md) |
 | 🖥️ [CLI и операции](#-cli-и-операции) | 5 команд | [cli.ru.md](cli.ru.md) |
 | 🤖 [AI-агент-специалист](#-ai-агент-специалист) | — | [README §Агент JTM](../README.ru.md#-агент-jtm-standalone-агент-для-copilot-chat) |
 
@@ -46,6 +47,7 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 | Инструмент | Что делает |
 | --- | --- |
 | [`create_worklog`](api.ru.md#-create_worklog) | Учесть время на задаче Jira, с комментарием |
+| [`create_worklogs`](api.ru.md#-create_worklogs) | Учесть время пакетно — до 20 worklog'ов за вызов, результат по каждой записи (запись, не идемпотентно) |
 | [`delete_worklog`](api.ru.md#-delete_worklog) | Удалить worklog (отмена неправильно учтённого времени) |
 
 ---
@@ -79,6 +81,8 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 | [`generate_weekly_report`](api.ru.md#-generate_weekly_report) | Еженедельный отчёт из worklog'ов Tempo |
 | [`generate_team_report`](api.ru.md#-generate_team_report) | Командный отчёт по нескольким пользователям Jira |
 | [`generate_tasks_report`](api.ru.md#-generate_tasks_report) | Отчёт по задачам с группировкой по статусам — по одному пользователю (индивидуальный режим) или по нескольким (групповой режим, только активные задачи — определяется по не зависящему от языка `statusCategory`) |
+| [`week_status`](api.ru.md#-week_status) | Статус недели: часы по дням, пустые дни, сверка с нормой (только чтение) |
+| [`report_gaps`](api.ru.md#-report_gaps) | Детектор полноты отчётов: недели с worklog'ами против файлов отчётов на диске (только чтение) |
 
 Шаблоны и обвязка вокруг них:
 
@@ -93,6 +97,14 @@ Tempo Timesheets 4, **CLI** (`jira-tempo-mcp`) для установки, обн
 
 Форматы отчётов и маппинг секций: [reports.ru.md](reports.ru.md).
 Справочник для авторов шаблонов: [templates.ru.md](templates.ru.md).
+
+---
+
+## 🩺 Диагностика
+
+| Инструмент | Что делает |
+| --- | --- |
+| [`health_check`](api.ru.md#-health_check) | Состояние сервера/конфига/доступности API — только presence, без секретов |
 
 ---
 
@@ -139,10 +151,10 @@ git clone не нужен.
 ## ⚠️ Ограничения
 
 - **E2E против реального Jira — только чтение, по политике.** Инструменты
-  записи (`create_worklog`, `delete_worklog`, `create_issue`,
-  `add_issue_comment`, `create_issue_from_template`) существуют и покрыты
-  unit-тестами на mock-транспорте; live-проверку записи на реальном
-  инстансе сознательно не выполняем.
+  записи (`create_worklog`, `create_worklogs`, `delete_worklog`,
+  `create_issue`, `add_issue_comment`, `create_issue_from_template`)
+  существуют и покрыты unit-тестами на mock-транспорте; live-проверку записи
+  на реальном инстансе сознательно не выполняем.
 - **JQL-поиск ограничен 100 результатами** на один вызов `list_issues_by_jql`.
 
 ---

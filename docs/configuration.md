@@ -45,6 +45,21 @@ See [reports.md](reports.md) for details on the report-related variables.
 > silently overrides your `.env.local` (see
 > [troubleshooting.md](troubleshooting.md#-connection-diagnostics)).
 
+### 🔍 Report coverage scanning (`report_gaps`)
+
+The read-only [`report_gaps`](api.md#-report_gaps) tool checks which weeks
+have worklogs but no saved report file. It scans the **root of
+`REPORT_OUTPUT_DIR` recursively** — every file matching
+`*_<monday>_<friday>.*` anywhere in the tree counts as that week's report.
+When the variable is unset, the fallback root is
+`~/.mcp/jira-tempo-mcp/reports/`.
+
+This pairs with the [Komus convention](#komus-reports-tree-standard-deployment):
+report files saved as
+`<root>/<year>/<month>/weekly/<prefix>_<monday>_<friday>.<ext>` are found
+automatically, so `report_gaps` answers "which weeks still need a report"
+without any extra configuration.
+
 ### 👥 Team report rate-limiting (optional)
 
 | Variable | Required | Default | Description |
