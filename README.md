@@ -16,7 +16,7 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 
 | Document | Description |
 |----------|---------|
-| [Features](docs/features.md) | Capability map — what the 19 MCP tools, the CLI, and the agent do |
+| [Features](docs/features.md) | Capability map — what the 23 MCP tools, the CLI, and the agent do |
 | [API Reference](docs/api.md) | Full MCP tool reference with parameters and examples |
 | [Installation](docs/installation.md) | Setup and installation guide |
 | [Configuration](docs/configuration.md) | Environment variables reference |
@@ -33,7 +33,7 @@ Track time, list worklogs, and generate weekly reports — all from your AI agen
 
 ## 📋 Features
 
-The flat list of all 19 tools is below. For a grouped capability map —
+The flat list of all 23 tools is below. For a grouped capability map —
 reading, time tracking, template decomposition, reports, CLI, agent — see
 [docs/features.md](docs/features.md).
 
@@ -42,6 +42,7 @@ reading, time tracking, template decomposition, reports, CLI, agent — see
 | `list_worklogs` | List Tempo worklogs for a date range or single day |
 | `get_worklog` | Get a single worklog by Tempo ID |
 | `create_worklog` | Track time on a Jira issue with a comment |
+| `create_worklogs` | Track time in batch — up to 20 worklogs per call (write, not idempotent) |
 | `delete_worklog` | Delete a worklog (undo mis-tracked time) |
 | `get_issue` | Get Jira issue metadata (summary, status, project) |
 | `create_issue` | Create a new Jira issue (optionally a subtask via parent key) |
@@ -54,6 +55,7 @@ reading, time tracking, template decomposition, reports, CLI, agent — see
 | `generate_weekly_report` | Generate a weekly report (txt/md/json) from Tempo worklogs |
 | `generate_team_report` | Generate a team report (txt/md/json) for multiple Jira users |
 | `generate_tasks_report` | Generate a tasks report (md/txt/json) grouped by status |
+| `report_gaps` | Detect weeks with worklogs but no saved report file (read-only) |
 | `list_issues_by_jql` | Search Jira issues by a JQL query (read-only, max 100) |
 | `get_current_user` | Get info about the authenticated user (PAT owner) |
 | `preview_report_template` | Preview a report template rendered with sample data |
@@ -307,6 +309,26 @@ make typecheck  # mypy
 make test       # pytest
 make build      # python -m build (sdist + wheel)
 ```
+
+### Worktree venv strategy
+
+Each worktree gets its **own real venv** — never share or symlink a venv
+between checkouts (a shared venv breaks the editable install of the other
+checkout and can leak packages across products):
+
+```sh
+uv venv --python /usr/bin/python3 .venv
+uv pip install --python .venv/bin/python -e '.[dev] build'
+```
+
+The bare minimum for running from source without a venv is
+`PYTHONPATH=src`.
+
+**Never commit `.venv`.** In v0.7.0 an accidental `.venv` **symlink** was
+committed: the gitignore pattern `.venv/` (trailing slash) matches
+directories only and did not catch symlinks — the pattern is now plain
+`.venv`. If you work in a distrobox, note that `make` may not be the
+distrobox one: use `/usr/bin/make` explicitly when in doubt.
 
 </details>
 

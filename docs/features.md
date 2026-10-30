@@ -1,7 +1,7 @@
 # ✨ Features — what jira-tempo-mcp can do
 
 `jira-tempo-mcp` is one package with three faces: an **MCP server** exposing
-19 tools over self-hosted Jira (Server / Data Center) + Tempo Timesheets 4, a
+23 tools over self-hosted Jira (Server / Data Center) + Tempo Timesheets 4, a
 **CLI** (`jira-tempo-mcp`) for install / update / specialist management, and a
 **standalone AI specialist agent** that drives the server's report generators
 from Copilot Chat and other harnesses.
@@ -16,9 +16,10 @@ and examples lives in [api.md](api.md).
 | Capability group | Tools | Deep dive |
 | --- | --- | --- |
 | 🔍 [Read Jira & Tempo](#-read-jira--tempo) | 8 | [api.md](api.md) |
-| ⏱️ [Time tracking](#-time-tracking) | 2 | [api.md](api.md) |
+| ⏱️ [Time tracking](#-time-tracking) | 3 | [api.md](api.md) |
 | 🧩 [Issue creation & template decomposition](#-issue-creation--template-decomposition) | 4 | [task-templates.md](task-templates.md) |
-| 📊 [Reports](#-reports) | 5 | [reports.md](reports.md), [templates.md](templates.md) |
+| 📊 [Reports](#-reports) | 7 | [reports.md](reports.md), [templates.md](templates.md) |
+| 🩺 [Diagnostics](#-diagnostics) | 1 | [api.md](api.md) |
 | 🖥️ [CLI & operations](#-cli--operations) | 5 commands | [cli.md](cli.md) |
 | 🤖 [AI specialist agent](#-ai-specialist-agent) | — | [README §JTM Agent](../README.md#-jtm-agent-standalone-copilot-chat-agent) |
 
@@ -47,6 +48,7 @@ builds on.
 | Tool | What it does |
 | --- | --- |
 | [`create_worklog`](api.md#-create_worklog) | Track time on a Jira issue, with a comment |
+| [`create_worklogs`](api.md#-create_worklogs) | Track time in batch — up to 20 worklogs per call, per-entry results (write, not idempotent) |
 | [`delete_worklog`](api.md#-delete_worklog) | Delete a worklog (undo mis-tracked time) |
 
 ---
@@ -80,6 +82,8 @@ Three generators, each producing `txt`, `md`, or `json`:
 | [`generate_weekly_report`](api.md#-generate_weekly_report) | Weekly report from Tempo worklogs |
 | [`generate_team_report`](api.md#-generate_team_report) | Team report for several Jira users |
 | [`generate_tasks_report`](api.md#-generate_tasks_report) | Tasks report grouped by status — per-user (individual mode) or multi-user (group mode, active tasks only, detected via the language-independent `statusCategory`) |
+| [`week_status`](api.md#-week_status) | Week status: hours by day, empty days, norm check (read-only) |
+| [`report_gaps`](api.md#-report_gaps) | Report coverage detector: weeks with worklogs vs report files on disk (read-only) |
 
 Templates and tooling around them:
 
@@ -94,6 +98,14 @@ Python templates are opt-in (`REPORT_TEMPLATE_ALLOW_PY=1`).
 
 Report formats and section mapping: [reports.md](reports.md).
 Template authoring reference: [templates.md](templates.md).
+
+---
+
+## 🩺 Diagnostics
+
+| Tool | What it does |
+| --- | --- |
+| [`health_check`](api.md#-health_check) | Server/config/connectivity status — presence-only, no secrets |
 
 ---
 
@@ -138,10 +150,10 @@ harness table in [cli.md](cli.md#-install-specialist).
 ## ⚠️ Limitations
 
 - **E2E against real Jira is read-only by policy.** The write tools
-  (`create_worklog`, `delete_worklog`, `create_issue`, `add_issue_comment`,
-  `create_issue_from_template`) exist and are unit-tested on a mock
-  transport; live write validation against a real instance is deliberately
-  not performed.
+  (`create_worklog`, `create_worklogs`, `delete_worklog`, `create_issue`,
+  `add_issue_comment`, `create_issue_from_template`) exist and are
+  unit-tested on a mock transport; live write validation against a real
+  instance is deliberately not performed.
 - **JQL search is capped at 100 results** per `list_issues_by_jql` call.
 
 ---

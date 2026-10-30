@@ -1,6 +1,6 @@
 # 🌐 API — MCP tools
 
-The server exposes 21 tools over the Model Context Protocol. Each tool is
+The server exposes 23 tools over the Model Context Protocol. Each tool is
 defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 (`_TOOL_HANDLERS`).
 
@@ -13,6 +13,7 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 | [`list_worklogs`](#-list_worklogs) | Worklogs | List worklogs for a date range or single day |
 | [`get_worklog`](#-get_worklog) | Worklogs | Get a single worklog by Tempo ID |
 | [`create_worklog`](#-create_worklog) | Worklogs | Track time on a Jira issue |
+| [`create_worklogs`](#-create_worklogs) | Worklogs | Track time in batch — up to 20 worklogs per call (write) |
 | [`delete_worklog`](#-delete_worklog) | Worklogs | Delete a worklog by ID |
 | [`get_issue`](#-get_issue) | Issues | Get Jira issue metadata (9 fields, incl. description) |
 | [`create_issue`](#-create_issue) | Issues | Create a new issue in a project (optionally a subtask) |
@@ -28,6 +29,7 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 | [`generate_team_report`](#-generate_team_report) | Reports | Generate a team report for multiple users |
 | [`generate_tasks_report`](#-generate_tasks_report) | Reports | Generate a tasks report grouped by status |
 | [`week_status`](#-week_status) | Reports | Week status: hours by day, empty days, norm check (read-only) |
+| [`report_gaps`](#-report_gaps) | Reports | Report coverage detector: weeks with worklogs vs report files (read-only) |
 | [`list_report_templates`](#-list_report_templates) | Reports | List available report templates |
 | [`preview_report_template`](#-preview_report_template) | Reports | Preview a template with sample data or real worklogs |
 | [`health_check`](#-health_check) | Diagnostics | Server/config/connectivity status (presence-only, no secrets) |
@@ -45,6 +47,11 @@ tracked time is returned — planned time is excluded.
 | --- | --- | --- | --- |
 | `date_from` | string | no | Start date (ISO `YYYY-MM-DD`). Defaults to today. |
 | `date_to` | string | no | End date (ISO `YYYY-MM-DD`). Defaults to `date_from`. |
+| `group_by` | string | no | Grouping of the output: `none` (default), `issue`, or `day`. Defaults to `none`. |
+| `include_totals` | boolean | no | Append total tracked time to the output. Defaults to `false`. |
+
+The default output (one line per worklog, no grouping, no totals) is
+unchanged — the new options are strictly opt-in.
 
 **Example call:**
 
@@ -53,18 +60,40 @@ tracked time is returned — planned time is excluded.
   "name": "list_worklogs",
   "arguments": {
     "date_from": "2026-06-16",
-    "date_to": "2026-06-20"
+    "date_to": "2026-06-20",
+    "group_by": "issue",
+    "include_totals": true
   }
 }
 ```
 
-**Returns:** one line per worklog:
+**Returns:** one line per worklog (default render, unchanged):
 
 ```text
 Worklogs 2026-06-16 .. 2026-06-20 (5 entries):
 - 2026-06-16 | PROJECT-100 | 1h 30m | id=12345 | Implemented login flow
 - 2026-06-17 | PROJECT-101 | 2h | id=12346 | Code review
 ```
+
+With `group_by` the lines are grouped — by issue:
+
+```text
+Worklogs 2026-06-16 .. 2026-06-20 (5 entries):
+- PROJECT-100: 4h 30m (3 entries)
+- PROJECT-101: 2h (2 entries)
+Total: 6h 30m
+```
+
+or by day:
+
+```text
+Worklogs 2026-06-16 .. 2026-06-20 (5 entries):
+- 2026-06-16: 3h (2 entries)
+- 2026-06-17: 3h 30m (3 entries)
+Total: 6h 30m
+```
+
+(`Total: …` appears only with `include_totals: true`.)
 
 ---
 
@@ -147,6 +176,82 @@ Worklog 12345:
   Attributes:
     Специализация: Devops
     Форматработы: Удаленно
+```
+
+---
+
+## ⏱️ `create_worklogs`
+
+Track (log) time **in batch**: up to 20 worklogs in a single call. Each
+entry is created via Tempo, same semantics as
+[`create_worklog`](#-create_worklog) — entries are attributed to the token
+owner.
+
+> ⚠️ **Write operation — not idempotent.** A successful call creates real
+> worklogs in Tempo. Re-running the same call creates **duplicate entries** —
+> there is no upsert and no auto-retry. The decision to (re)run belongs to
+> the agent/user: verify the target week first (e.g. with
+> [`list_worklogs`](#-list_worklogs)) and confirm before writing.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `entries` | array<object> | yes | 1–20 entries. Each entry: `issue_key` (string, required — e.g. `PROJECT-100`), `time_spent` (string, required — e.g. `1h 30m`), `comment` (string, optional), `date_started` (string, optional — `YYYY-MM-DD`, defaults to today). |
+
+**Semantics:**
+
+- **Cap:** at most 20 entries per call. A larger batch is rejected outright —
+  split it into several calls.
+- **Validate-then-write:** *all* entries are validated (issue key format,
+  duration parsing, entry count) **before the first write**. Any invalid
+  entry fails the whole call and **nothing is written** — no partial batch
+  from malformed input.
+- **Per-entry results:** entries that pass validation are written one by one;
+  the response reports `ok`/`error` per entry. If one entry fails at the API
+  level (e.g. Tempo rejects it), the remaining entries **continue** — there
+  are no auto-retries, a failed entry stays unwritten.
+
+**Example call:**
+
+```json
+{
+  "name": "create_worklogs",
+  "arguments": {
+    "entries": [
+      {
+        "issue_key": "PROJECT-100",
+        "time_spent": "1h 30m",
+        "comment": "Implemented login flow",
+        "date_started": "2026-06-19"
+      },
+      {
+        "issue_key": "PROJECT-101",
+        "time_spent": "45m",
+        "comment": "Code review"
+      }
+    ]
+  }
+}
+```
+
+**Returns:** one line per entry:
+
+```text
+Batch worklogs: 2 entries.
+- PROJECT-100 2026-06-19: ok (id=12345)
+- PROJECT-101 2026-06-19: ok (id=12346)
+Created 2 of 2 worklogs.
+```
+
+On a per-entry API failure (the rest continue):
+
+```text
+Batch worklogs: 3 entries.
+- PROJECT-100 2026-06-19: ok (id=12345)
+- PROJECT-102 2026-06-19: error (Jira/Tempo API error: 400 ...)
+- PROJECT-103 2026-06-19: ok (id=12347)
+Created 2 of 3 worklogs.
 ```
 
 ---
@@ -584,6 +689,57 @@ Week status for golikhin (2026-10-26 .. 2026-11-01):
 - Sun 2026-11-01: 0h
 Total tracked: 39h 30m of 40h expected (short by 30m)
 Days without entries (Mon-Fri): none
+```
+
+---
+
+## 🔍 `report_gaps`
+
+Read-only **report coverage detector**: compares the weeks that have
+worklogs against the report files on disk. For every week with tracked time
+since `since`, it reports whether a report file
+`*_<monday>_<friday>.*` exists for that week (and the tracked hours) —
+so you can see at a glance which weeks still need a report to be generated.
+
+Report files are looked up in the **root of `REPORT_OUTPUT_DIR`**
+(fallback `~/.mcp/jira-tempo-mcp/reports/`), scanned **recursively** — files
+anywhere in the tree count, including the Komus convention layout
+(`<root>/<year>/<month>/weekly/`). See
+[configuration.md](configuration.md#-report-coverage-scanning-report_gaps).
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `username` | string | no | Jira username to check coverage for. Defaults to the configured `JIRA_USER`. |
+| `since` | string | no | Start date (ISO `YYYY-MM-DD`). Defaults to the beginning of the current year. The scan depth is capped at 26 weeks back. |
+
+**Semantics:**
+
+- Only weeks that actually have worklogs are listed — empty weeks are not
+  gaps.
+- `covered` means at least one file matching `*_<monday>_<friday>.*` exists
+  for that week; `missing` means the week has tracked time but no report
+  file.
+- Read-only: the tool never writes files and never calls write APIs.
+
+**Example call:**
+
+```json
+{
+  "name": "report_gaps",
+  "arguments": { "username": "golikhin", "since": "2026-09-01" }
+}
+```
+
+**Returns:**
+
+```text
+Report coverage for golikhin since 2026-09-01 (weeks with worklogs):
+- 2026-09-07 .. 2026-09-11: 32h — missing (no report file)
+- 2026-09-14 .. 2026-09-18: 40h — covered (golikhin_2026-09-14_2026-09-18.md)
+- 2026-09-21 .. 2026-09-25: 38h 30m — covered (golikhin_2026-09-21_2026-09-25.txt)
+Coverage: 2 covered, 1 missing of 3 weeks with worklogs.
 ```
 
 ---
