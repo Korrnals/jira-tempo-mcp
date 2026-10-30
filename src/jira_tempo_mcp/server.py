@@ -315,6 +315,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -369,6 +370,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -411,6 +413,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["template_name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -552,6 +555,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
 ]
@@ -593,6 +597,29 @@ def _validate_date(date_str: str, field_name: str) -> date:
         raise ValueError(
             f"Invalid date for {field_name}: {date_str!r}. Expected ISO format YYYY-MM-DD."
         ) from None
+
+
+# --- Strict parameter validation for generator tools (B5, ArchComm 2026-10-30) ---
+
+
+def _reject_unknown_keys(arguments: dict[str, Any], allowed: tuple[str, ...]) -> None:
+    """Reject unknown parameter names in generator tool calls (B5, strict).
+
+    The generator inputSchemas declare ``additionalProperties: false``; MCP
+    hosts are expected to enforce it, but host enforcement varies. The
+    handler layer is the second line of defence against the
+    "silently ignored parameter" bug class (JTM feedback, 2026-10-30: docs
+    advertised ``date_from``/``date_to`` on generate_weekly_report and the
+    calls quietly did nothing). Any key outside ``allowed`` raises a
+    ValueError naming the offending keys and every valid parameter.
+    """
+    unknown = sorted(k for k in arguments if k not in allowed)
+    if unknown:
+        raise ValueError(
+            f"Unknown parameter(s): {', '.join(repr(k) for k in unknown)}. "
+            f"Valid parameters for this tool: {', '.join(allowed)}. "
+            "Extra parameters are rejected, not silently ignored."
+        )
 
 
 # Matches a numeric timezone offset WITHOUT a colon at end of string,
@@ -1121,6 +1148,9 @@ async def _handle_list_favorites(
 async def _handle_generate_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(
+        arguments, ("target_date", "output_dir", "template", "format", "username")
+    )
     target = None
     if td := arguments.get("target_date"):
         # m8: validate date format with helpful error.
@@ -1164,6 +1194,10 @@ async def _handle_generate_report(
 async def _handle_generate_team_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(
+        arguments,
+        ("users", "date_from", "date_to", "section_map", "template", "output_dir", "format"),
+    )
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
         users = config.team_users_resolved
@@ -1314,6 +1348,7 @@ async def _handle_preview_report_template(
     # _client is intentionally unused: preview never calls Jira/Tempo. The
     # leading underscore documents intent; the dispatch table in
     # _TOOL_HANDLERS passes it positionally, so renaming is safe.
+    _reject_unknown_keys(arguments, ("template_name", "sample_data"))
     template_name = arguments.get("template_name")
     if not isinstance(template_name, str) or not template_name.strip():
         raise ValueError("'template_name' must be a non-empty string.")
@@ -1474,6 +1509,7 @@ async def _handle_get_current_user(
 async def _handle_generate_tasks_report(
     arguments: dict[str, Any], config: Config, client: JiraTempoClient
 ) -> str:
+    _reject_unknown_keys(arguments, ("users", "active_only", "output_dir", "format"))
     users = arguments.get("users")
     if not isinstance(users, list) or not users:
         users = config.team_users_resolved
