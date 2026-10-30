@@ -22,9 +22,11 @@ dist/
 *.egg
 pip-wheel-metadata/
 
-# Virtual envs
-.venv/
-venv/
+# Virtual envs — no trailing slash: a pattern ending in "/" matches
+# directories only and does NOT catch a symlink named .venv (incident
+# abc55c8: a .venv symlink got tracked because ".venv/" ignored it).
+.venv
+venv
 env/
 ENV/
 
