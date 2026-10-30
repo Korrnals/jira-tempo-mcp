@@ -45,6 +45,12 @@ from .team_report import generate_team_report
 from .templates.loader import build_registry, resolve_template
 from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
 from .week_status import week_status_text
+from .worklog_aggregates import (
+    aggregate_sections,
+    extract_entries,
+    validate_group_by,
+    validate_include_totals,
+)
 
 logger = logging.getLogger("jira-tempo-mcp")
 
@@ -59,7 +65,10 @@ TOOLS: list[Tool] = [
         description=(
             "List Tempo worklogs for a date range (or a single day). "
             "Returns worklogs with issue key, time spent, comment, and date. "
-            "Only actually tracked time is returned — planned time is excluded."
+            "Only actually tracked time is returned — planned time is excluded. "
+            "Optionally aggregates the same rows: group_by='issue' gives hours "
+            "per issue key (descending), group_by='day' gives hours per date, "
+            "include_totals adds the period sum."
         ),
         inputSchema={
             "type": "object",
@@ -71,6 +80,23 @@ TOOLS: list[Tool] = [
                 "date_to": {
                     "type": "string",
                     "description": "End date (ISO YYYY-MM-DD). Defaults to date_from.",
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["none", "issue", "day"],
+                    "description": (
+                        "Aggregate the same rows: 'issue' — hours per issue key "
+                        "(descending), 'day' — hours per date, 'none' — plain "
+                        "list (default)."
+                    ),
+                    "default": "none",
+                },
+                "include_totals": {
+                    "type": "boolean",
+                    "description": (
+                        "Append a total-hours line for the period. Default false."
+                    ),
+                    "default": False,
                 },
             },
             "required": [],
@@ -932,6 +958,11 @@ async def _handle_list_worklogs(
     date_from = arguments.get("date_from") or today.isoformat()
     date_to = arguments.get("date_to") or date_from
 
+    # P5: optional aggregation over the same rows. Defaults keep the
+    # response byte-identical to the pre-P5 output (guard contract).
+    group_by = validate_group_by(arguments.get("group_by", "none"))
+    include_totals = validate_include_totals(arguments.get("include_totals", False))
+
     # BUG-3: validate date formats before API calls.
     parsed_from = _validate_date(date_from, "date_from")
     parsed_to = _validate_date(date_to, "date_to") if date_to != date_from else parsed_from
@@ -962,7 +993,14 @@ async def _handle_list_worklogs(
             + (f" | {comment}" if comment else "")
         )
     header = f"Worklogs {date_from} .. {date_to} ({len(worklogs)} entries):\n"
-    return header + "\n".join(rows) if rows else header + "(none)"
+    body = header + "\n".join(rows) if rows else header + "(none)"
+    if group_by == "none" and not include_totals:
+        return body
+    # Aggregation runs over the SAME rows — extract_entries mirrors the
+    # extraction loop above; the client is not touched.
+    entries = extract_entries(worklogs)
+    sections = aggregate_sections(entries, group_by=group_by, include_totals=include_totals)
+    return body + "\n\n" + sections if sections else body
 
 
 async def _handle_get_worklog(
