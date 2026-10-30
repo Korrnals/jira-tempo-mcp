@@ -1,6 +1,6 @@
 # 🌐 API — MCP tools
 
-The server exposes 19 tools over the Model Context Protocol. Each tool is
+The server exposes 21 tools over the Model Context Protocol. Each tool is
 defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 (`_TOOL_HANDLERS`).
 
@@ -27,8 +27,10 @@ defined in `src/jira_tempo_mcp/server.py` and dispatched through a table
 | [`generate_weekly_report`](#-generate_weekly_report) | Reports | Generate a weekly report (`txt`/`md`/`json`) |
 | [`generate_team_report`](#-generate_team_report) | Reports | Generate a team report for multiple users |
 | [`generate_tasks_report`](#-generate_tasks_report) | Reports | Generate a tasks report grouped by status |
+| [`week_status`](#-week_status) | Reports | Week status: hours by day, empty days, norm check (read-only) |
 | [`list_report_templates`](#-list_report_templates) | Reports | List available report templates |
-| [`preview_report_template`](#-preview_report_template) | Reports | Preview a template with sample data |
+| [`preview_report_template`](#-preview_report_template) | Reports | Preview a template with sample data or real worklogs |
+| [`health_check`](#-health_check) | Diagnostics | Server/config/connectivity status (presence-only, no secrets) |
 
 ---
 
@@ -421,6 +423,12 @@ directory. Since v0.3.0 the `format` parameter selects output: `txt`
 | `template` | string | no | Template name (e.g. `default`, `weekly_summary`). Defaults to `REPORT_TEMPLATE` env or `default`. Use `list_report_templates` to see available templates. Only used when `format='txt'`. |
 | `format` | string | no | Output format: `txt` (plain text, default), `md` (Markdown), `json` (structured JSON). File extension matches the format. |
 | `username` | string | no | Optional Jira username to generate the report for (instead of the configured `JIRA_USER`). If provided, worklogs are filtered to this user. |
+| `include_dropped` | boolean | no | Include worklog lines dropped by the section-mapping engine in the tool response: `txt` appends a `Dropped lines (N)` section, `json` adds a `dropped` field, `md` renders `Dropped lines (0)` — a structural constant (drop details are only available in the `txt`/`json` channels). Logs carry the counter `Dropped %d lines` only, never the dropped content. Defaults to `false`; the default render is unchanged. |
+
+> 🛡️ **Strict arguments.** Generator tools (`generate_weekly_report`,
+> `generate_team_report`, `generate_tasks_report`) reject unknown parameters
+> with an explicit `unknown parameter '<name>'` error that lists the valid
+> parameter names — typos are no longer silently ignored.
 
 **Example call:**
 
@@ -463,6 +471,7 @@ directory. Since v0.3.0 the `format` parameter selects output: `txt`
 | `template` | string | no | Template name. Defaults to `team_report`. Only used when `format='txt'`. |
 | `output_dir` | string | no | Output directory. Defaults to `REPORT_TEAM_OUTPUT_DIR` or `REPORT_OUTPUT_DIR`. Must be inside the allowed root. |
 | `format` | string | no | Output format: `txt` (plain text, default), `md` (Markdown), `json` (structured JSON). File extension matches the format. |
+| `include_dropped` | boolean | no | Same contract as in [`generate_weekly_report`](#-generate_weekly_report): `txt` — `Dropped lines (N)` section, `json` — `dropped` field, `md` — structural `Dropped lines (0)`. Defaults to `false`. |
 
 > 🛡️ **Rate-limiting:** concurrent Tempo requests are bounded by
 > `TEMPO_MAX_CONCURRENT_REQUESTS` (default 3). A configurable delay
@@ -528,6 +537,57 @@ Reports directory: /home/user/.mcp/jira-tempo-mcp/reports
 
 ---
 
+## 📈 `week_status`
+
+Read-only week status for a user: hours tracked per day, days without
+entries, and the tracked sum against the expected norm. Complements the
+Friday report ritual — run it before sending the weekly report to catch
+under-tracked days.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `username` | string | yes | Jira username (e.g. `golikhin`) |
+| `target_date` | string | no | Any date within the target week (ISO `YYYY-MM-DD`). Defaults to today. |
+| `expected_hours` | integer | no | Expected weekly norm, in hours. Defaults to `40`. |
+
+**Semantics:**
+
+- The data window is Mon–Sun; entries on Sat/Sun are counted in the totals
+  but flagged as **outside the render window** (the weekly report renders
+  Mon–Fri only).
+- Working days are Mon–Fri; the norm is a call parameter (`expected_hours`,
+  default `40`) — not a server constant.
+- A working day with more than 8 tracked hours is flagged as overtime.
+- Read-only: the tool never writes files and never calls write APIs.
+
+**Example call:**
+
+```json
+{
+  "name": "week_status",
+  "arguments": { "username": "golikhin", "target_date": "2026-10-28" }
+}
+```
+
+**Returns:**
+
+```text
+Week status for golikhin (2026-10-26 .. 2026-11-01):
+- Mon 2026-10-26: 8h
+- Tue 2026-10-27: 8h 30m (over 8h)
+- Wed 2026-10-28: 7h
+- Thu 2026-10-29: 8h
+- Fri 2026-10-30: 8h
+- Sat 2026-10-31: 0h
+- Sun 2026-11-01: 0h
+Total tracked: 39h 30m of 40h expected (short by 30m)
+Days without entries (Mon-Fri): none
+```
+
+---
+
 ## 🎨 `list_report_templates`
 
 List available report templates (builtin + custom). Returns each template's
@@ -549,7 +609,7 @@ and description. Custom templates are discovered from `REPORT_TEMPLATE_DIR`.
 
 ```text
 Report templates (4):
-- default (builtin, Jinja2): Weekly report grouped by issue with stable sections
+- default (builtin, Jinja2): Canonical Komus/Golikhin weekly report — header [Голихин Л.С.] Отчет работы за неделю, Mon–Fri, issue-grouped with stable sections
 - team_report (builtin, Jinja2): Team report: per-user sections with issue breakdown
 - weekly_summary (builtin, Jinja2): Compact weekly summary: total hours, top 5 issues
 - my_custom (custom, Jinja2): My custom Jinja2 template
@@ -562,21 +622,26 @@ Report templates (4):
 
 ## 👁️ `preview_report_template`
 
-Preview a report template rendered with **sample data** — no Jira/Tempo
-calls are made. Useful for exploring templates before generating a real
-report. Returns the rendered text without writing a file.
+Preview a report template rendered without writing a file — with built-in
+**mock** worklogs (default) or with **real** Tempo worklogs for a target
+week (`live=true`). Useful for exploring templates before generating a
+report and as the mandatory pre-check before any manual report fallback.
 
-> 🆕 **New in v0.4.0.** This tool does not call Jira or Tempo — it uses
-> built-in mock worklogs so you can preview any template offline.
+> 🆕 **New in v0.4.0** (mock mode); the `live` and `target_date` parameters
+> extend the same tool — no new execution surface: custom `.py` templates
+> already run in-process, gated by `REPORT_TEMPLATE_ALLOW_PY` (default
+> `false`) — see [templates.md](templates.md#-security-opt-in-only).
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 | --- | --- | --- | --- |
 | `template_name` | string | yes | Template name (use `list_report_templates` to see available names) |
-| `sample_data` | string | no | Sample-data profile: `default` (realistic week, several issues), `minimal` (single worklog), `empty` (no worklogs — tests empty-state rendering). Defaults to `default`. |
+| `sample_data` | string | no | Mock profile (used when `live` is not set): `default` (realistic week, several issues), `minimal` (single worklog), `empty` (no worklogs — tests empty-state rendering). Defaults to `default`. |
+| `live` | boolean | no | Render **real** worklogs for the target week instead of mock data. Defaults to `false` (mock). The rendered text is returned in the tool response; no file is written. |
+| `target_date` | string | no | Any date within the target week (ISO `YYYY-MM-DD`). Selects the real week for `live=true`; ignored in mock mode. |
 
-**Example call:**
+**Example call (mock, default):**
 
 ```json
 {
@@ -585,7 +650,16 @@ report. Returns the rendered text without writing a file.
 }
 ```
 
-**Returns:** the rendered template text:
+**Example call (live):**
+
+```json
+{
+  "name": "preview_report_template",
+  "arguments": { "template_name": "default", "live": true, "target_date": "2026-10-28" }
+}
+```
+
+**Returns:** the rendered template text (mock example):
 
 ```text
 Weekly report: 2026-06-15 — 2026-06-19
@@ -740,6 +814,42 @@ Issues matching JQL (1):
 
 ---
 
+## 🩺 `health_check`
+
+Fast "is the server alive" probe — the recommended first step when an MCP
+client cannot reach the tools (see
+[troubleshooting.md](troubleshooting.md#-connection-diagnostics)). Reports
+server version, config paths, and Jira/Tempo API reachability as a
+**presence schema**: whether a credential is configured, never its value
+(`JIRA_PAT: set`). Secret values are excluded from the response and from
+logs at every log level.
+
+**Parameters:** none.
+
+**Example call:**
+
+```json
+{
+  "name": "health_check",
+  "arguments": {}
+}
+```
+
+**Returns:**
+
+```text
+jira-tempo-mcp health check:
+  Server version: <x.y.z>
+  Jira API: reachable (https://jira.example.com)
+  Tempo API: reachable
+  Reports root: /home/user/.mcp/jira-tempo-mcp/reports (exists)
+  Template dir: (default)
+  JIRA_PAT: set
+  TEMPO_API_TOKEN: not set (falls back to JIRA_PAT)
+```
+
+---
+
 ## ❌ Error handling
 
 All tools return a user-friendly error string on failure (never a raw
@@ -753,6 +863,7 @@ exception trace). Common error patterns:
 | `Jira/Tempo API error: 401 ...` | invalid or expired PAT |
 | `output_dir '...' resolves outside the allowed root` | path traversal attempt |
 | `Could not identify your Tempo worker key` | `JIRA_USER` mismatch or Tempo connectivity |
+| `unknown parameter '<name>'. Valid parameters: ...` | a generator tool received a key that is not in its schema (strict validation) |
 
 ---
 

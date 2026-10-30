@@ -4,6 +4,75 @@ Common errors and their fixes.
 
 ---
 
+## 🔌 Connection diagnostics
+
+The MCP client cannot see or call the server? Work this checklist top to
+bottom — each category clears one class of failure. **Quick ping first:**
+call [`health_check`](api.md#-health_check) — if it responds, the server
+process is alive and the Jira/Tempo APIs are reachable, and the remaining
+problem is configuration or client-side.
+
+### 1. Server process
+
+- [ ] Is the process running? In the VS Code MCP panel the server shows a
+      started/stopped indicator; on the host: `pgrep -af jira_tempo`.
+- [ ] If it crashed on startup, read the first lines of its output — a
+      `ConfigError` or `ModuleNotFoundError` means the process died before
+      serving (see the matching entries below).
+- [ ] Changed `mcp.json` recently? Reload: `Ctrl+Shift+P → Developer:
+      Reload Window`.
+
+### 2. Launch command (stdio transport)
+
+- [ ] This server speaks **stdio** — it does not open a network port. If an
+      MCP client reports a connection/port failure, the real cause is almost
+      always a wrong `command`/`args` pair in `mcp.json`.
+- [ ] `command` must point at the **venv python** explicitly
+      (`.../.venv/bin/python -m jira_tempo_mcp.server`) — a system python
+      crashes with `ModuleNotFoundError` (see below).
+- [ ] For Docker deployments, check the container is up and the MCP client
+      points at the published endpoint.
+
+### 3. Credentials and the envFile chain
+
+Config resolution order: **process env → `.env.local` (`envFile`) → repo
+`.env`** ([details](configuration.md#-configuration-source-priority)).
+
+- [ ] All three required variables are set: `JIRA_BASE_URL`, `JIRA_USER`,
+      `JIRA_PAT`. A missing one exits with `ConfigError` naming the variable
+      — never its value.
+- [ ] `envFile` in `mcp.json` is an **absolute path** (`~` does not resolve
+      in sandboxed environments — see below).
+- [ ] ⚠️ **Gotcha — stale env overrides the file:** a variable already set
+      in the **process environment** (the `env` block of `mcp.json`, the
+      shell that launches the host, systemd) **beats** `.env.local`. A
+      stale `JIRA_BASE_URL`, `JIRA_USER`, or `REPORT_OUTPUT_DIR` there
+      silently wins over your edited `.env.local`. Check the `env` block
+      for leftovers before editing the file.
+
+### 4. Network
+
+- [ ] From the same host/container where the server runs:
+      `curl -I https://jira.example.com` — verifies DNS, VPN, and firewall.
+- [ ] Behind a VPN? The server process inherits the network of the host that
+      launched it — a VPN active in a terminal does not automatically cover
+      a server started elsewhere.
+- [ ] Calls time out rather than fail fast → raise `JIRA_HTTP_TIMEOUT`
+      (default 30 s).
+
+### Symptom → category map
+
+| Symptom | Start here |
+| --- | --- |
+| Server missing from the MCP panel | 1 (process) |
+| `Failed to read envFile '~/...'` | 3 (envFile chain) |
+| `ConfigError` / `JIRA_BASE_URL or JIRA_PAT missing` | 3 (credentials) |
+| `.env.local` edited, but the old values still apply | 3 (stale env gotcha) |
+| `ModuleNotFoundError` on startup | 2 (launch command) |
+| Tool calls time out | 4 (network) |
+
+---
+
 ## 🐛 MCP server does not appear in the panel
 
 **🩺 Symptom:** the `jira-tempo` server is not listed in the VS Code MCP panel.
@@ -140,7 +209,8 @@ Tempo connectivity is broken.
 `output_dir '...' resolves outside the allowed root`.
 
 **🔍 Cause:** the `output_dir` argument resolves to a path outside
-`REPORT_OUTPUT_DIR` (or `./reports`). This is a path-traversal guard.
+`REPORT_OUTPUT_DIR` (fallback root: `~/.mcp/jira-tempo-mcp/reports/`).
+This is a path-traversal guard.
 
 **✅ Fix:** pass an `output_dir` that is inside the allowed root, or set
 `REPORT_OUTPUT_DIR` to the desired base directory.
