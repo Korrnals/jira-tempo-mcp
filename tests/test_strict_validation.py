@@ -31,9 +31,10 @@ _STRICT_TOOLS = (
     "preview_report_template",
 )
 
-# Tools born in this wave (B6 health_check) that are strict BY CONSTRUCTION —
-# the B5 guard only protects the pre-wave non-generator surface.
-_NEW_IN_WAVE = ("health_check",)
+# Tools born in this wave (B6 health_check, B2 week_status) that are strict
+# BY CONSTRUCTION — the B5 guard only protects the pre-wave non-generator
+# surface.
+_NEW_IN_WAVE = ("health_check", "week_status")
 
 
 def _make_config(**overrides: Any) -> Config:

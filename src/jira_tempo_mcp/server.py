@@ -15,7 +15,7 @@ import platform
 import re
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,7 @@ from .tasks_report import generate_tasks_report
 from .team_report import generate_team_report
 from .templates.loader import build_registry, resolve_template
 from .utils import format_seconds_to_human, iso_now, parse_duration_to_seconds
+from .week_status import week_status_text
 
 logger = logging.getLogger("jira-tempo-mcp")
 
@@ -635,6 +636,48 @@ TOOLS: list[Tool] = [
                         "Defaults to false (offline diagnostics only)."
                     ),
                     "default": False,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="week_status",
+        description=(
+            "Read-only weekly status (B2): per-day tracked hours over the "
+            "Mon–Sun data window of the target week, days without entries in "
+            "the render window (Mon–Fri), totals vs the expected_hours norm "
+            "(default 40), and per-day overtime flags (a day over 8 tracked "
+            "hours). Sat/Sun entries are marked 'вне окна рендера' (outside "
+            "the render window — the txt report renders Mon–Fri only). "
+            "Reports tracked TIME only: issue keys and comments are never "
+            "included."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "description": (
+                        "Jira username to check. Defaults to the configured "
+                        "JIRA_USER."
+                    ),
+                },
+                "target_date": {
+                    "type": "string",
+                    "description": (
+                        "Any date within the target week (ISO YYYY-MM-DD). "
+                        "Defaults to today."
+                    ),
+                },
+                "expected_hours": {
+                    "type": "number",
+                    "description": (
+                        "Weekly work norm in hours used for the norm check. "
+                        "Defaults to 40."
+                    ),
+                    "default": 40,
                 },
             },
             "required": [],
@@ -1761,6 +1804,44 @@ async def _handle_health_check(
     return "\n".join(lines)
 
 
+async def _handle_week_status(
+    arguments: dict[str, Any], config: Config, client: JiraTempoClient
+) -> str:
+    """B2 read-only week status (ArchComm contract §2 item 1).
+
+    Data window Mon–Sun (the render window is Mon–Fri; Sat/Sun entries get
+    the «вне окна рендера» marker). Strictly read-only: worker-key
+    resolution + one worklog search, nothing else.
+    """
+    _reject_unknown_keys(arguments, ("username", "target_date", "expected_hours"))
+
+    username = arguments.get("username") or config.jira_user
+    if not isinstance(username, str) or not username.strip():
+        raise ValueError("'username' must be a non-empty string.")
+
+    if td := arguments.get("target_date"):
+        target = _validate_date(td, "target_date")
+    else:
+        target = datetime.now(pytz.timezone(config.timezone)).date()
+
+    expected_hours = arguments.get("expected_hours", 40)
+    if isinstance(expected_hours, bool) or not isinstance(expected_hours, (int, float)):
+        raise ValueError("'expected_hours' must be a positive number of hours.")
+    if expected_hours <= 0:
+        raise ValueError("'expected_hours' must be a positive number of hours.")
+
+    monday = target - timedelta(days=target.weekday())
+    sunday = monday + timedelta(days=6)
+
+    worker_key = await client.find_worker_key(username)
+    worklogs = await client.search_worklogs(
+        monday.isoformat(), sunday.isoformat(), worker_keys=[worker_key]
+    )
+    return week_status_text(
+        worklogs, target=target, username=username, expected_hours=expected_hours
+    )
+
+
 # Dispatch table (m3).
 _TOOL_HANDLERS: dict[str, Any] = {
     "list_worklogs": _handle_list_worklogs,
@@ -1783,6 +1864,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "get_current_user": _handle_get_current_user,
     "generate_tasks_report": _handle_generate_tasks_report,
     "health_check": _handle_health_check,
+    "week_status": _handle_week_status,
 }
 
 
